@@ -1,0 +1,22 @@
+use crate::domain::entities::account::Account;
+use crate::shared::error::AppError;
+use async_trait::async_trait;
+use uuid::Uuid;
+
+#[async_trait]
+pub trait AccountRepository: Send + Sync {
+    /// 根据 ID 查找账号
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Account>, AppError>;
+
+    /// 根据提供商 ID 查找所有关联账号
+    async fn find_by_provider_id(&self, provider_id: Uuid) -> Result<Vec<Account>, AppError>;
+
+    /// 查找所有账号
+    async fn find_all(&self) -> Result<Vec<Account>, AppError>;
+
+    /// 保存账号（创建或更新）
+    async fn save(&self, account: &Account) -> Result<Account, AppError>;
+
+    /// 根据 ID 删除账号
+    async fn delete(&self, id: Uuid) -> Result<(), AppError>;
+}
