@@ -50,6 +50,32 @@ impl AccountRepository for SeaOrmAccountRepository {
             .collect::<Result<Vec<Account>, AppError>>()
     }
 
+    async fn find_enabled_by_provider_id(&self, provider_id: Uuid) -> Result<Vec<Account>, AppError> {
+        let db = &*self.db;
+        let models = Entity::find()
+            .filter(Column::ProviderId.eq(provider_id))
+            .filter(Column::Status.eq("enabled"))
+            .all(db)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        models
+            .into_iter()
+            .map(|m| m.try_into())
+            .collect::<Result<Vec<Account>, AppError>>()
+    }
+
+    async fn get_encrypted_api_key(&self, account_id: Uuid) -> Result<Vec<u8>, AppError> {
+        let db = &*self.db;
+        let model = Entity::find_by_id(account_id)
+            .one(db)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .ok_or_else(|| AppError::NotFound(format!("账号 {} 未找到", account_id)))?;
+
+        Ok(model.api_key_encrypted)
+    }
+
     async fn find_all(&self) -> Result<Vec<Account>, AppError> {
         let db = &*self.db;
         let models = Entity::find()

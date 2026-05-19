@@ -1,16 +1,21 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, Statement,
 };
 use uuid::Uuid;
 
 use crate::domain::entities::log_entry::{LogContent, LogEntry};
-use crate::domain::repositories::log_repository::LogRepository;
-use crate::infrastructure::persistence::entities::log_content::{ActiveModel as ContentActiveModel, Entity as ContentEntity};
-use crate::infrastructure::persistence::entities::log_metadata::{ActiveModel, Column, Entity};
+use crate::domain::repositories::log_repository::{LogQuery, LogRepository};
+use crate::infrastructure::persistence::entities::log_content::{
+    ActiveModel as ContentActiveModel, Entity as ContentEntity,
+};
+use crate::infrastructure::persistence::entities::log_metadata::{
+    ActiveModel, Column, Entity,
+};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
@@ -58,14 +63,35 @@ impl LogRepository for SeaOrmLogRepository {
         &self,
         page: u64,
         page_size: u64,
+        filter: &LogQuery,
     ) -> Result<PaginatedResult<LogEntry>, AppError> {
         let db = &*self.db;
         let page = page.max(1);
         let page_size = page_size.min(100);
+        let utc_offset = FixedOffset::east_opt(0).expect("UTC 偏移");
 
-        let paginator = Entity::find()
-            .order_by_desc(Column::Timestamp)
-            .paginate(db, page_size);
+        let mut select = Entity::find().order_by_desc(Column::Timestamp);
+
+        if let Some(ref session_id) = filter.session_id {
+            select = select.filter(Column::SessionId.eq(session_id));
+        }
+        if let Some(user_id) = &filter.user_id {
+            select = select.filter(Column::UserId.eq(*user_id));
+        }
+        if let Some(access_point_id) = &filter.access_point_id {
+            select = select.filter(Column::AccessPointId.eq(*access_point_id));
+        }
+        if let Some(start_time) = &filter.start_time {
+            select = select.filter(Column::Timestamp.gte(start_time.with_timezone(&utc_offset)));
+        }
+        if let Some(end_time) = &filter.end_time {
+            select = select.filter(Column::Timestamp.lte(end_time.with_timezone(&utc_offset)));
+        }
+        if let Some(status_code) = &filter.status_code {
+            select = select.filter(Column::StatusCode.eq(*status_code));
+        }
+
+        let paginator = select.paginate(db, page_size);
 
         let total = paginator
             .num_items()
@@ -146,14 +172,160 @@ impl LogRepository for SeaOrmLogRepository {
     async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         let db = &*self.db;
         // 先删除关联的 log_content（如果有）
-        let _ = ContentEntity::delete_by_id(id)
-            .exec(db)
-            .await;
+        let _ = ContentEntity::delete_by_id(id).exec(db).await;
         // 再删除 log_metadata
         Entity::delete_by_id(id)
             .exec(db)
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
+    }
+
+    // ─── 统计方法 ───
+
+    async fn count_total(&self) -> Result<u64, AppError> {
+        let db = &*self.db;
+        let count = Entity::find()
+            .count(db)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(count)
+    }
+
+    async fn count_by_date_range(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<Vec<(NaiveDate, u64)>, AppError> {
+        let db = &*self.db;
+        let sql = r#"
+            SELECT DATE(timestamp)::TEXT AS day, COUNT(*)::BIGINT AS cnt
+            FROM log_metadata
+            WHERE timestamp >= $1::timestamptz AND timestamp < $2::timestamptz
+            GROUP BY day
+            ORDER BY day
+        "#;
+
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            [start.to_rfc3339().into(), end.to_rfc3339().into()],
+        );
+
+        let results = db
+            .query_all(stmt)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let mut data = Vec::new();
+        for row in &results {
+            let day_str: String = row
+                .try_get_by_index(0)
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            let day = NaiveDate::parse_from_str(&day_str, "%Y-%m-%d")
+                .map_err(|e| AppError::Internal(format!("日期解析失败: {}", e)))?;
+            let count: i64 = row
+                .try_get_by_index(1)
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            data.push((day, count as u64));
+        }
+
+        Ok(data)
+    }
+
+    async fn top_access_points(&self, limit: u64) -> Result<Vec<(Uuid, u64)>, AppError> {
+        let db = &*self.db;
+        let sql = r#"
+            SELECT access_point_id, COUNT(*)::BIGINT AS cnt
+            FROM log_metadata
+            WHERE access_point_id IS NOT NULL
+            GROUP BY access_point_id
+            ORDER BY cnt DESC
+            LIMIT $1
+        "#;
+
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            [(limit as i64).into()],
+        );
+
+        let results = db
+            .query_all(stmt)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let mut data = Vec::new();
+        for row in &results {
+            let id: Uuid = row
+                .try_get_by_index(0)
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            let count: i64 = row
+                .try_get_by_index(1)
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            data.push((id, count as u64));
+        }
+
+        Ok(data)
+    }
+
+    async fn top_models(&self, limit: u64) -> Result<Vec<(String, u64)>, AppError> {
+        let db = &*self.db;
+        let sql = r#"
+            SELECT model_original, COUNT(*)::BIGINT AS cnt
+            FROM log_metadata
+            WHERE model_original IS NOT NULL
+            GROUP BY model_original
+            ORDER BY cnt DESC
+            LIMIT $1
+        "#;
+
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            [(limit as i64).into()],
+        );
+
+        let results = db
+            .query_all(stmt)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let mut data = Vec::new();
+        for row in &results {
+            let model: String = row
+                .try_get_by_index(0)
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            let count: i64 = row
+                .try_get_by_index(1)
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            data.push((model, count as u64));
+        }
+
+        Ok(data)
+    }
+
+    async fn count_active_access_points(&self) -> Result<u64, AppError> {
+        let db = &*self.db;
+        let sql = r#"
+            SELECT COUNT(DISTINCT access_point_id)::BIGINT AS cnt
+            FROM log_metadata
+            WHERE access_point_id IS NOT NULL
+        "#;
+
+        let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, []);
+
+        let results = db
+            .query_all(stmt)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let count: i64 = results
+            .first()
+            .ok_or_else(|| AppError::Internal("查询结果为空".to_string()))?
+            .try_get_by_index(0)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(count as u64)
     }
 }

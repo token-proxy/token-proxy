@@ -1,3 +1,4 @@
+pub mod audit_log;
 pub mod provider;
 pub mod account;
 pub mod user;

@@ -45,7 +45,7 @@ async fn create_provider(
     State(state): State<AppState>,
     Json(req): Json<CreateProviderRequest>,
 ) -> Result<Json<ProviderResponse>, AppError> {
-    let provider = state.provider_service.create(req).await?;
+    let provider = state.provider_service.create(req, None).await?;
     Ok(Json(provider))
 }
 
@@ -64,7 +64,7 @@ async fn update_provider(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateProviderRequest>,
 ) -> Result<Json<ProviderResponse>, AppError> {
-    let provider = state.provider_service.update(id, req).await?;
+    let provider = state.provider_service.update(id, req, None).await?;
     Ok(Json(provider))
 }
 
@@ -73,17 +73,17 @@ async fn delete_provider(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    state.provider_service.delete(id).await?;
+    state.provider_service.delete(id, None).await?;
     Ok(Json(serde_json::json!({"message": "提供商已删除"})))
 }
 
 /// POST /api/providers/{id}/discover-models
 ///
-/// Phase 1: 占位接口，返回空列表
+/// 调用上游 `/v1/models` 端点自动获取模型列表，合并去重后更新 Provider
 async fn discover_models(
-    State(_state): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> Result<Json<Vec<String>>, AppError> {
-    // Phase 1 返回空列表，后续会实现真正的模型发现
-    Ok(Json(Vec::new()))
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let models = state.provider_service.discover_models(id).await?;
+    Ok(Json(serde_json::json!({ "models": models })))
 }
