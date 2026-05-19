@@ -1,6 +1,6 @@
-pub use sea_orm_migration::prelude::*;
-
 mod m20260101_000001_initial;
+
+use sea_orm_migration::prelude::*;
 
 pub struct Migrator;
 

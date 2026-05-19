@@ -53,6 +53,13 @@ description = "运行 release 二进制"
 command = "cargo"
 args = ["run", "--release"]
 
+# ─── 数据库迁移 ──────────────────────────────────────
+
+[tasks.migrate]
+description = "数据库迁移 (用法: cargo make migrate -- <up|down|fresh|status> [steps])"
+command = "cargo"
+args = ["run", "--", "migrate", "${@}"]
+
 # ─── 工具 ────────────────────────────────────────────
 
 [tasks.check]
