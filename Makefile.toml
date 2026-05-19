@@ -1,0 +1,89 @@
+[config]
+default_to_workspace = false
+
+[env]
+PROJECT_NAME = "token-proxy"
+FRONTEND_DIR = "frontend"
+BACKEND_PORT = "3000"
+FRONTEND_PORT = "5173"
+
+# ─── 开发模式 ────────────────────────────────────────
+
+[tasks.dev]
+description = "启动开发模式 (前端 Vite HMR + 后端 cargo run)"
+run_task = { name = ["dev-frontend", "dev-backend"], parallel = true }
+
+[tasks.dev-frontend]
+description = "启动前端 Vite dev server"
+cwd = "${FRONTEND_DIR}"
+command = "npm"
+args = ["run", "dev"]
+
+[tasks.dev-backend]
+description = "启动后端 (cargo run)"
+env = { SERVER_PORT = "${BACKEND_PORT}" }
+command = "cargo"
+args = ["run"]
+
+# ─── 生产构建 ────────────────────────────────────────
+
+[tasks.build]
+description = "生产构建 (前端 npm build + 后端 cargo build --release)"
+run_task = { name = ["build-frontend", "build-backend"], parallel = false }
+
+[tasks.build-frontend]
+description = "构建前端静态资源"
+cwd = "${FRONTEND_DIR}"
+command = "npm"
+args = ["run", "build"]
+
+[tasks.build-backend]
+description = "构建后端 (release, 嵌入前端产物)"
+command = "cargo"
+args = ["build", "--release"]
+
+# ─── 预览 ────────────────────────────────────────────
+
+[tasks.preview]
+description = "构建并预览生产版本"
+run_task = { name = ["build", "run-release"], parallel = false }
+
+[tasks.run-release]
+description = "运行 release 二进制"
+command = "cargo"
+args = ["run", "--release"]
+
+# ─── 工具 ────────────────────────────────────────────
+
+[tasks.check]
+description = "检查代码 (cargo check + TypeScript 类型检查)"
+run_task = { name = ["check-backend", "check-frontend"], parallel = true }
+
+[tasks.check-backend]
+command = "cargo"
+args = ["check"]
+
+[tasks.check-frontend]
+cwd = "${FRONTEND_DIR}"
+command = "npx"
+args = ["tsc", "--noEmit"]
+
+[tasks.fmt]
+description = "代码格式化"
+command = "cargo"
+args = ["fmt"]
+
+[tasks.clippy]
+description = "Clippy 代码检查"
+command = "cargo"
+args = ["clippy", "--", "-D", "warnings"]
+
+[tasks.test]
+description = "运行所有测试"
+command = "cargo"
+args = ["test"]
+
+[tasks.clean]
+description = "清理构建产物"
+command = "cargo"
+args = ["clean"]
