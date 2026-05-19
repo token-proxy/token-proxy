@@ -17,6 +17,7 @@ use token_proxy::application::AppState;
 use token_proxy::config::Config;
 use token_proxy::domain::repositories::access_point_repository::AccessPointRepository;
 use token_proxy::domain::repositories::account_repository::AccountRepository;
+use token_proxy::domain::repositories::audit_log_repository::AuditLogRepository;
 use token_proxy::domain::repositories::log_repository::LogRepository;
 use token_proxy::domain::repositories::provider_repository::ProviderRepository;
 use token_proxy::domain::repositories::refresh_token_repository::RefreshTokenRepository;
@@ -27,6 +28,7 @@ use token_proxy::infrastructure::encryption::aes256_gcm::Aes256GcmEncryptionServ
 use token_proxy::infrastructure::http_client::proxy_client::ProxyClient;
 use token_proxy::infrastructure::persistence::repositories::access_point_repository::SeaOrmAccessPointRepository;
 use token_proxy::infrastructure::persistence::repositories::account_repository::SeaOrmAccountRepository;
+use token_proxy::infrastructure::persistence::repositories::audit_log_repository::SeaOrmAuditLogRepository;
 use token_proxy::infrastructure::persistence::repositories::log_repository::SeaOrmLogRepository;
 use token_proxy::infrastructure::persistence::repositories::provider_repository::SeaOrmProviderRepository;
 use token_proxy::infrastructure::persistence::repositories::refresh_token_repository::SeaOrmRefreshTokenRepository;
@@ -37,6 +39,43 @@ use token_proxy::presentation::routes;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 加载 .env（可选）
     dotenvy::dotenv().ok();
+
+    // ─── 迁移命令行模式 ───
+    // 用法: cargo make migration <up|down|fresh|status>
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 && args[1] == "migrate" {
+        let subcommand = args.get(2).map(|s| s.as_str()).unwrap_or("up");
+
+        let config = Config::from_env()?;
+        let db = Database::connect(&config.database_url).await?;
+        tracing::info!("数据库连接成功");
+
+        use sea_orm_migration::MigratorTrait;
+        match subcommand {
+            "up" => {
+                token_proxy::migrations::Migrator::up(&db, None).await?;
+                println!("迁移完成 (up)");
+            }
+            "down" => {
+                let steps = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(1);
+                token_proxy::migrations::Migrator::down(&db, Some(steps)).await?;
+                println!("迁移完成 (down) - 回滚 {} 步", steps);
+            }
+            "fresh" => {
+                token_proxy::migrations::Migrator::fresh(&db).await?;
+                println!("迁移完成 (fresh)");
+            }
+            "status" => {
+                token_proxy::migrations::Migrator::status(&db).await?;
+            }
+            other => {
+                eprintln!("未知迁移命令: {}", other);
+                eprintln!("用法: cargo make migrate -- <up|down|fresh|status> [steps]");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
 
     // 初始化 tracing 日志
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
@@ -53,6 +92,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 连接数据库
     let db = Arc::new(Database::connect(&config.database_url).await?);
     tracing::info!("数据库连接成功");
+
+    // 执行数据库迁移
+    use sea_orm_migration::MigratorTrait;
+    token_proxy::migrations::Migrator::up(&*db, None).await?;
+    tracing::info!("数据库迁移完成");
 
     // ─── 创建 Infrastructure 组件 ───
 
@@ -87,11 +131,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let log_repo: Arc<dyn LogRepository> =
         Arc::new(SeaOrmLogRepository::new(db.clone()));
 
+    let audit_log_repo: Arc<dyn AuditLogRepository> =
+        Arc::new(SeaOrmAuditLogRepository::new(db.clone()));
+
     // ─── 创建 Application Services ───
 
     let provider_service = Arc::new(ProviderService::new(
         provider_repo.clone(),
         account_repo.clone(),
+        audit_log_repo.clone(),
+        encryption_service.clone(),
     ));
 
     let account_service = Arc::new(AccountService::new(
@@ -123,6 +172,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let log_service = Arc::new(LogService::new(log_repo.clone()));
 
+    // ─── 首次启动：创建默认 admin 用户 ───
+
+    let users = user_repo
+        .find_all()
+        .await
+        .map_err(|e| format!("查询用户失败: {}", e))?;
+
+    if users.is_empty() {
+        let password = generate_random_password(12);
+        let password_hash =
+            token_proxy::infrastructure::auth::password::hash_password(&password)
+                .map_err(|e| format!("密码哈希失败: {}", e))?;
+
+        let admin = token_proxy::domain::entities::user::User::new(
+            "admin".to_string(),
+            "管理员".to_string(),
+            password_hash,
+        );
+        user_repo
+            .save(&admin)
+            .await
+            .map_err(|e| format!("创建默认管理员失败: {}", e))?;
+
+        println!();
+        println!("========================================");
+        println!("  默认管理员账号已创建");
+        println!("  账号: admin");
+        println!("  密码: {}", password);
+        println!("  请登录后立即修改密码");
+        println!("========================================");
+        println!();
+    }
+
     // ─── 构建 AppState ───
 
     let state = AppState {
@@ -135,6 +217,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         auth_service,
         proxy_service,
         log_service,
+        log_repo,
+        audit_log_repo,
         jwt_service,
         proxy_client,
     };
@@ -155,4 +239,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+fn generate_random_password(len: usize) -> String {
+    use rand::Rng;
+    const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let mut rng = rand::thread_rng();
+    (0..len)
+        .map(|_| {
+            let idx = rng.gen_range(0..CHARSET.len());
+            CHARSET[idx] as char
+        })
+        .collect()
 }
