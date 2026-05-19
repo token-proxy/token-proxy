@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@douyinfe/semi-icons": "^2.97.0",
+    "@douyinfe/semi-ui": "^2.97.0",
+    "react-router-dom": "^7.15.1"
+  }
+}
