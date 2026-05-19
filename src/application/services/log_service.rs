@@ -6,7 +6,7 @@ use crate::application::dto::log_dto::{
     LogDetailResponse, LogFilterParams, LogSummaryResponse, SessionSummaryResponse,
 };
 use crate::domain::entities::log_entry::{LogContent, LogEntry};
-use crate::domain::repositories::log_repository::LogRepository;
+use crate::domain::repositories::log_repository::{LogQuery, LogRepository};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
@@ -59,9 +59,18 @@ impl LogService {
         let page = filters.page.unwrap_or(1);
         let page_size = filters.page_size.unwrap_or(20);
 
+        let log_query = LogQuery {
+            session_id: filters.session_id,
+            user_id: filters.user_id,
+            access_point_id: filters.access_point_id,
+            start_time: filters.start_time,
+            end_time: filters.end_time,
+            status_code: filters.status_code,
+        };
+
         let result = self
             .log_repo
-            .find_all_paginated(page, page_size)
+            .find_all_paginated(page, page_size, &log_query)
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
 
@@ -117,16 +126,24 @@ impl LogService {
     /// 获取会话摘要列表
     pub async fn get_sessions(
         &self,
-        _filters: LogFilterParams,
+        filters: LogFilterParams,
     ) -> Result<PaginatedResult<SessionSummaryResponse>, AppError> {
         // 按 session_id 分组聚合日志条目
-        // 当前仅返回分组后的会话摘要
-        let page = _filters.page.unwrap_or(1);
-        let page_size = _filters.page_size.unwrap_or(20);
+        let page = filters.page.unwrap_or(1);
+        let page_size = filters.page_size.unwrap_or(20);
+
+        let log_query = LogQuery {
+            session_id: filters.session_id,
+            user_id: filters.user_id,
+            access_point_id: filters.access_point_id,
+            start_time: filters.start_time,
+            end_time: filters.end_time,
+            status_code: filters.status_code,
+        };
 
         let result = self
             .log_repo
-            .find_all_paginated(page, page_size)
+            .find_all_paginated(page, page_size, &log_query)
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
 

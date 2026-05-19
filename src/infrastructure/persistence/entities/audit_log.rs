@@ -18,3 +18,25 @@ pub struct Model {
 pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
+
+// ─── 领域模型转换 ────────────────────────────────────────────────
+
+use crate::domain::entities::audit_log::AuditLog;
+use crate::shared::error::AppError;
+use chrono::Utc;
+
+impl TryFrom<Model> for AuditLog {
+    type Error = AppError;
+
+    fn try_from(model: Model) -> Result<Self, Self::Error> {
+        Ok(AuditLog {
+            id: model.id,
+            user_id: model.user_id,
+            action: model.action,
+            entity_type: model.entity_type,
+            entity_id: model.entity_id,
+            details: model.details,
+            timestamp: model.timestamp.with_timezone(&Utc),
+        })
+    }
+}

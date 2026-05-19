@@ -9,6 +9,7 @@ pub mod auth_routes;
 pub mod log_routes;
 pub mod provider_routes;
 pub mod proxy_routes;
+pub mod stats_routes;
 pub mod user_routes;
 
 /// 构建应用所有路由并注入共享状态
@@ -26,6 +27,7 @@ pub fn build(state: AppState) -> Router {
         .merge(access_point_routes::routes())
         .merge(proxy_routes::routes())
         .merge(log_routes::routes())
+        .merge(stats_routes::routes())
         .route("/api/health", get(health_check));
 
     // 添加 JWT 认证中间件（公开路径会在中间件内部放行）

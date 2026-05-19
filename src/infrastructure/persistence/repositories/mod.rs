@@ -1,3 +1,4 @@
+pub mod audit_log_repository;
 pub mod provider_repository;
 pub mod account_repository;
 pub mod user_repository;

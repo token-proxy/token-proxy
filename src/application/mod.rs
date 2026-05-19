@@ -6,6 +6,8 @@ pub mod services;
 use sea_orm::DatabaseConnection;
 
 use crate::config::Config;
+use crate::domain::repositories::audit_log_repository::AuditLogRepository;
+use crate::domain::repositories::log_repository::LogRepository;
 use crate::infrastructure::auth::jwt::JwtService;
 use crate::infrastructure::http_client::proxy_client::ProxyClient;
 
@@ -29,6 +31,8 @@ pub struct AppState {
     pub auth_service: Arc<AuthService>,
     pub proxy_service: Arc<ProxyService>,
     pub log_service: Arc<LogService>,
+    pub log_repo: Arc<dyn LogRepository>,
+    pub audit_log_repo: Arc<dyn AuditLogRepository>,
     pub jwt_service: Arc<JwtService>,
     pub proxy_client: Arc<ProxyClient>,
 }
