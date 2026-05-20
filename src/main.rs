@@ -32,6 +32,7 @@ use token_proxy::infrastructure::persistence::repositories::audit_log_repository
 use token_proxy::infrastructure::persistence::repositories::log_repository::SeaOrmLogRepository;
 use token_proxy::infrastructure::persistence::repositories::provider_repository::SeaOrmProviderRepository;
 use token_proxy::infrastructure::persistence::repositories::refresh_token_repository::SeaOrmRefreshTokenRepository;
+use token_proxy::infrastructure::persistence::partition_manager::PartitionManager;
 use token_proxy::infrastructure::persistence::repositories::user_repository::SeaOrmUserRepository;
 use token_proxy::presentation::routes;
 
@@ -97,6 +98,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use sea_orm_migration::MigratorTrait;
     token_proxy::migrations::Migrator::up(&*db, None).await?;
     tracing::info!("数据库迁移完成");
+
+    // ─── 分区管理器初始化 ───
+
+    let partition_manager = Arc::new(PartitionManager::new(
+        db.clone(),
+        config.partition_premake_months,
+        config.partition_retention_months,
+    ));
+
+    // 启动时同步执行分区维护
+    match partition_manager.run_maintenance().await {
+        Ok(result) => {
+            if !result.created.is_empty() {
+                tracing::info!("创建分区: {:?}", result.created);
+            }
+            if !result.dropped.is_empty() {
+                tracing::info!("清理分区: {:?}", result.dropped);
+            }
+            tracing::info!("分区初始化完成");
+        }
+        Err(e) => {
+            tracing::error!("分区初始化失败: {}", e);
+        }
+    }
+
+    // 启动后台定时分区维护任务
+    let pm = partition_manager.clone();
+    let check_interval = std::time::Duration::from_secs(config.partition_check_interval_secs);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(check_interval);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            match pm.run_maintenance_with_lock().await {
+                Ok(result) => {
+                    if !result.created.is_empty() {
+                        tracing::info!("创建分区: {:?}", result.created);
+                    }
+                    if !result.dropped.is_empty() {
+                        tracing::info!("清理分区: {:?}", result.dropped);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("分区维护失败: {}", e);
+                }
+            }
+        }
+    });
 
     // ─── 创建 Infrastructure 组件 ───
 

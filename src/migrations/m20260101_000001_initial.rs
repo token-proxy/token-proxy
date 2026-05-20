@@ -6,13 +6,7 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // 1. pg_partman 扩展
-        manager
-            .get_connection()
-            .execute_unprepared("CREATE EXTENSION IF NOT EXISTS pg_partman")
-            .await?;
-
-        // 2. providers 表
+        // 1. providers 表
         manager
             .create_table(
                 Table::create()
@@ -132,7 +126,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 7. log_metadata 分区表（主表，不含分区 — pg_partman 管理分区）
+        // 7. log_metadata 分区表（主表 + 种子分区）
         manager
             .get_connection()
             .execute_unprepared(
@@ -153,15 +147,10 @@ impl MigrationTrait for Migration {
                     PRIMARY KEY (id, timestamp)
                 ) PARTITION BY RANGE (timestamp);
 
-                -- 使用 pg_partman 自动管理分区
-                SELECT partman.create_parent(
-                    p_parent_table := 'public.log_metadata',
-                    p_control      := 'timestamp',
-                    p_type         := 'native',
-                    p_interval     := '1 month',
-                    p_premake      := 3,
-                    p_start_partition := '2026-01-01'
-                );
+                -- 创建当月分区（种子分区，后续由应用层 PartitionManager 管理）
+                CREATE TABLE IF NOT EXISTS log_metadata_2026_05
+                    PARTITION OF log_metadata
+                    FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
                 "#,
             )
             .await?;

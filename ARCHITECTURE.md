@@ -1,6 +1,6 @@
 # Token Proxy 架构文档
 
-此工程使用 Rust + axum 框架，在后端采用领域驱动设计四层架构（Domain / Application / Infrastructure / Presentation），前端使用 React + TypeScript + Vite + Semi Design 构建 SPA，数据库使用 PostgreSQL 17 并基于 pg_partman 实现按月自动分区。
+此工程使用 Rust + axum 框架，在后端采用领域驱动设计四层架构（Domain / Application / Infrastructure / Presentation），前端使用 React + TypeScript + Vite + Semi Design 构建 SPA，数据库使用 PostgreSQL 17，log_metadata 表通过 PostgreSQL 原生分区语法（PARTITION BY RANGE）按月分区，由应用层 PartitionManager 自动管理分区生命周期。
 
 ## 目录结构总览
 
@@ -46,7 +46,7 @@ src/
 │   ├── error.rs            # AppError (9 种错误变体)
 │   └── types.rs            # PaginatedResult, PaginationParams, Timestamp
 ├── config.rs               # 环境变量配置加载
-├── main.rs                 # 启动入口 (依赖组装 + 路由构建)
+├── main.rs                 # 启动入口 (依赖组装 + 路由构建 + 分区初始化 + 后台定时分区维护)
 └── lib.rs                  # Crate 根模块 (模块导出)
 ```
 
@@ -125,7 +125,7 @@ application/
 ```
 infrastructure/
 ├── persistence/            # SeaORM 数据持久化
-│   ├── entities/           # ORM 实体 (9 个)
+│   ├── entities/           # ORM 实体 (8 个)
 │   │   ├── provider.rs     # 映射 providers 表
 │   │   ├── account.rs      # 映射 accounts 表
 │   │   ├── user.rs         # 映射 users 表
@@ -134,6 +134,7 @@ infrastructure/
 │   │   ├── log_metadata.rs # 映射 log_metadata 表 (按月分区)
 │   │   ├── log_content.rs  # 映射 log_contents 表
 │   │   └── audit_log.rs    # 映射 audit_logs 表
+│   ├── partition_manager.rs # PartitionManager: 应用层分区自动管理
 │   └── repositories/       # Repository 实现 (6 个)
 │       ├── provider_repository.rs        # SeaOrmProviderRepository
 │       ├── account_repository.rs         # SeaOrmAccountRepository
@@ -217,6 +218,9 @@ shared/
 | ENCRYPTION_KEY | String | 64 位十六进制 (32 字节) | **必填** |
 | SERVER_PORT | u16 | 监听端口 | 3000 |
 | LOG_LEVEL | String | 日志级别 | info |
+| PARTITION_CHECK_INTERVAL_SECS | u64 | 分区检查间隔（秒） | 3600 |
+| PARTITION_PREMAKE_MONTHS | u32 | 提前创建未来分区数 | 3 |
+| PARTITION_RETENTION_MONTHS | u32 | 分区保留月数 | 12 |
 
 ## 前端架构详解 (frontend/)
 
@@ -290,7 +294,7 @@ migration/
 
 **物化视图**: `daily_request_stats` — 按天聚合统计，含请求量、平均耗时、错误数。
 
-**分区策略**: `log_metadata` 表通过 pg_partman 按月 `RANGE (timestamp)` 分区，`premake=3`。
+**分区策略**: `log_metadata` 表按月 `RANGE (timestamp)` 分区，由应用层 `PartitionManager` 自动管理（创建 / 清理），通过 `pg_try_advisory_xact_lock` 保证多副本安全。
 
 ## 代理转发流程
 
@@ -400,3 +404,4 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 日期 | 变更说明 |
 |------|---------|
 | 2026-05-19 | 初始化架构文档，记录 DDD 四层架构、代理转发流程、安全设计和项目状态 |
+| 2026-05-20 | 应用层分区管理替代 pg_partman：新增 PartitionManager，迁移移除 pg_partman 依赖改为原生分区语法 + 种子分区，Config 新增 3 个分区配置项，main.rs 新增分区初始化和后台定时任务 |
