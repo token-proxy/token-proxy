@@ -9,6 +9,12 @@ pub struct Config {
     pub encryption_key: [u8; 32],
     pub server_port: u16,
     pub log_level: String,
+    /// 分区检查间隔（秒），默认 3600（1 小时）
+    pub partition_check_interval_secs: u64,
+    /// 提前创建未来分区数，默认 3
+    pub partition_premake_months: u32,
+    /// 分区保留月数，默认 12
+    pub partition_retention_months: u32,
 }
 
 impl Config {
@@ -31,6 +37,21 @@ impl Config {
 
         let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
 
+        let partition_check_interval_secs = std::env::var("PARTITION_CHECK_INTERVAL_SECS")
+            .unwrap_or_else(|_| "3600".to_string())
+            .parse::<u64>()
+            .map_err(|_| "PARTITION_CHECK_INTERVAL_SECS 必须是有效的秒数".to_string())?;
+
+        let partition_premake_months = std::env::var("PARTITION_PREMAKE_MONTHS")
+            .unwrap_or_else(|_| "3".to_string())
+            .parse::<u32>()
+            .map_err(|_| "PARTITION_PREMAKE_MONTHS 必须是有效数字".to_string())?;
+
+        let partition_retention_months = std::env::var("PARTITION_RETENTION_MONTHS")
+            .unwrap_or_else(|_| "12".to_string())
+            .parse::<u32>()
+            .map_err(|_| "PARTITION_RETENTION_MONTHS 必须是有效数字".to_string())?;
+
         Ok(Config {
             database_url,
             jwt_secret,
@@ -39,6 +60,9 @@ impl Config {
             encryption_key,
             server_port,
             log_level,
+            partition_check_interval_secs,
+            partition_premake_months,
+            partition_retention_months,
         })
     }
 }
