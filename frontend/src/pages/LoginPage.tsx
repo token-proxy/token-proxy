@@ -34,7 +34,8 @@ export default function LoginPage(): ReactNode {
       const data = await res.json();
       localStorage.setItem('access_token', data.access_token);
       localStorage.setItem('refresh_token', data.refresh_token);
-      localStorage.setItem('username', values.username);
+      localStorage.setItem('username', data.username ?? values.username);
+      localStorage.setItem('display_name', data.display_name ?? values.username);
 
       Toast.success('登录成功');
       navigate('/dashboard', { replace: true });

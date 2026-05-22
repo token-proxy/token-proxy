@@ -23,12 +23,13 @@ export default function AdminLayout(): ReactNode {
   const navigate = useNavigate();
   const location = useLocation();
   const [selectedKeys, setSelectedKeys] = useState([location.pathname.replace(/\/$/, '') || '/dashboard']);
-  const username = localStorage.getItem('username') || '管理员';
+  const displayName = localStorage.getItem('display_name') || localStorage.getItem('username') || '管理员';
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('username');
+    localStorage.removeItem('display_name');
     navigate('/login');
   };
 
@@ -68,8 +69,8 @@ export default function AdminLayout(): ReactNode {
             }
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <Avatar size="small" color="orange">{username[0]}</Avatar>
-              <span>{username}</span>
+              <Avatar size="small" color="orange">{displayName[0]}</Avatar>
+              <span>{displayName}</span>
             </div>
           </Dropdown>
         </Header>
