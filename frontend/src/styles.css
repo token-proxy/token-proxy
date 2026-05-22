@@ -1,0 +1,6 @@
+/* Semi Table: 当 scroll.x 启用后，Semi 切换为 table-layout: fixed 并通过内联 width 控制表格宽度，
+   但当容器宽于列总宽时，内联 width 会导致表格无法铺满容器。
+   此规则强制 semi-table 元素始终占满容器宽度，仅在内容溢出时才由 scroll 触发水平滚动。 */
+.semi-table {
+  width: 100% !important;
+}

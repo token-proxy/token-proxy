@@ -226,9 +226,9 @@ export default function ProviderManagement(): ReactNode {
   };
 
   const columns = [
-    { title: '名称', dataIndex: 'name', key: 'name' },
-    { title: 'OpenAI 端点', dataIndex: 'openai_base_url', key: 'openai', render: (text?: string) => text || '-' },
-    { title: 'Anthropic 端点', dataIndex: 'anthropic_base_url', key: 'anthropic', render: (text?: string) => text || '-' },
+    { title: '名称', dataIndex: 'name', key: 'name', width: 140 },
+    { title: 'OpenAI 端点', dataIndex: 'openai_base_url', key: 'openai', width: 200, render: (text?: string) => text || '-' },
+    { title: 'Anthropic 端点', dataIndex: 'anthropic_base_url', key: 'anthropic', width: 200, render: (text?: string) => text || '-' },
     {
       title: '模型',
       dataIndex: 'models',
@@ -246,6 +246,7 @@ export default function ProviderManagement(): ReactNode {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
+      width: 100,
       render: (_: string, record: Provider) => {
         const enabled = record.status === 'enabled';
         return (
@@ -264,6 +265,7 @@ export default function ProviderManagement(): ReactNode {
     {
       title: '操作',
       key: 'actions',
+      width: 160,
       render: (_: unknown, record: Provider) => (
         <Space>
           <Button size="small" onClick={() => openEditDrawer(record)}>编辑</Button>
@@ -285,12 +287,14 @@ export default function ProviderManagement(): ReactNode {
       title: 'API Key',
       dataIndex: 'api_key_suffix',
       key: 'api_key_suffix',
+      width: 140,
       render: (suffix: string) => suffix ? `******${suffix}` : '-',
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
+      width: 80,
       render: (status: string) => (
         <Tag color={status === 'enabled' ? 'green' : 'red'} size="small">
           {status === 'enabled' ? '启用' : '禁用'}
@@ -300,6 +304,7 @@ export default function ProviderManagement(): ReactNode {
     {
       title: '操作',
       key: 'actions',
+      width: 160,
       render: (_: unknown, record: Account) => (
         <Space>
           <Button size="small" onClick={() => handleOpenAccountForm(record)}>编辑</Button>
@@ -327,6 +332,7 @@ export default function ProviderManagement(): ReactNode {
         dataSource={providers}
         loading={loading}
         rowKey="id"
+        scroll={{ x: 'max-content' }}
         pagination={{ pageSize: 20 }}
       />
 
@@ -422,6 +428,7 @@ export default function ProviderManagement(): ReactNode {
                 loading={accountsLoading}
                 rowKey="id"
                 size="small"
+                scroll={{ x: 'max-content' }}
                 pagination={false}
               />
 

@@ -238,18 +238,20 @@ export default function AccessPointManagement(): ReactNode {
 
   const columns = [
     { title: '名称', dataIndex: 'name', key: 'name' },
-    { title: 'Short Code', dataIndex: 'short_code', key: 'short_code' },
+    { title: 'Short Code', dataIndex: 'short_code', key: 'short_code', width: 160 },
     {
       title: '映射规则数',
       key: 'mapping_count',
+      width: 100,
       render: (_: unknown, record: AccessPoint) =>
         record.model_mappings?.length ?? 0,
     },
-    { title: 'API 类型', dataIndex: 'api_type', key: 'api_type' },
+    { title: 'API 类型', dataIndex: 'api_type', key: 'api_type', width: 100 },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
+      width: 100,
       render: (_: string, record: AccessPoint) => {
         const enabled = record.status === 'enabled';
         return (
@@ -268,6 +270,7 @@ export default function AccessPointManagement(): ReactNode {
     {
       title: '操作',
       key: 'actions',
+      width: 220,
       render: (_: unknown, record: AccessPoint) => (
         <Space>
           <Button size="small" onClick={() => copyAccessUrl(record.short_code)}>复制 URL</Button>
@@ -296,6 +299,7 @@ export default function AccessPointManagement(): ReactNode {
         dataSource={accessPoints}
         loading={loading}
         rowKey="id"
+        scroll={{ x: 'max-content' }}
         pagination={{ pageSize: 20 }}
       />
 

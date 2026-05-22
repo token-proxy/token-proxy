@@ -420,6 +420,7 @@ export default function RequestLogPage(): ReactNode {
         dataSource={logs}
         loading={loading}
         rowKey="id"
+        scroll={{ x: 'max-content' }}
         pagination={{
           currentPage: page,
           pageSize,
