@@ -23,6 +23,20 @@ pub trait AccountRepository: Send + Sync {
     /// 保存账号（创建或更新）
     async fn save(&self, account: &Account) -> Result<Account, AppError>;
 
+    /// 创建账号并保存加密的 API Key
+    async fn save_with_encrypted_key(
+        &self,
+        account: &Account,
+        encrypted_api_key: &[u8],
+    ) -> Result<Account, AppError>;
+
+    /// 更新账号的加密 API Key
+    async fn update_encrypted_api_key(
+        &self,
+        account_id: Uuid,
+        encrypted_api_key: &[u8],
+    ) -> Result<(), AppError>;
+
     /// 根据 ID 删除账号
     async fn delete(&self, id: Uuid) -> Result<(), AppError>;
 }

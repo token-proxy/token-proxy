@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use base64::Engine;
 use uuid::Uuid;
 
 use crate::application::dto::account_dto::{
@@ -63,7 +62,12 @@ impl AccountService {
             ));
         }
 
-        let api_key = ApiKey::new(req.api_key);
+        let raw_key = req.api_key.trim().to_string();
+        if raw_key.is_empty() {
+            return Err(AppError::Validation("API Key 不能为空".to_string()));
+        }
+
+        let api_key = ApiKey::new(raw_key);
         let suffix = api_key.suffix();
 
         // 加密 API Key
@@ -73,18 +77,17 @@ impl AccountService {
             .await
             .map_err(|e| AppError::Encryption(e.to_string()))?;
 
-        let _encrypted_base64 = base64::engine::general_purpose::STANDARD.encode(&encrypted);
-
-        let name = req.name.unwrap_or_else(|| format!("account_{}", suffix));
+        let name = req
+            .name
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| format!("account_{}", suffix));
 
         let account = Account::new(provider_id, name, suffix);
-        // 注意: Account 实体目前没有 api_key_encrypted 字段。
-        // 加密后的 API Key (encrypted_base64) 需要由 Infra 层的
-        // SeaOrmAccountRepository 额外存储到独立的字段或关联表中
 
         let saved = self
             .account_repo
-            .save(&account)
+            .save_with_encrypted_key(&account, &encrypted)
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
 
@@ -110,6 +113,27 @@ impl AccountService {
             }
             account.name = trimmed;
         }
+
+        // 如果客户端提供了新的 API Key，更新加密 Key 与后缀
+        if let Some(raw_key) = req.api_key {
+            let trimmed = raw_key.trim().to_string();
+            if !trimmed.is_empty() {
+                let api_key = ApiKey::new(trimmed);
+                account.api_key_suffix = api_key.suffix();
+
+                let encrypted = self
+                    .encryption_service
+                    .encrypt(api_key.as_str().as_bytes())
+                    .await
+                    .map_err(|e| AppError::Encryption(e.to_string()))?;
+
+                self.account_repo
+                    .update_encrypted_api_key(id, &encrypted)
+                    .await
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+            }
+        }
+
         account.updated_at = chrono::Utc::now();
 
         let saved = self

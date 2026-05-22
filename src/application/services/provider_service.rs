@@ -277,8 +277,13 @@ impl ProviderService {
     /// 自动发现模型
     ///
     /// 调用上游 `/v1/models` 端点获取模型列表，合并去重后更新 Provider。
-    /// 如果自动发现失败，返回当前已有的模型列表，不返回错误。
+    /// 自动发现失败时返回错误，让用户感知到具体原因。
     pub async fn discover_models(&self, provider_id: Uuid) -> Result<Vec<String>, AppError> {
+        tracing::info!(
+            "[discover_models v2] 开始为 provider {} 自动发现模型",
+            provider_id
+        );
+
         // 1. 查找 Provider
         let mut provider = self
             .provider_repo
@@ -287,19 +292,22 @@ impl ProviderService {
             .map_err(|e| AppError::Database(e.to_string()))?
             .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", provider_id)))?;
 
-        // 2. 尝试自动发现，失败时返回已有模型
-        let discovered = self.try_discover_models(&provider).await;
-        let new_models = match discovered {
-            Ok(models) => models,
-            Err(e) => {
-                tracing::warn!(
-                    "提供商 {} 模型自动发现失败: {}，返回已有模型列表",
-                    provider_id,
-                    e
-                );
-                return Ok(provider.models.clone());
-            }
-        };
+        // 2. 尝试自动发现 — 失败时直接抛出错误而非静默返回空
+        let new_models = self.try_discover_models(&provider).await?;
+
+        tracing::info!(
+            "[discover_models v2] provider {} 自动发现得到 {} 个模型: {:?}",
+            provider_id,
+            new_models.len(),
+            new_models
+        );
+
+        if new_models.is_empty() {
+            // 上游返回了响应但模型列表为空，不覆盖已有数据，直接返回提示
+            return Err(AppError::Upstream(
+                "上游 /v1/models 接口返回了空模型列表，请检查 API Key 权限或 Base URL".to_string(),
+            ));
+        }
 
         // 3. 合并去重
         provider.models.extend(new_models);
@@ -326,11 +334,23 @@ impl ProviderService {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         if accounts.is_empty() {
-            return Err(AppError::NotFound("无可用账号".to_string()));
+            tracing::warn!(
+                "[discover] provider {} 没有已启用的 Account",
+                provider.id
+            );
+            return Err(AppError::NotFound(
+                "缺少可用的 API Key，请先为此 Provider 添加 Account".to_string(),
+            ));
         }
 
         // 2. 从第一个已启用的账号获取并解密 API Key
         let account = &accounts[0];
+        tracing::info!(
+            "[discover] 使用账号 {} (suffix: {})",
+            account.id,
+            account.api_key_suffix
+        );
+
         let encrypted_key = self
             .account_repo
             .get_encrypted_api_key(account.id)
@@ -338,10 +358,20 @@ impl ProviderService {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         if encrypted_key.is_empty() {
+            tracing::error!(
+                "[discover] 账号 {} 的 api_key_encrypted 为空! 请重新添加 API Key",
+                account.id
+            );
             return Err(AppError::NotFound(
-                "账号未配置有效的 API Key".to_string(),
+                "API Key 未正确存储，请删除并重新添加 Account".to_string(),
             ));
         }
+
+        tracing::info!(
+            "[discover] 账号 {} 加密 Key 长度: {} 字节",
+            account.id,
+            encrypted_key.len()
+        );
 
         let decrypted = self
             .encryption_service
@@ -352,52 +382,160 @@ impl ProviderService {
         let api_key = String::from_utf8(decrypted)
             .map_err(|_| AppError::Internal("API Key 解码失败: 非法的 UTF-8 格式".to_string()))?;
 
-        // 3. 确定基础 URL
-        let base_url = provider
+        // 3. 确定基础 URL，并规范化为不含尾部 /v1 的形式
+        let base_url_raw = provider
             .openai_base_url
             .as_deref()
             .or(provider.anthropic_base_url.as_deref())
             .ok_or_else(|| AppError::Internal("提供商没有配置 API 基础地址".to_string()))?;
 
-        let url = format!("{}/v1/models", base_url.trim_end_matches('/'));
+        let url = build_models_url(base_url_raw);
+
+        tracing::info!("[discover] 请求 URL: {}", url);
 
         // 4. 调用上游 /v1/models 端点
         let response = self
             .http_client
             .get(&url)
             .header("Authorization", format!("Bearer {}", api_key))
+            .header("x-api-key", &api_key) // 兼容 Anthropic 风格
+            .header("anthropic-version", "2023-06-01")
             .send()
             .await
             .map_err(|e| {
-                AppError::Upstream(format!("模型自动发现请求失败: {}", e))
+                AppError::Upstream(format!("模型自动发现请求失败 ({}): {}", url, e))
             })?;
 
-        if !response.status().is_success() {
-            let status = response.status();
+        let status = response.status();
+        if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
+            let snippet = body.chars().take(500).collect::<String>();
             return Err(AppError::Upstream(format!(
-                "模型自动发现请求返回错误状态 {}: {}",
-                status, body
+                "上游 {} 返回 {}: {}",
+                url, status, snippet
             )));
         }
 
-        // 5. 解析响应，提取模型 ID 列表
+        // 5. 解析响应，兼容 OpenAI 与 Anthropic 两种格式
         let body: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| {
-                AppError::Upstream(format!("解析模型列表响应失败: {}", e))
-            })?;
+            .map_err(|e| AppError::Upstream(format!("解析模型列表响应失败: {}", e))) ?;
 
-        let models = body["data"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|item| item["id"].as_str().map(|s| s.to_string()))
-                    .collect::<Vec<String>>()
-            })
-            .unwrap_or_default();
+        // OpenAI: { "data": [{ "id": "gpt-4", ... }, ...] }
+        // Anthropic: { "data": [{ "id": "claude-...", "type": "model" }, ...], "has_more": ... }
+        // 部分代理: { "models": [...] } 或顶层数组
+        let models = extract_model_ids(&body);
+
+        if models.is_empty() {
+            tracing::warn!("上游 {} 返回了 200，但未能从响应中解析出模型 ID。响应体: {}", url, body);
+        }
 
         Ok(models)
+    }
+}
+
+/// 根据用户输入的 base_url 构造 `/v1/models` 完整 URL，避免 `/v1` 双拼接
+fn build_models_url(base_url_raw: &str) -> String {
+    let trimmed = base_url_raw.trim().trim_end_matches('/');
+    // 如果用户填写的 base_url 已经包含尾部 /v1（无论大小写或多斜杠），只需拼接 /models
+    if trimmed.to_lowercase().ends_with("/v1") {
+        format!("{}/models", trimmed)
+    } else {
+        format!("{}/v1/models", trimmed)
+    }
+}
+
+/// 兼容多种上游响应格式，提取模型 ID 数组
+fn extract_model_ids(body: &serde_json::Value) -> Vec<String> {
+    // 1. 标准 OpenAI / Anthropic: body.data[].id
+    if let Some(arr) = body.get("data").and_then(|v| v.as_array()) {
+        return arr
+            .iter()
+            .filter_map(|item| item.get("id").and_then(|v| v.as_str()).map(String::from))
+            .collect();
+    }
+    // 2. 部分代理: body.models 数组，元素可能是字符串或 { id }
+    if let Some(arr) = body.get("models").and_then(|v| v.as_array()) {
+        return arr
+            .iter()
+            .filter_map(|item| {
+                item.as_str()
+                    .map(String::from)
+                    .or_else(|| item.get("id").and_then(|v| v.as_str()).map(String::from))
+                    .or_else(|| item.get("name").and_then(|v| v.as_str()).map(String::from))
+            })
+            .collect();
+    }
+    // 3. 顶层就是数组
+    if let Some(arr) = body.as_array() {
+        return arr
+            .iter()
+            .filter_map(|item| {
+                item.as_str()
+                    .map(String::from)
+                    .or_else(|| item.get("id").and_then(|v| v.as_str()).map(String::from))
+            })
+            .collect();
+    }
+    Vec::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_models_url_normalizes_v1_suffix() {
+        assert_eq!(
+            build_models_url("https://api.openai.com/v1"),
+            "https://api.openai.com/v1/models"
+        );
+        assert_eq!(
+            build_models_url("https://api.openai.com/v1/"),
+            "https://api.openai.com/v1/models"
+        );
+        assert_eq!(
+            build_models_url("https://api.openai.com"),
+            "https://api.openai.com/v1/models"
+        );
+        assert_eq!(
+            build_models_url("https://api.anthropic.com"),
+            "https://api.anthropic.com/v1/models"
+        );
+    }
+
+    #[test]
+    fn extract_model_ids_handles_openai_format() {
+        let body = serde_json::json!({
+            "data": [
+                { "id": "gpt-4", "object": "model" },
+                { "id": "gpt-3.5-turbo", "object": "model" }
+            ]
+        });
+        assert_eq!(extract_model_ids(&body), vec!["gpt-4", "gpt-3.5-turbo"]);
+    }
+
+    #[test]
+    fn extract_model_ids_handles_anthropic_format() {
+        let body = serde_json::json!({
+            "data": [
+                { "id": "claude-3-opus", "type": "model" }
+            ],
+            "has_more": false
+        });
+        assert_eq!(extract_model_ids(&body), vec!["claude-3-opus"]);
+    }
+
+    #[test]
+    fn extract_model_ids_handles_models_field() {
+        let body = serde_json::json!({ "models": ["m1", "m2"] });
+        assert_eq!(extract_model_ids(&body), vec!["m1", "m2"]);
+    }
+
+    #[test]
+    fn extract_model_ids_returns_empty_on_unknown_shape() {
+        let body = serde_json::json!({ "foo": "bar" });
+        assert!(extract_model_ids(&body).is_empty());
     }
 }
