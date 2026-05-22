@@ -22,6 +22,8 @@ pub struct LoginResponse {
     pub refresh_token: String,
     pub token_type: String,
     pub expires_in: u64,
+    pub username: String,
+    pub display_name: String,
 }
 
 // ─── JWT Claims ───

@@ -86,6 +86,8 @@ impl AuthService {
             refresh_token: refresh_token_str,
             token_type: "Bearer".to_string(),
             expires_in,
+            username: user.username.clone(),
+            display_name: user.display_name.clone(),
         })
     }
 
@@ -150,6 +152,8 @@ impl AuthService {
             refresh_token: refresh_token_str,
             token_type: "Bearer".to_string(),
             expires_in,
+            username: user.username.clone(),
+            display_name: user.display_name.clone(),
         })
     }
 
