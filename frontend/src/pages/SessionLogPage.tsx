@@ -596,6 +596,7 @@ export default function SessionLogPage(): ReactNode {
           rowKey="id"
           loading={detailLoading}
           size="small"
+          scroll={{ x: 'max-content' }}
           pagination={false}
           expandedRowRender={(record: LogDetail) => (
             <div style={{ padding: 12 }}>
@@ -792,6 +793,7 @@ export default function SessionLogPage(): ReactNode {
         dataSource={sessions}
         loading={sessionsLoading}
         rowKey="session_id"
+        scroll={{ x: 'max-content' }}
         pagination={{
           currentPage: page,
           pageSize,

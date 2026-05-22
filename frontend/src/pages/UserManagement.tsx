@@ -119,11 +119,12 @@ export default function UserManagement(): ReactNode {
 
   const columns = [
     { title: '用户名', dataIndex: 'username', key: 'username' },
-    { title: '姓名', dataIndex: 'display_name', key: 'display_name' },
+    { title: '姓名', dataIndex: 'display_name', key: 'display_name', width: 140 },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
+      width: 100,
       render: (_: string, record: UserResponse) => (
         <Popconfirm
           title={`确认${record.status === 'enabled' ? '禁用' : '启用'}此用户?`}
@@ -140,11 +141,13 @@ export default function UserManagement(): ReactNode {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
+      width: 180,
       render: (text: string) => formatDate(text),
     },
     {
       title: '操作',
       key: 'actions',
+      width: 160,
       render: (_: unknown, record: UserResponse) => (
         <Space>
           <Button size="small" onClick={() => openEditDrawer(record)}>编辑</Button>
@@ -178,6 +181,7 @@ export default function UserManagement(): ReactNode {
         dataSource={users}
         loading={loading}
         rowKey="id"
+        scroll={{ x: 'max-content' }}
         pagination={{ pageSize: 20 }}
         empty={<Typography.Text type="secondary">暂无用户数据</Typography.Text>}
       />
