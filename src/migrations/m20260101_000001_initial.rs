@@ -417,6 +417,7 @@ enum RefreshTokens {
 }
 
 #[derive(DeriveIden)]
+#[allow(dead_code)]
 enum LogMetadata {
     Table,
     Id,
