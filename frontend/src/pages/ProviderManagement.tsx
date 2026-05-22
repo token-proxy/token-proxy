@@ -1,28 +1,32 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import {
   Table, Button, Tag, Space, Popconfirm, SideSheet, Form,
-  Toast, Typography, Switch,
+  Toast, Typography, TagInput, Input, Tooltip,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
+import { IconEyeOpened, IconEyeClosedSolid } from '@douyinfe/semi-icons';
 import api from '../api.ts';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 interface Provider {
-  id: number;
+  id: string;
   name: string;
   openai_base_url?: string;
   anthropic_base_url?: string;
-  enabled: boolean;
+  status: string;
   models?: string[];
+  account_count?: number;
 }
 
 interface Account {
-  id: number;
-  provider_id: number;
+  id: string;
+  provider_id: string;
   name: string;
-  api_key: string;
-  model: string;
-  enabled: boolean;
+  api_key_suffix: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface ProviderFormData {
@@ -37,15 +41,21 @@ export default function ProviderManagement(): ReactNode {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [saving, setSaving] = useState(false);
+  const formRef = useRef<FormApi>(null);
 
-  // Account management state
+  // 模型管理
+  const [providerModels, setProviderModels] = useState<string[]>([]);
+  const [discovering, setDiscovering] = useState(false);
+
+  // Account 管理
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
-  const [selectedProviderId, setSelectedProviderId] = useState<number | null>(null);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [accountFormVisible, setAccountFormVisible] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
-  const [accountForm, setAccountForm] = useState({ name: '', api_key: '', model: '' });
+  const [accountForm, setAccountForm] = useState({ name: '', api_key: '' });
   const [accountSaving, setAccountSaving] = useState(false);
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
 
   const loadProviders = useCallback(async () => {
     setLoading(true);
@@ -67,17 +77,19 @@ export default function ProviderManagement(): ReactNode {
     setEditingProvider(null);
     setAccounts([]);
     setSelectedProviderId(null);
+    setProviderModels([]);
     setDrawerVisible(true);
   };
 
-  const openEditDrawer = async (provider: Provider) => {
+  const openEditDrawer = (provider: Provider) => {
     setEditingProvider(provider);
     setSelectedProviderId(provider.id);
+    setProviderModels(provider.models ?? []);
     setDrawerVisible(true);
     loadAccounts(provider.id);
   };
 
-  const loadAccounts = async (providerId: number) => {
+  const loadAccounts = async (providerId: string) => {
     setAccountsLoading(true);
     try {
       const data = await api.get<Account[]>(`/api/providers/${providerId}/accounts`);
@@ -94,7 +106,11 @@ export default function ProviderManagement(): ReactNode {
     setSaving(true);
     try {
       if (editingProvider) {
-        await api.put(`/api/providers/${editingProvider.id}`, values);
+        // 编辑态：将基础字段 + 模型列表合并为一次 PUT
+        await api.put(`/api/providers/${editingProvider.id}`, {
+          ...values,
+          models: providerModels,
+        });
         Toast.success('Provider 已更新');
       } else {
         await api.post('/api/providers', values);
@@ -109,7 +125,7 @@ export default function ProviderManagement(): ReactNode {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await api.delete(`/api/providers/${id}`);
       Toast.success('Provider 已删除');
@@ -120,40 +136,73 @@ export default function ProviderManagement(): ReactNode {
   };
 
   const handleToggleEnabled = async (provider: Provider) => {
+    const nextStatus = provider.status === 'enabled' ? 'disabled' : 'enabled';
     try {
-      await api.put(`/api/providers/${provider.id}`, {
-        ...provider,
-        enabled: !provider.enabled,
-      });
-      Toast.success(`Provider 已${provider.enabled ? '禁用' : '启用'}`);
+      await api.put(`/api/providers/${provider.id}`, { status: nextStatus });
+      Toast.success(`Provider 已${nextStatus === 'enabled' ? '启用' : '禁用'}`);
       loadProviders();
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '操作失败');
     }
   };
 
-  // Account operations
+  // 模型列表管理
+  const handleDiscoverModels = async () => {
+    if (!editingProvider) return;
+    setDiscovering(true);
+    try {
+      const resp = await api.post<{ models: string[] }>(
+        `/api/providers/${editingProvider.id}/discover-models`,
+        {},
+      );
+      setProviderModels(resp.models ?? []);
+      Toast.success(`自动发现完成，共 ${resp.models?.length ?? 0} 个模型`);
+      loadProviders();
+    } catch (err) {
+      Toast.error(err instanceof Error ? err.message : '自动发现模型失败');
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  // Account 操作
   const handleOpenAccountForm = (account?: Account) => {
+    setApiKeyVisible(false);
     if (account) {
       setEditingAccount(account);
-      setAccountForm({ name: account.name, api_key: account.api_key, model: account.model });
+      setAccountForm({ name: account.name, api_key: '' });
     } else {
       setEditingAccount(null);
-      setAccountForm({ name: '', api_key: '', model: '' });
+      setAccountForm({ name: '', api_key: '' });
     }
     setAccountFormVisible(true);
   };
 
   const handleSaveAccount = async () => {
     if (!selectedProviderId) return;
+    if (!editingAccount && !accountForm.api_key.trim()) {
+      Toast.error('请填写 API Key');
+      return;
+    }
     setAccountSaving(true);
     try {
-      const body = { ...accountForm, provider_id: selectedProviderId };
       if (editingAccount) {
-        await api.put(`/api/accounts/${editingAccount.id}`, body);
+        // 更新时 api_key 为空则不传，避免覆盖
+        const body: Record<string, string> = { name: accountForm.name };
+        if (accountForm.api_key.trim()) body.api_key = accountForm.api_key.trim();
+        await api.put(
+          `/api/providers/${selectedProviderId}/accounts/${editingAccount.id}`,
+          body,
+        );
         Toast.success('Account 已更新');
       } else {
-        await api.post('/api/accounts', body);
+        await api.post(
+          `/api/providers/${selectedProviderId}/accounts`,
+          {
+            name: accountForm.name.trim() || undefined,
+            api_key: accountForm.api_key.trim(),
+          },
+        );
         Toast.success('Account 已创建');
       }
       setAccountFormVisible(false);
@@ -165,11 +214,12 @@ export default function ProviderManagement(): ReactNode {
     }
   };
 
-  const handleDeleteAccount = async (id: number) => {
+  const handleDeleteAccount = async (id: string) => {
+    if (!selectedProviderId) return;
     try {
-      await api.delete(`/api/accounts/${id}`);
+      await api.delete(`/api/providers/${selectedProviderId}/accounts/${id}`);
       Toast.success('Account 已删除');
-      if (selectedProviderId) loadAccounts(selectedProviderId);
+      loadAccounts(selectedProviderId);
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '删除 Account 失败');
     }
@@ -194,19 +244,22 @@ export default function ProviderManagement(): ReactNode {
     },
     {
       title: '状态',
-      dataIndex: 'enabled',
-      key: 'enabled',
-      render: (_: boolean, record: Provider) => (
-        <Popconfirm
-          title={`确认${record.enabled ? '禁用' : '启用'}?`}
-          onConfirm={() => handleToggleEnabled(record)}
-          position="bottomRight"
-        >
-          <Tag color={record.enabled ? 'green' : 'red'} style={{ cursor: 'pointer' }}>
-            {record.enabled ? '启用' : '禁用'}
-          </Tag>
-        </Popconfirm>
-      ),
+      dataIndex: 'status',
+      key: 'status',
+      render: (_: string, record: Provider) => {
+        const enabled = record.status === 'enabled';
+        return (
+          <Popconfirm
+            title={`确认${enabled ? '禁用' : '启用'}?`}
+            onConfirm={() => handleToggleEnabled(record)}
+            position="bottomRight"
+          >
+            <Tag color={enabled ? 'green' : 'red'} style={{ cursor: 'pointer' }}>
+              {enabled ? '启用' : '禁用'}
+            </Tag>
+          </Popconfirm>
+        );
+      },
     },
     {
       title: '操作',
@@ -228,8 +281,22 @@ export default function ProviderManagement(): ReactNode {
 
   const accountColumns = [
     { title: '名称', dataIndex: 'name', key: 'name' },
-    { title: 'API Key', dataIndex: 'api_key', key: 'api_key', render: (text: string) => text ? `${text.slice(0, 8)}...` : '-' },
-    { title: '模型', dataIndex: 'model', key: 'model' },
+    {
+      title: 'API Key',
+      dataIndex: 'api_key_suffix',
+      key: 'api_key_suffix',
+      render: (suffix: string) => suffix ? `******${suffix}` : '-',
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: string) => (
+        <Tag color={status === 'enabled' ? 'green' : 'red'} size="small">
+          {status === 'enabled' ? '启用' : '禁用'}
+        </Tag>
+      ),
+    },
     {
       title: '操作',
       key: 'actions',
@@ -267,12 +334,25 @@ export default function ProviderManagement(): ReactNode {
         title={editingProvider ? '编辑 Provider' : '创建 Provider'}
         visible={drawerVisible}
         onCancel={() => setDrawerVisible(false)}
-        width={600}
+        width={640}
         maskClosable={false}
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button onClick={() => setDrawerVisible(false)}>取消</Button>
+            <Button
+              type="primary"
+              loading={saving}
+              onClick={() => formRef.current?.submitForm()}
+            >
+              {editingProvider ? '保存' : '创建'}
+            </Button>
+          </div>
+        }
       >
         <Form
           onSubmit={handleSaveProvider}
           initValues={editingProvider || undefined}
+          getFormApi={(api) => { formRef.current = api; }}
           style={{ padding: '0 4px' }}
         >
           <Form.Input
@@ -291,68 +371,124 @@ export default function ProviderManagement(): ReactNode {
             label="Anthropic 端点"
             placeholder="https://api.anthropic.com"
           />
-          <Button type="primary" htmlType="submit" loading={saving} block style={{ marginTop: 16 }}>
-            {editingProvider ? '更新' : '创建'}
-          </Button>
         </Form>
 
         {editingProvider && (
-          <div style={{ marginTop: 32, borderTop: '1px solid var(--semi-color-border)', paddingTop: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Title heading={6}>Account 管理</Title>
-              <Button size="small" onClick={() => handleOpenAccountForm()}>添加 Account</Button>
-            </div>
-            <Table
-              columns={accountColumns}
-              dataSource={accounts}
-              loading={accountsLoading}
-              rowKey="id"
-              size="small"
-              pagination={false}
-            />
-
-            <SideSheet
-              title={editingAccount ? '编辑 Account' : '添加 Account'}
-              visible={accountFormVisible}
-              onCancel={() => setAccountFormVisible(false)}
-              width={400}
-              maskClosable={false}
-            >
-              <div style={{ padding: '0 4px' }}>
-                <Form.Input
-                  label="名称"
-                  value={accountForm.name}
-                  onChange={(v: string) => setAccountForm({ ...accountForm, name: v })}
-                  placeholder="Account 名称"
-                />
-                <div style={{ marginTop: 16 }}>
-                  <Form.Input
-                    label="API Key"
-                    value={accountForm.api_key}
-                    onChange={(v: string) => setAccountForm({ ...accountForm, api_key: v })}
-                    placeholder="API Key"
-                  />
-                </div>
-                <div style={{ marginTop: 16 }}>
-                  <Form.Input
-                    label="模型"
-                    value={accountForm.model}
-                    onChange={(v: string) => setAccountForm({ ...accountForm, model: v })}
-                    placeholder="模型名称"
-                  />
-                </div>
-                <Button
-                  type="primary"
-                  onClick={handleSaveAccount}
-                  loading={accountSaving}
-                  block
-                  style={{ marginTop: 16 }}
-                >
-                  {editingAccount ? '更新' : '添加'}
-                </Button>
+          <>
+            <div style={{ marginTop: 32, borderTop: '1px solid var(--semi-color-border)', paddingTop: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <Title heading={6}>模型列表</Title>
+                {accounts.length === 0 ? (
+                  <Tooltip content="缺少可用的 API Key，请先在下方添加 Account">
+                    {/* Tooltip 不能直接包裹 disabled Button，需用 span 中转 */}
+                    <span style={{ display: 'inline-block' }}>
+                      <Button size="small" disabled>
+                        自动发现
+                      </Button>
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <Button
+                    size="small"
+                    onClick={handleDiscoverModels}
+                    loading={discovering}
+                  >
+                    自动发现
+                  </Button>
+                )}
               </div>
-            </SideSheet>
-          </div>
+              <TagInput
+                value={providerModels}
+                onChange={(v) => setProviderModels(v as string[])}
+                placeholder="输入模型名后回车，或点击自动发现"
+                allowDuplicates={false}
+                style={{ width: '100%' }}
+              />
+              <Text type="tertiary" size="small" style={{ marginTop: 6, display: 'block' }}>
+                {accounts.length === 0
+                  ? '缺少可用的 API Key，请先添加一个 Account 后再使用自动发现；模型列表会随底部"保存"按钮一并提交'
+                  : `将使用 Account "${accounts[0].name}" 的 API Key 调用上游 /v1/models 接口；模型列表会随底部"保存"按钮一并提交`}
+              </Text>
+            </div>
+
+            <div style={{ marginTop: 32, borderTop: '1px solid var(--semi-color-border)', paddingTop: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <Title heading={6}>Account 管理</Title>
+                <Button size="small" onClick={() => handleOpenAccountForm()}>添加 Account</Button>
+              </div>
+              <Table
+                columns={accountColumns}
+                dataSource={accounts}
+                loading={accountsLoading}
+                rowKey="id"
+                size="small"
+                pagination={false}
+              />
+
+              <SideSheet
+                title={editingAccount ? '编辑 Account' : '添加 Account'}
+                visible={accountFormVisible}
+                onCancel={() => setAccountFormVisible(false)}
+                width={420}
+                maskClosable={false}
+              >
+                <div style={{ padding: '0 4px' }}>
+                    <div>
+                      <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>名称</div>
+                      <Input
+                        value={accountForm.name}
+                        onChange={(v: string) => setAccountForm({ ...accountForm, name: v })}
+                        placeholder="留空将自动以 API Key 后缀生成"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div style={{ marginTop: 16 }}>
+                      <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>
+                        {editingAccount ? 'API Key (留空表示不修改)' : 'API Key'}
+                      </div>
+                      {/*
+                        故意不使用 type="password"，避免触发浏览器密码管理器的"保存账号密码"弹窗。
+                        改为普通 text input + CSS 视觉遮罩（webkit-text-security）+ 自定义眼睛按钮。
+                      */}
+                      <Input
+                        value={accountForm.api_key}
+                        onChange={(v: string) => setAccountForm({ ...accountForm, api_key: v })}
+                        placeholder={editingAccount ? '仅在需要替换时填写' : '上游 API Key'}
+                        autoComplete="off"
+                        data-1p-ignore="true"
+                        data-lpignore="true"
+                        spellCheck={false}
+                        style={!apiKeyVisible && accountForm.api_key
+                          ? ({
+                              WebkitTextSecurity: 'disc',
+                              textSecurity: 'disc',
+                              fontFamily: 'text-security-disc, monospace',
+                            } as React.CSSProperties)
+                          : undefined}
+                        suffix={
+                          <Button
+                            theme="borderless"
+                            icon={apiKeyVisible ? <IconEyeClosedSolid /> : <IconEyeOpened />}
+                            size="small"
+                            onClick={() => setApiKeyVisible(!apiKeyVisible)}
+                            aria-label={apiKeyVisible ? '隐藏' : '显示'}
+                          />
+                        }
+                      />
+                    </div>
+                    <Button
+                      type="primary"
+                      onClick={handleSaveAccount}
+                      loading={accountSaving}
+                      block
+                      style={{ marginTop: 16 }}
+                    >
+                      {editingAccount ? '更新' : '添加'}
+                    </Button>
+                  </div>
+              </SideSheet>
+            </div>
+          </>
         )}
       </SideSheet>
     </div>
