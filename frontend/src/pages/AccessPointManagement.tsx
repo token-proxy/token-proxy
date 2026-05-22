@@ -1,49 +1,50 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import {
-  Table, Button, Tag, Space, Popconfirm, SideSheet, Form,
-  Toast, Typography, Select,
+  Table, Button, Tag, Space, Popconfirm, SideSheet,
+  Toast, Typography, Select, Input,
 } from '@douyinfe/semi-ui';
 import api from '../api.ts';
 
 const { Title } = Typography;
 
 interface Provider {
-  id: number;
+  id: string;
   name: string;
 }
 
 interface Account {
-  id: number;
-  provider_id: number;
+  id: string;
+  provider_id: string;
   name: string;
-  model: string;
+  api_key_suffix: string;
+  status: string;
 }
 
 interface ModelMapping {
-  source: string;
-  target: string;
+  source_model: string;
+  target_model: string;
 }
 
 interface AccessPoint {
-  id: number;
+  id: string;
   name: string;
   short_code: string;
-  provider_id: number;
-  provider_name?: string;
-  account_id: number;
-  account_name?: string;
+  provider_id: string;
+  account_id: string;
   api_type: string;
-  model_mapping: Record<string, string>;
-  enabled: boolean;
+  model_mappings: ModelMapping[];
+  access_url: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface AccessPointFormData {
   name: string;
   short_code: string;
-  provider_id: number | undefined;
-  account_id: number | undefined;
+  provider_id: string | undefined;
+  account_id: string | undefined;
   api_type: string;
-  model_mapping: Record<string, string>;
 }
 
 export default function AccessPointManagement(): ReactNode {
@@ -60,7 +61,6 @@ export default function AccessPointManagement(): ReactNode {
     provider_id: undefined,
     account_id: undefined,
     api_type: 'default',
-    model_mapping: {},
   });
   const [mappings, setMappings] = useState<ModelMapping[]>([]);
 
@@ -68,8 +68,6 @@ export default function AccessPointManagement(): ReactNode {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
-
-  const baseUrl = `${window.location.protocol}//${window.location.host}`;
 
   const loadAccessPoints = useCallback(async () => {
     setLoading(true);
@@ -97,7 +95,7 @@ export default function AccessPointManagement(): ReactNode {
     loadProviders();
   }, [loadAccessPoints, loadProviders]);
 
-  const loadAccountsByProvider = async (providerId: number) => {
+  const loadAccountsByProvider = async (providerId: string) => {
     setAccountsLoading(true);
     try {
       const data = await api.get<Account[]>(`/api/providers/${providerId}/accounts`);
@@ -117,7 +115,6 @@ export default function AccessPointManagement(): ReactNode {
       provider_id: undefined,
       account_id: undefined,
       api_type: 'default',
-      model_mapping: {},
     });
     setMappings([]);
     setAccounts([]);
@@ -132,10 +129,8 @@ export default function AccessPointManagement(): ReactNode {
       provider_id: ap.provider_id,
       account_id: ap.account_id,
       api_type: ap.api_type,
-      model_mapping: ap.model_mapping,
     });
-    const entries = Object.entries(ap.model_mapping || {});
-    setMappings(entries.map(([source, target]) => ({ source, target })));
+    setMappings(ap.model_mappings ?? []);
 
     if (ap.provider_id) {
       loadAccountsByProvider(ap.provider_id);
@@ -143,13 +138,13 @@ export default function AccessPointManagement(): ReactNode {
     setDrawerVisible(true);
   };
 
-  const handleProviderChange = (value: number) => {
+  const handleProviderChange = (value: string) => {
     setFormData({ ...formData, provider_id: value, account_id: undefined });
     loadAccountsByProvider(value);
   };
 
   const handleAddMapping = () => {
-    setMappings([...mappings, { source: '', target: '' }]);
+    setMappings([...mappings, { source_model: '', target_model: '' }]);
   };
 
   const handleRemoveMapping = (index: number) => {
@@ -172,23 +167,30 @@ export default function AccessPointManagement(): ReactNode {
       Toast.error('请选择 Provider');
       return;
     }
+    if (!formData.account_id) {
+      Toast.error('请选择 Account');
+      return;
+    }
 
     setSaving(true);
     try {
-      const modelMapping: Record<string, string> = {};
-      mappings.forEach((m) => {
-        if (m.source && m.target) {
-          modelMapping[m.source] = m.target;
-        }
-      });
+      const validMappings = mappings.filter((m) => m.source_model && m.target_model);
 
       const body = {
-        ...formData,
-        model_mapping: modelMapping,
+        name: formData.name,
+        provider_id: formData.provider_id,
+        account_id: formData.account_id,
+        short_code: formData.short_code || undefined,
+        model_mappings: validMappings.length > 0 ? validMappings : undefined,
       };
 
       if (editingAp) {
-        await api.put(`/api/access-points/${editingAp.id}`, body);
+        await api.put(`/api/access-points/${editingAp.id}`, {
+          name: formData.name,
+          provider_id: formData.provider_id,
+          account_id: formData.account_id,
+          model_mappings: validMappings.length > 0 ? validMappings : undefined,
+        });
         Toast.success('接入点已更新');
       } else {
         await api.post('/api/access-points', body);
@@ -203,7 +205,7 @@ export default function AccessPointManagement(): ReactNode {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await api.delete(`/api/access-points/${id}`);
       Toast.success('接入点已删除');
@@ -214,17 +216,10 @@ export default function AccessPointManagement(): ReactNode {
   };
 
   const handleToggleEnabled = async (ap: AccessPoint) => {
+    const nextStatus = ap.status === 'enabled' ? 'disabled' : 'enabled';
     try {
-      await api.put(`/api/access-points/${ap.id}`, {
-        name: ap.name,
-        short_code: ap.short_code,
-        provider_id: ap.provider_id,
-        account_id: ap.account_id,
-        api_type: ap.api_type,
-        model_mapping: ap.model_mapping,
-        enabled: !ap.enabled,
-      });
-      Toast.success(`接入点已${ap.enabled ? '禁用' : '启用'}`);
+      await api.put(`/api/access-points/${ap.id}`, { status: nextStatus });
+      Toast.success(`接入点已${nextStatus === 'enabled' ? '启用' : '禁用'}`);
       loadAccessPoints();
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '操作失败');
@@ -232,6 +227,7 @@ export default function AccessPointManagement(): ReactNode {
   };
 
   const copyAccessUrl = (shortCode: string) => {
+    const baseUrl = `${window.location.protocol}//${window.location.host}`;
     const url = `${baseUrl}/ap/${shortCode}`;
     navigator.clipboard.writeText(url).then(() => {
       Toast.success('接入 URL 已复制');
@@ -243,29 +239,31 @@ export default function AccessPointManagement(): ReactNode {
   const columns = [
     { title: '名称', dataIndex: 'name', key: 'name' },
     { title: 'Short Code', dataIndex: 'short_code', key: 'short_code' },
-    { title: 'Provider', dataIndex: 'provider_name', key: 'provider', render: (text?: string) => text || '-' },
     {
       title: '映射规则数',
       key: 'mapping_count',
       render: (_: unknown, record: AccessPoint) =>
-        Object.keys(record.model_mapping || {}).length,
+        record.model_mappings?.length ?? 0,
     },
     { title: 'API 类型', dataIndex: 'api_type', key: 'api_type' },
     {
       title: '状态',
-      dataIndex: 'enabled',
-      key: 'enabled',
-      render: (_: boolean, record: AccessPoint) => (
-        <Popconfirm
-          title={`确认${record.enabled ? '禁用' : '启用'}?`}
-          onConfirm={() => handleToggleEnabled(record)}
-          position="bottomRight"
-        >
-          <Tag color={record.enabled ? 'green' : 'red'} style={{ cursor: 'pointer' }}>
-            {record.enabled ? '启用' : '禁用'}
-          </Tag>
-        </Popconfirm>
-      ),
+      dataIndex: 'status',
+      key: 'status',
+      render: (_: string, record: AccessPoint) => {
+        const enabled = record.status === 'enabled';
+        return (
+          <Popconfirm
+            title={`确认${enabled ? '禁用' : '启用'}?`}
+            onConfirm={() => handleToggleEnabled(record)}
+            position="bottomRight"
+          >
+            <Tag color={enabled ? 'green' : 'red'} style={{ cursor: 'pointer' }}>
+              {enabled ? '启用' : '禁用'}
+            </Tag>
+          </Popconfirm>
+        );
+      },
     },
     {
       title: '操作',
@@ -309,26 +307,28 @@ export default function AccessPointManagement(): ReactNode {
         maskClosable={false}
       >
         <div style={{ padding: '0 4px' }}>
-          <Form.Input
-            label="名称"
-            value={formData.name}
-            onChange={(v: string) => setFormData({ ...formData, name: v })}
-            placeholder="接入点名称"
-          />
+          <div>
+            <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>名称</div>
+            <Input
+              value={formData.name}
+              onChange={(v: string) => setFormData({ ...formData, name: v })}
+              placeholder="接入点名称"
+            />
+          </div>
           <div style={{ marginTop: 16 }}>
-            <Form.Input
-              label="Short Code"
+            <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>Short Code</div>
+            <Input
               value={formData.short_code}
               onChange={(v: string) => setFormData({ ...formData, short_code: v })}
               placeholder="留空则自动生成"
             />
           </div>
           <div style={{ marginTop: 16 }}>
-            <label style={{ display: 'block', marginBottom: 8, fontSize: 14, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>Provider</label>
+            <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>Provider</div>
             <Select
               placeholder="选择 Provider"
               value={formData.provider_id}
-              onChange={handleProviderChange}
+              onChange={(v) => handleProviderChange(v as string)}
               style={{ width: '100%' }}
             >
               {providers.map((p) => (
@@ -337,26 +337,20 @@ export default function AccessPointManagement(): ReactNode {
             </Select>
           </div>
           <div style={{ marginTop: 16 }}>
-            <label style={{ display: 'block', marginBottom: 8, fontSize: 14, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>Account</label>
+            <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>Account</div>
             <Select
               placeholder="选择 Account"
               value={formData.account_id}
-              onChange={(v: number) => setFormData({ ...formData, account_id: v })}
+              onChange={(v) => setFormData({ ...formData, account_id: v as string })}
               loading={accountsLoading}
               style={{ width: '100%' }}
             >
               {accounts.map((a) => (
-                <Select.Option key={a.id} value={a.id}>{a.name} ({a.model})</Select.Option>
+                <Select.Option key={a.id} value={a.id}>
+                  {a.name} (******{a.api_key_suffix})
+                </Select.Option>
               ))}
             </Select>
-          </div>
-          <div style={{ marginTop: 16 }}>
-            <Form.Input
-              label="API 类型"
-              value={formData.api_type}
-              onChange={(v: string) => setFormData({ ...formData, api_type: v })}
-              placeholder="default"
-            />
           </div>
 
           <div style={{ marginTop: 24 }}>
@@ -371,15 +365,15 @@ export default function AccessPointManagement(): ReactNode {
             )}
             {mappings.map((m, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                <Form.Input
-                  value={m.source}
-                  onChange={(v: string) => handleMappingChange(i, 'source', v)}
+                <Input
+                  value={m.source_model}
+                  onChange={(v: string) => handleMappingChange(i, 'source_model', v)}
                   placeholder="源模型"
                 />
                 <span style={{ color: 'var(--semi-color-text-2)' }}>→</span>
-                <Form.Input
-                  value={m.target}
-                  onChange={(v: string) => handleMappingChange(i, 'target', v)}
+                <Input
+                  value={m.target_model}
+                  onChange={(v: string) => handleMappingChange(i, 'target_model', v)}
                   placeholder="目标模型"
                 />
                 <Button type="danger" icon={null} onClick={() => handleRemoveMapping(i)} size="small">删除</Button>

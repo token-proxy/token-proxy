@@ -9,13 +9,13 @@ const { Title, Text } = Typography;
 
 interface OverviewData {
   total_requests: number;
-  total_requests_change: number;
+  total_requests_change?: number;
   active_access_points: number;
-  active_access_points_change: number;
-  active_users: number;
-  active_users_change: number;
-  error_rate: number;
-  error_rate_change: number;
+  active_access_points_change?: number;
+  active_users?: number;
+  active_users_change?: number;
+  error_rate?: number;
+  error_rate_change?: number;
 }
 
 interface TrendItem {
@@ -85,7 +85,9 @@ function formatNumber(n: number): string {
  * Shows a colored tag indicating change percentage.
  * @param invert - When true, flips green/red (used for error rate where lower is better).
  */
-function ChangeIndicator({ value, invert }: { value: number; invert?: boolean }) {
+function ChangeIndicator({ value, invert }: { value?: number; invert?: boolean }) {
+  if (value === undefined || value === null || Number.isNaN(value)) return null;
+
   const adjusted = invert ? -value : value;
   const color = adjusted > 0 ? 'green' : adjusted < 0 ? 'red' : 'grey';
   const Icon = adjusted > 0 ? IconArrowUp : adjusted < 0 ? IconArrowDown : IconMinus;
@@ -114,7 +116,7 @@ function StatCard({
 }: {
   title: string;
   value: string | number;
-  change: number;
+  change?: number;
   loading: boolean;
   invertChange?: boolean;
 }) {
@@ -299,7 +301,7 @@ export default function DashboardPage(): ReactNode {
           <StatCard
             title="总请求量 (近 30 天)"
             value={overview ? formatNumber(overview.total_requests) : '-'}
-            change={overview?.total_requests_change ?? 0}
+            change={overview?.total_requests_change}
             loading={loading}
           />
         </Col>
@@ -307,7 +309,7 @@ export default function DashboardPage(): ReactNode {
           <StatCard
             title="活跃接入点"
             value={overview?.active_access_points ?? '-'}
-            change={overview?.active_access_points_change ?? 0}
+            change={overview?.active_access_points_change}
             loading={loading}
           />
         </Col>
@@ -315,15 +317,19 @@ export default function DashboardPage(): ReactNode {
           <StatCard
             title="活跃用户"
             value={overview?.active_users ?? '-'}
-            change={overview?.active_users_change ?? 0}
+            change={overview?.active_users_change}
             loading={loading}
           />
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <StatCard
             title="错误率"
-            value={overview ? `${overview.error_rate}%` : '-'}
-            change={overview?.error_rate_change ?? 0}
+            value={
+              overview && overview.error_rate !== undefined
+                ? `${overview.error_rate}%`
+                : '-'
+            }
+            change={overview?.error_rate_change}
             loading={loading}
             invertChange
           />
