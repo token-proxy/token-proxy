@@ -15,21 +15,21 @@
 ```
 src/
 ├── domain/              # 领域层 (零外部框架依赖)
-│   ├── entities/        # Provider, Account, User, AccessPoint, RefreshToken, LogEntry
+│   ├── entities/        # Provider, Account, User, AccessPoint, RefreshToken, LogEntry, UserApiKey
 │   ├── value_objects/   # ShortCode, ApiKey, ModelMapping, Status, AccessPointType
 │   ├── repositories/    # Repository traits (接口定义)
 │   └── services/        # EncryptionService trait, ModelMappingService
 ├── application/         # 应用层 (用例编排)
-│   ├── dto/             # 请求/响应 DTO (7 组)
-│   ├── services/        # 7 个应用服务 (依赖注入 domain traits)
+│   ├── dto/             # 请求/响应 DTO (9 组)
+│   ├── services/        # 8 个应用服务 (依赖注入 domain traits)
 │   └── AppState         # 全局共享状态
 ├── infrastructure/      # 基础设施层
-│   ├── persistence/     # SeaORM 实体 (9 个) + Repository 实现 (6 个) + PartitionManager
+│   ├── persistence/     # SeaORM 实体 (10 个) + Repository 实现 (8 个) + PartitionManager
 │   ├── encryption/      # AES-256-GCM 加密
 │   ├── auth/            # JWT (jsonwebtoken) + argon2 密码哈希
 │   └── http_client/     # reqwest 代理转发客户端
 ├── presentation/        # 展示层
-│   ├── routes/          # 7 组 axum handlers
+│   ├── routes/          # 9 组 axum handlers
 │   └── middleware/      # JWT 认证中间件
 └── shared/              # 共享
     ├── error.rs         # AppError (9 种变体)
@@ -45,13 +45,14 @@ src/
 - 部署: Dockerfile (多阶段: Node 22 构建前端 -> Rust 1.89 构建后端 -> Alpine 3.21 运行时)
 - docker-compose.yml (pgvector/pgvector:pg17 + app)
 
-## 数据库 Schema (8 个核心表)
+## 数据库 Schema (9 个核心表)
 
 | 表 | 说明 |
 |---|---|
 | providers | LLM 提供商 (OpenAI/Anthropic 等) |
 | accounts | API 账号 (AES-256-GCM 加密存储 Key) |
 | users | 管理员用户 (argon2id 密码哈希) |
+| user_api_keys | 用户 API key (SHA-256 哈希存储, 支持吊销) |
 | access_points | 接入点 (短码、模型映射) |
 | refresh_tokens | JWT 刷新令牌 |
 | log_metadata | 代理日志元数据 (PartitionManager 按月分区) |
@@ -69,6 +70,8 @@ src/
 - **分区**: PartitionManager 应用层管理, 按月 `RANGE (timestamp)`, 依赖原生 PostgreSQL 分区, 支持多副本 advisory lock 防冲突
 - **代理**: SSE 流式逐块转发 + 异步日志写入
 - **路由**: 公开路径 (`/api/auth/*`, `/ap/*`, `/api/health`) 跳过 JWT 认证
+- **接入点认证**: `/ap/*` 路径跳过 JWT 中间件, 但在 ProxyService 中强制验证用户 API key (`Authorization: Bearer <user_api_key>`), 通过 SHA-256 哈希匹配后记录 user_id
+- **用户 API key**: 个人设置页管理, key 以 `tp_` 为前缀, 生成 40 位随机字符, 数据库仅存储 SHA-256 哈希和前缀, 完整 key 只创建时返回一次; 支持吊销操作
 
 ## Makefile 任务
 
@@ -118,16 +121,17 @@ src/
 - 页面组件集中在 `frontend/src/pages/`
 - 使用 `@douyinfe/semi-ui` 组件库
 - 路由: react-router-dom v7 (BrowserRouter + Routes + AdminLayout)
-- 路由结构: `/login`, `/dashboard`, `/providers`, `/access-points`, `/sessions`, `/logs`, `/users`, `/settings`
+- 路由结构: `/login`, `/dashboard`, `/providers`, `/access-points`, `/sessions`, `/logs`, `/users`, `/settings`, `/settings/profile`
 - 后端通信: `frontend/src/api.ts` (axios/fetch 封装)
 - **防重复点击**: 所有触发 API 调用或异步操作的按钮必须设置 `loading`/`disabled` 状态, 操作完成后才解除锁定。管理列表页使用 `operatingId` 实现行级按钮独立锁定
+- **改密自动登出**: 修改密码操作成功后, 前端必须清除所有 localStorage 令牌 (`access_token`, `refresh_token`, `username`, `display_name`) 并跳转 `/login`, 强制用户重新认证
 
 ## 注意事项
 
 - `.rs` 空文件留作占位用, 不应删除
 - 前端构建产物 (`frontend/dist/`) 会被嵌入后端二进制
 - 所有 Repository 实现以 `SeaOrm` 为前缀 (如 `SeaOrmProviderRepository`)
-- 迁移文件在独立的 `migration/` workspace crate 中, 使用 `sea-orm-migration`
+- 迁移文件在 `src/migrations/` 目录下, 使用 `sea-orm-migration`
 - 分区管理由 `src/infrastructure/persistence/partition_manager.rs` 的 PartitionManager 处理, 通过 pg_inherits 系统表管理分区
 - `log_metadata` 分区表的 `PRIMARY KEY` 必须包含 `timestamp`
 
@@ -135,14 +139,21 @@ src/
 
 | 文件 | 说明 |
 |---|---|
-| `src/main.rs` | 启动入口 (依赖组装 + Router 构建) |
+| `src/main.rs` | 启动入口 (依赖组装 + Router 构建 + 分区管理器初始化) |
 | `src/lib.rs` | Crate 根模块 |
 | `src/config.rs` | 环境变量配置加载 |
 | `src/application/mod.rs` | AppState 定义 |
 | `src/shared/error.rs` | AppError 错误类型 |
-| `src/application/services/proxy_service.rs` | 核心代理转发引擎 |
-| `migration/src/m20260101_000001_initial.rs` | 数据库 Schema |
+| `src/application/services/proxy_service.rs` | 核心代理转发引擎 (含用户 API key 认证) |
+| `src/application/services/user_api_key_service.rs` | 用户 API key 管理服务 |
+| `src/presentation/routes/me_routes.rs` | 个人设置路由 (`/api/users/me/*`) |
+| `src/migrations/m20260101_000001_initial.rs` | 初始数据库 Schema |
+| `src/migrations/m20260523_000001_user_api_keys.rs` | 用户 API key 表迁移 |
 | `src/presentation/routes/mod.rs` | 路由聚合 |
-| `src/presentation/middleware/jwt_auth.rs` | JWT 认证中间件 |
+| `src/presentation/middleware/jwt_auth.rs` | JWT 认证中间件 + CurrentUser extractor |
 | `src/infrastructure/persistence/partition_manager.rs` | 分区管理器 |
+| `src/infrastructure/persistence/repositories/user_api_key_repository.rs` | UserApiKey 仓储实现 |
+| `src/domain/entities/user_api_key.rs` | 用户 API key 领域实体 |
+| `src/domain/repositories/user_api_key_repository.rs` | UserApiKey Repository trait |
 | `frontend/src/App.tsx` | 前端路由定义 |
+| `frontend/src/pages/ProfilePage.tsx` | 个人设置页 (个人资料/改密/API key 管理) |

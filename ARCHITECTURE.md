@@ -5,7 +5,7 @@
 ## 目录结构总览
 
 ```
-├── src/                    # 后端 Rust 核心代码 (96 个 .rs 文件)
+├── src/                    # 后端 Rust 核心代码 (103 个 .rs 文件)
 ├── frontend/               # 前端 React SPA (15 个 .ts/.tsx 源文件)
 ├── migration/              # 数据库迁移 (独立 workspace crate)
 ├── target/                 # Rust 构建产物
@@ -26,21 +26,21 @@
 ```
 src/
 ├── domain/                 # 领域层 (零外部框架依赖)
-│   ├── entities/           # 6 个业务实体
+│   ├── entities/           # 7 个业务实体
 │   ├── value_objects/      # 5 个值对象
-│   ├── repositories/       # 7 个 Repository trait
+│   ├── repositories/       # 8 个 Repository trait
 │   └── services/           # 2 个领域服务
 ├── application/            # 应用层 (用例编排, 依赖注入)
 │   ├── dto/                # 6 组 DTO
-│   ├── services/           # 7 个应用服务
+│   ├── services/           # 8 个应用服务
 │   └── mod.rs              # AppState 全局共享状态
 ├── infrastructure/         # 基础设施层
-│   ├── persistence/        # SeaORM 实体 (9 个) + Repository 实现 (6 个)
+│   ├── persistence/        # SeaORM 实体 (10 个) + Repository 实现 (7 个)
 │   ├── encryption/         # AES-256-GCM 加密服务
 │   ├── auth/               # JWT 认证 + argon2 密码哈希
 │   └── http_client/        # reqwest 代理转发客户端
 ├── presentation/           # 展示层
-│   ├── routes/             # 7 组 axum 路由处理器
+│   ├── routes/             # 8 组 axum 路由处理器
 │   └── middleware/         # JWT 认证中间件
 ├── shared/                 # 共享模块
 │   ├── error.rs            # AppError (9 种错误变体)
@@ -62,6 +62,7 @@ domain/
 │   ├── user.rs             # 管理员用户
 │   ├── access_point.rs     # 接入点 (跨聚合引用 Provider + Account)
 │   ├── refresh_token.rs    # JWT 刷新令牌
+│   ├── user_api_key.rs     # 用户 API key (SHA-256 哈希存储)
 │   └── log_entry.rs        # 日志条目 + 日志内容
 ├── value_objects/          # 不可变值对象
 │   ├── short_code.rs       # 接入点短码 (生成/校验)
@@ -75,7 +76,8 @@ domain/
 │   ├── user_repository.rs
 │   ├── access_point_repository.rs
 │   ├── refresh_token_repository.rs
-│   └── log_repository.rs
+│   ├── log_repository.rs
+│   └── user_api_key_repository.rs
 └── services/               # 领域服务
     ├── encryption_service.rs  # 加密服务 trait (encrypt/decrypt)
     └── model_mapping_service.rs # 模型映射纯函数 (含单元测试)
@@ -88,7 +90,7 @@ domain/
 | 聚合根 | 包含子实体 | 跨聚合引用 |
 |--------|-----------|-----------|
 | Provider | Account | - |
-| User | RefreshToken | - |
+| User | RefreshToken, UserApiKey | - |
 | AccessPoint | - | provider_id, account_id (Uuid) |
 | LogEntry | LogContent | user_id, access_point_id, provider_id, account_id (Uuid) |
 
@@ -101,17 +103,18 @@ application/
 ├── dto/                    # 请求/响应数据传输对象
 │   ├── provider_dto.rs     # Provider 增改查 DTO
 │   ├── account_dto.rs      # Account 增改查 DTO (不含完整 Key)
-│   ├── user_dto.rs         # User 增改查 DTO
+│   ├── user_dto.rs         # User 增改查 DTO + 个人设置 (profile/密码/API key)
 │   ├── access_point_dto.rs # AccessPoint 增改查 DTO
 │   ├── auth_dto.rs         # Login/Refresh/TokenPair DTO
 │   └── log_dto.rs          # 日志查询 DTO
 ├── services/               # 应用服务 (注入 Repository traits)
 │   ├── provider_service.rs # 提供商管理用例
 │   ├── account_service.rs  # 账号管理用例 (含加密解密)
-│   ├── user_service.rs     # 用户管理用例 (含密码哈希)
+│   ├── user_service.rs     # 用户管理用例 (含密码哈希 + profile 更新 + 密码修改)
+│   ├── user_api_key_service.rs # 用户 API key 管理 (生成/列表/撤销, SHA-256 哈希)
 │   ├── access_point_service.rs # 接入点管理用例 (含短码生成)
 │   ├── auth_service.rs     # 认证用例 (登录/刷新/登出)
-│   ├── proxy_service.rs    # 核心代理转发用例
+│   ├── proxy_service.rs    # 核心代理转发用例 (含 Bearer API key 认证)
 │   └── log_service.rs      # 日志查询用例
 └── mod.rs                  # AppState 定义 (所有 Service 的引用容器)
 ```
@@ -133,15 +136,17 @@ infrastructure/
 │   │   ├── refresh_token.rs # 映射 refresh_tokens 表
 │   │   ├── log_metadata.rs # 映射 log_metadata 表 (按月分区)
 │   │   ├── log_content.rs  # 映射 log_contents 表
-│   │   └── audit_log.rs    # 映射 audit_logs 表
+│   │   ├── audit_log.rs    # 映射 audit_logs 表
+│   │   └── user_api_key.rs # 映射 user_api_keys 表
 │   ├── partition_manager.rs # PartitionManager: 应用层分区自动管理
-│   └── repositories/       # Repository 实现 (6 个)
+│   └── repositories/       # Repository 实现 (7 个)
 │       ├── provider_repository.rs        # SeaOrmProviderRepository
 │       ├── account_repository.rs         # SeaOrmAccountRepository
 │       ├── user_repository.rs            # SeaOrmUserRepository
 │       ├── access_point_repository.rs    # SeaOrmAccessPointRepository
 │       ├── refresh_token_repository.rs   # SeaOrmRefreshTokenRepository
-│       └── log_repository.rs             # SeaOrmLogRepository
+│       ├── log_repository.rs             # SeaOrmLogRepository
+│       └── user_api_key_repository.rs    # SeaOrmUserApiKeyRepository
 ├── encryption/             # 加密实现
 │   └── aes256_gcm.rs       # Aes256GcmEncryptionService
 ├── auth/                   # 认证实现
@@ -165,8 +170,9 @@ presentation/
 │   ├── provider_routes.rs  # CRUD /api/providers
 │   ├── account_routes.rs   # CRUD /api/providers/:id/accounts (嵌套)
 │   ├── user_routes.rs      # CRUD /api/users
+│   ├── me_routes.rs        # GET/PUT /api/users/me/* (个人 profile/密码/API key)
 │   ├── access_point_routes.rs # CRUD /api/access-points
-│   ├── proxy_routes.rs     # POST /ap/{short_code}/v1/messages
+│   ├── proxy_routes.rs     # POST /ap/{short_code}/v1/messages (强制 API key 认证)
 │   └── log_routes.rs       # GET /api/logs, /api/logs/sessions, /api/logs/sessions/:id
 └── middleware/             # 中间件
     └── jwt_auth.rs         # JWT 认证中间件 + CurrentUser extractor
@@ -177,11 +183,12 @@ presentation/
 | 路径 | 认证要求 |
 |------|---------|
 | `/api/auth/*` | 公开 (登录/刷新) |
-| `/ap/*` | 公开 (代理转发, 基于 short_code) |
+| `/ap/*` | Bearer 用户 API key 认证 (SHA-256, Authorization 头) |
 | `/api/health` | 公开 |
 | `/api/providers/*` | JWT 认证 |
 | `/api/accounts/*` | JWT 认证 |
 | `/api/users/*` | JWT 认证 |
+| `/api/users/me/*` | JWT 认证 (当前用户个人设置) |
 | `/api/access-points/*` | JWT 认证 |
 | `/api/logs/*` | JWT 认证 |
 
@@ -240,6 +247,7 @@ frontend/
 │       ├── ProviderManagement.tsx  # CRUD /api/providers
 │       ├── AccessPointManagement.tsx # CRUD /api/access-points
 │       ├── UserManagement.tsx      # CRUD /api/users
+│       ├── ProfilePage.tsx         # 个人设置 (profile/密码/API key 管理)
 │       ├── SessionLogPage.tsx      # GET /api/logs/sessions
 │       ├── RequestLogPage.tsx      # GET /api/logs
 │       └── SettingsPage.tsx        # 设置页面
@@ -261,6 +269,7 @@ frontend/
   /logs                 → RequestLogPage
   /users                → UserManagement
   /settings             → SettingsPage
+	  /settings/profile     → ProfilePage (个人设置)
 ```
 
 ### API 通信层
@@ -276,7 +285,8 @@ migration/
 ├── Cargo.toml        # 依赖: sea-orm-migration
 └── src/
     ├── lib.rs
-    └── m20260101_000001_initial.rs  # 初始 Schema (8 个表 + 物化视图)
+    ├── m20260101_000001_initial.rs              # 初始 Schema (8 个表 + 物化视图)
+    └── m20260523_000001_user_api_keys.rs        # 用户 API key 表
 ```
 
 ### 数据库表
@@ -291,6 +301,7 @@ migration/
 | log_metadata | 代理日志元数据 (按月分区) | session_id, model_original, model_mapped, status_code, duration_ms |
 | log_contents | 代理日志内容 | log_id, request_headers, request_body, response_body |
 | audit_logs | 操作审计日志 | user_id, action, target_type, target_id, details |
+| user_api_keys | 用户 API key (SHA-256 哈希存储) | user_id (FK), key_hash (唯一), key_prefix, description, last_used_at, status, created_at |
 
 **物化视图**: `daily_request_stats` — 按天聚合统计，含请求量、平均耗时、错误数。
 
@@ -299,10 +310,13 @@ migration/
 ## 代理转发流程
 
 ```
-客户端请求
+客户端请求 (携带 Authorization: Bearer <user_api_key>)
     │
     ▼
 POST /ap/{short_code}/v1/messages
+    │
+    ▼
+0. 提取 Authorization 头 → 计算 SHA-256 hex → 查找 UserApiKey (验证 enabled, 更新 last_used_at)
     │
     ▼
 1. 提取 short_code → 查找 AccessPoint (验证 enabled)
@@ -393,9 +407,9 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 维度 | 状态 |
 |------|------|
 | Phase 1 MVP | 已完成 |
-| 后端 | 96 个 .rs 文件, cargo check 零错误零警告 |
-| 前端 | 15 个 .ts/.tsx 源文件, tsc --noEmit 零错误 |
-| Schema 迁移 | 初始迁移就绪 (8 表 + 1 物化视图) |
+| 后端 | 103 个 .rs 文件, cargo check 零错误零警告 |
+| 前端 | 16 个 .ts/.tsx 源文件, tsc --noEmit 零错误 |
+| Schema 迁移 | 2 个迁移就绪 (9 表 + 1 物化视图) |
 | Docker 构建 | 多阶段构建就绪 |
 | 容器编排 | docker-compose.yml 就绪 |
 
@@ -405,3 +419,4 @@ docker compose up -d    # 启动 PostgreSQL + App
 |------|---------|
 | 2026-05-19 | 初始化架构文档，记录 DDD 四层架构、代理转发流程、安全设计和项目状态 |
 | 2026-05-20 | 应用层分区管理替代 pg_partman：新增 PartitionManager，迁移移除 pg_partman 依赖改为原生分区语法 + 种子分区，Config 新增 3 个分区配置项，main.rs 新增分区初始化和后台定时任务 |
+| 2026-05-23 | 用户 API key 认证体系：新增 UserApiKey 领域实体 + Repository trait + SeaOrm 实现 + UserApiKeyService，新增 user_api_keys 表迁移，新增 me_routes.rs (6 个当前用户端点)，ProxyService 新增 Bearer API key 认证 (SHA-256)，UserService 新增 profile 更新和密码修改 (含审计日志)，/ap/* 路由强制 API key 认证并记录 user_id 到日志，前端新增 ProfilePage 和个人设置菜单入口 |
