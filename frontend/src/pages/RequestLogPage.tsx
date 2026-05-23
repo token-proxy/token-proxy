@@ -1,117 +1,24 @@
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import {
-  Table, Button, Tag, Typography, Toast, Modal, Empty,
-  DatePicker, Select, Input,
+  Table, Button, Tag, Typography, Toast, Empty,
+  Select, Input,
 } from '@douyinfe/semi-ui';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import api from '../api.ts';
+import LogDetailModal from '../components/LogDetailModal.tsx';
+import LogFilterBar from '../components/LogFilterBar.tsx';
+import type {
+  AccessPointItem,
+  LogDetail,
+  LogFilters,
+  LogSummary,
+  PaginatedResult,
+  UserItem,
+} from '../types/log.ts';
+import { formatDateTime, formatDuration, truncateMiddle } from '../utils/format.ts';
+import { buildQueryString, toIsoString } from '../utils/query.ts';
 
 const { Title, Text } = Typography;
-
-// ─── Types ───
-
-interface UserItem {
-  id: string;
-  username: string;
-  display_name: string;
-  status: string;
-}
-
-interface AccessPointItem {
-  id: string;
-  name: string;
-  short_code: string;
-}
-
-interface LogSummary {
-  id: string;
-  timestamp: string;
-  session_id: string;
-  user_id?: string | null;
-  access_point_id?: string | null;
-  model_original?: string | null;
-  model_mapped?: string | null;
-  status_code?: number | null;
-  duration_ms?: number | null;
-}
-
-interface LogDetail {
-  id: string;
-  timestamp: string;
-  session_id: string;
-  user_id?: string | null;
-  access_point_id?: string | null;
-  provider_id?: string | null;
-  account_id?: string | null;
-  model_original?: string | null;
-  model_mapped?: string | null;
-  status_code?: number | null;
-  duration_ms?: number | null;
-  error_message?: string | null;
-  request_headers?: Record<string, unknown> | null;
-  request_body?: Record<string, unknown> | null;
-  response_body?: string | null;
-}
-
-interface PaginatedResult<T> {
-  items: T[];
-  total: number;
-  page: number;
-  page_size: number;
-}
-
-interface LogFilters {
-  startTime?: string;
-  endTime?: string;
-  sessionId?: string;
-  userId?: string;
-  accessPointId?: string;
-  statusCode?: number | null;
-}
-
-// ─── Helpers ───
-
-function formatDateTime(ts: string | null | undefined): string {
-  if (!ts) return '-';
-  try {
-    return new Date(ts).toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  } catch {
-    return ts;
-  }
-}
-
-function formatDuration(ms: number | null | undefined): string {
-  if (ms === null || ms === undefined) return '-';
-  return `${ms} ms`;
-}
-
-function truncateMiddle(str: string | null | undefined, maxLen = 24): string {
-  if (!str) return '-';
-  if (str.length <= maxLen) return str;
-  const half = Math.floor((maxLen - 3) / 2);
-  return str.slice(0, half) + '...' + str.slice(-half);
-}
-
-function toIsoString(value: string | Date): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
-
-function buildQueryString(params: Record<string, string | number | boolean | null | undefined>): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== '' && value !== false) {
-      search.set(key, String(value));
-    }
-  }
-  return search.toString();
-}
 
 const STATUS_OPTIONS = [
   { value: 200, label: '200' },
@@ -330,24 +237,18 @@ export default function RequestLogPage(): ReactNode {
     <div>
       <Title heading={3} style={{ marginBottom: 16 }}>请求日志</Title>
 
-      {/* Filter Bar */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: 'wrap',
-          alignItems: 'flex-end',
-        }}
+      <LogFilterBar
+        users={users.map((user) => ({ id: user.id, label: user.display_name }))}
+        accessPoints={accessPoints.map((accessPoint) => ({ id: accessPoint.id, label: accessPoint.name }))}
+        userId={filters.userId}
+        accessPointId={filters.accessPointId}
+        onDateChange={handleDateChange}
+        onUserChange={(userId) => setFilters((prev) => ({ ...prev, userId }))}
+        onAccessPointChange={(accessPointId) =>
+          setFilters((prev) => ({ ...prev, accessPointId }))
+        }
+        onReset={handleReset}
       >
-        <div>
-          <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>时间范围</Text>
-          <DatePicker
-            type="dateTimeRange"
-            onChange={handleDateChange}
-            style={{ width: 340 }}
-          />
-        </div>
         <div>
           <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>会话 ID</Text>
           <Input
@@ -358,44 +259,6 @@ export default function RequestLogPage(): ReactNode {
             }
             style={{ width: 180 }}
           />
-        </div>
-        <div>
-          <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>用户</Text>
-          <Select
-            placeholder="选择用户"
-            value={filters.userId}
-            onChange={(v) =>
-              setFilters((prev) => ({
-                ...prev,
-                userId: v == null ? undefined : String(v),
-              }))
-            }
-            style={{ width: 140 }}
-            showClear
-          >
-            {users.map((u) => (
-              <Select.Option key={u.id} value={u.id}>{u.display_name}</Select.Option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>接入点</Text>
-          <Select
-            placeholder="选择接入点"
-            value={filters.accessPointId}
-            onChange={(v) =>
-              setFilters((prev) => ({
-                ...prev,
-                accessPointId: v == null ? undefined : String(v),
-              }))
-            }
-            style={{ width: 140 }}
-            showClear
-          >
-            {accessPoints.map((ap) => (
-              <Select.Option key={ap.id} value={ap.id}>{ap.name}</Select.Option>
-            ))}
-          </Select>
         </div>
         <div>
           <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>状态码</Text>
@@ -416,8 +279,7 @@ export default function RequestLogPage(): ReactNode {
             ))}
           </Select>
         </div>
-        <Button onClick={handleReset}>重置</Button>
-      </div>
+      </LogFilterBar>
 
       {/* Log Table */}
       <Table
@@ -437,131 +299,12 @@ export default function RequestLogPage(): ReactNode {
         }
       />
 
-      {/* Detail Modal */}
-      <Modal
-        title="请求详情"
+      <LogDetailModal
         visible={detailModalVisible}
-        onCancel={closeDetail}
-        onOk={closeDetail}
-        width={900}
-        style={{ maxHeight: '80vh' }}
-        footer={
-          <Button type="primary" onClick={closeDetail}>关闭</Button>
-        }
-      >
-        {detailLoading ? (
-          <div style={{ textAlign: 'center', padding: 40 }}>
-            <Text type="secondary">加载中...</Text>
-          </div>
-        ) : detailData ? (
-          <div>
-            {/* Meta info */}
-            <div
-              style={{
-                background: 'var(--semi-color-fill-0)',
-                borderRadius: 8,
-                padding: 12,
-                marginBottom: 16,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-                fontSize: 13,
-              }}
-            >
-              <Text>
-                <strong>时间:</strong> {formatDateTime(detailData.timestamp)}
-              </Text>
-              <Text>
-                <strong>会话 ID:</strong>
-                {' '}
-                <span style={{ fontFamily: 'monospace', fontSize: 12 }}>
-                  {detailData.session_id}
-                </span>
-              </Text>
-              <Text>
-                <strong>模型:</strong> {detailData.model_original || '-'}
-                {' '}
-                &rarr;
-                {' '}
-                {detailData.model_mapped || '-'}
-              </Text>
-              <Text>
-                <strong>状态码:</strong>
-                {' '}
-                <Tag
-                  color={(detailData.status_code ?? 0) >= 400 ? 'red' : 'green'}
-                  size="small"
-                >
-                  {detailData.status_code ?? '-'}
-                </Tag>
-                <strong style={{ marginLeft: 16 }}>耗时:</strong>
-                {' '}
-                {formatDuration(detailData.duration_ms)}
-              </Text>
-              {detailData.error_message && (
-                <Text>
-                  <strong style={{ color: 'var(--semi-color-danger)' }}>错误:</strong>
-                  {' '}
-                  {detailData.error_message}
-                </Text>
-              )}
-            </div>
-
-            {/* Request Headers */}
-            <Text strong style={{ display: 'block', marginBottom: 4 }}>请求头:</Text>
-            <pre
-              style={{
-                background: 'var(--semi-color-fill-0)',
-                padding: 12,
-                borderRadius: 4,
-                fontSize: 12,
-                overflow: 'auto',
-                maxHeight: 200,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-              }}
-            >
-              {JSON.stringify(detailData.request_headers, null, 2) || '(空)'}
-            </pre>
-
-            {/* Request Body */}
-            <Text strong style={{ display: 'block', marginTop: 12, marginBottom: 4 }}>请求体:</Text>
-            <pre
-              style={{
-                background: 'var(--semi-color-fill-0)',
-                padding: 12,
-                borderRadius: 4,
-                fontSize: 12,
-                overflow: 'auto',
-                maxHeight: 300,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-              }}
-            >
-              {JSON.stringify(detailData.request_body, null, 2) || '(空)'}
-            </pre>
-
-            {/* Response Body */}
-            <Text strong style={{ display: 'block', marginTop: 12, marginBottom: 4 }}>响应体:</Text>
-            <pre
-              style={{
-                background: 'var(--semi-color-fill-0)',
-                padding: 12,
-                borderRadius: 4,
-                fontSize: 12,
-                overflow: 'auto',
-                maxHeight: 400,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-              }}
-            >
-              {detailData.response_body || '(空)'}
-            </pre>
-          </div>
-        ) : (
-          <Empty description="暂无数据" />
-        )}
-      </Modal>
+        loading={detailLoading}
+        data={detailData}
+        onClose={closeDetail}
+      />
     </div>
   );
 }

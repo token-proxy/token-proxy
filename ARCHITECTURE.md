@@ -407,9 +407,9 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 维度 | 状态 |
 |------|------|
 | Phase 1 MVP | 已完成 |
-| 后端 | 103 个 .rs 文件, cargo check 零错误零警告 |
-| 前端 | 16 个 .ts/.tsx 源文件, tsc --noEmit 零错误 |
-| Schema 迁移 | 2 个迁移就绪 (9 表 + 1 物化视图) |
+| 后端 | 96 个 .rs 文件, cargo check 零错误零警告 |
+| 前端 | 15 个 .ts/.tsx 源文件, tsc --noEmit 零错误 |
+| Schema 迁移 | 初始迁移就绪 (8 表 + 1 物化视图) |
 | Docker 构建 | 多阶段构建就绪 |
 | 容器编排 | docker-compose.yml 就绪 |
 
@@ -419,4 +419,3 @@ docker compose up -d    # 启动 PostgreSQL + App
 |------|---------|
 | 2026-05-19 | 初始化架构文档，记录 DDD 四层架构、代理转发流程、安全设计和项目状态 |
 | 2026-05-20 | 应用层分区管理替代 pg_partman：新增 PartitionManager，迁移移除 pg_partman 依赖改为原生分区语法 + 种子分区，Config 新增 3 个分区配置项，main.rs 新增分区初始化和后台定时任务 |
-| 2026-05-23 | 用户 API key 认证体系：新增 UserApiKey 领域实体 + Repository trait + SeaOrm 实现 + UserApiKeyService，新增 user_api_keys 表迁移，新增 me_routes.rs (6 个当前用户端点)，ProxyService 新增 Bearer API key 认证 (SHA-256)，UserService 新增 profile 更新和密码修改 (含审计日志)，/ap/* 路由强制 API key 认证并记录 user_id 到日志，前端新增 ProfilePage 和个人设置菜单入口 |

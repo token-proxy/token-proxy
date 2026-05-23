@@ -1,38 +1,12 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { Card, Row, Col, Table, Typography, Tag, Spin } from '@douyinfe/semi-ui';
-import { IconArrowUp, IconArrowDown, IconMinus } from '@douyinfe/semi-icons';
+import { Card, Row, Col, Table, Typography } from '@douyinfe/semi-ui';
 import api from '../api';
+import StatCard from '../components/StatCard.tsx';
+import TrendChart from '../components/TrendChart.tsx';
+import type { OverviewData, TopAccessPoint, TopModel, TrendItem } from '../types/dashboard.ts';
+import { formatNumber } from '../utils/format.ts';
 
-const { Title, Text } = Typography;
-
-// --- Types for statistics data ---
-
-interface OverviewData {
-  total_requests: number;
-  total_requests_change?: number;
-  active_access_points: number;
-  active_access_points_change?: number;
-  active_users?: number;
-  active_users_change?: number;
-  error_rate?: number;
-  error_rate_change?: number;
-}
-
-interface TrendItem {
-  date: string;
-  count: number;
-}
-
-interface TopAccessPoint {
-  short_code: string;
-  name: string;
-  count: number;
-}
-
-interface TopModel {
-  model: string;
-  count: number;
-}
+const { Title } = Typography;
 
 // --- Mock data for fallback when API is unavailable ---
 
@@ -72,146 +46,6 @@ const MOCK_TOP_MODELS: TopModel[] = [
   { model: 'claude-3-sonnet-20240229', count: 12100 },
   { model: 'gemini-1.5-pro', count: 9800 },
 ];
-
-// --- Helper functions ---
-
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toLocaleString();
-}
-
-/**
- * Shows a colored tag indicating change percentage.
- * @param invert - When true, flips green/red (used for error rate where lower is better).
- */
-function ChangeIndicator({ value, invert }: { value?: number; invert?: boolean }) {
-  if (value === undefined || value === null || Number.isNaN(value)) return null;
-
-  const adjusted = invert ? -value : value;
-  const color = adjusted > 0 ? 'green' : adjusted < 0 ? 'red' : 'grey';
-  const Icon = adjusted > 0 ? IconArrowUp : adjusted < 0 ? IconArrowDown : IconMinus;
-  const label = value > 0 ? `+${value}%` : value < 0 ? `${value}%` : '0%';
-
-  return (
-    <Tag
-      color={color}
-      style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 2 }}
-    >
-      <Icon size="small" />
-      {label}
-    </Tag>
-  );
-}
-
-/**
- * A single stat card with title, large value, and change indicator.
- */
-function StatCard({
-  title,
-  value,
-  change,
-  loading,
-  invertChange,
-}: {
-  title: string;
-  value: string | number;
-  change?: number;
-  loading: boolean;
-  invertChange?: boolean;
-}) {
-  return (
-    <Card style={{ minHeight: 140, backgroundColor: 'var(--semi-color-bg-0)' }}>
-      <Text type="secondary" style={{ fontSize: 14 }}>
-        {title}
-      </Text>
-      {loading ? (
-        <div style={{ marginTop: 20 }}>
-          <Spin size="small" />
-        </div>
-      ) : (
-        <>
-          <Title heading={3} style={{ marginTop: 8, marginBottom: 4 }}>
-            {value}
-          </Title>
-          <ChangeIndicator value={change} invert={invertChange} />
-        </>
-      )}
-    </Card>
-  );
-}
-
-/**
- * Simple CSS-only bar chart for request trends.
- */
-function TrendChart({ data, loading }: { data: TrendItem[]; loading: boolean }) {
-  const maxCount = Math.max(...data.map((d) => d.count), 1);
-  const barMaxHeight = 180;
-
-  return (
-    <Card
-      title="请求趋势 (近 7 天)"
-      style={{ backgroundColor: 'var(--semi-color-bg-0)' }}
-    >
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px 0' }}>
-          <Spin />
-        </div>
-      ) : (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-end',
-            gap: 12,
-            paddingTop: 24,
-            paddingBottom: 4,
-          }}
-        >
-          {data.map((item) => {
-            const barHeight = Math.max((item.count / maxCount) * barMaxHeight, 4);
-            return (
-              <div
-                key={item.date}
-                style={{
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                }}
-              >
-                <Text
-                  type="secondary"
-                  style={{ fontSize: 11, marginBottom: 4, whiteSpace: 'nowrap' }}
-                >
-                  {item.count >= 1000
-                    ? `${(item.count / 1000).toFixed(1)}K`
-                    : item.count}
-                </Text>
-                <div
-                  style={{
-                    width: '100%',
-                    maxWidth: 40,
-                    height: barHeight,
-                    backgroundColor: 'var(--semi-color-primary)',
-                    borderRadius: '4px 4px 0 0',
-                    transition: 'height 0.3s ease',
-                    opacity: 0.85,
-                  }}
-                />
-                <Text
-                  type="secondary"
-                  style={{ fontSize: 12, marginTop: 8 }}
-                >
-                  {item.date}
-                </Text>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Card>
-  );
-}
 
 // --- Column definitions for top-N tables ---
 

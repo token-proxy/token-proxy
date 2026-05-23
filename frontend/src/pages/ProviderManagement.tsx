@@ -6,6 +6,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { IconEyeOpened, IconEyeClosedSolid } from '@douyinfe/semi-icons';
 import api from '../api.ts';
+import StatusToggle from '../components/StatusToggle.tsx';
 
 const { Title, Text } = Typography;
 
@@ -275,28 +276,13 @@ export default function ProviderManagement(): ReactNode {
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (_: string, record: Provider) => {
-        const enabled = record.status === 'enabled';
-        const operating = operatingIds.includes(`provider:${record.id}`);
-        const tag = (
-          <Tag
-            color={enabled ? 'green' : 'red'}
-            style={{ cursor: operating ? 'not-allowed' : 'pointer', opacity: operating ? 0.5 : 1 }}
-          >
-            {enabled ? '启用' : '禁用'}
-          </Tag>
-        );
-        if (operating) return tag;
-        return (
-          <Popconfirm
-            title={`确认${enabled ? '禁用' : '启用'}?`}
-            onConfirm={() => handleToggleEnabled(record)}
-            position="bottomRight"
-          >
-            {tag}
-          </Popconfirm>
-        );
-      },
+      render: (_: string, record: Provider) => (
+        <StatusToggle
+          enabled={record.status === 'enabled'}
+          loading={operatingIds.includes(`provider:${record.id}`)}
+          onToggle={() => handleToggleEnabled(record)}
+        />
+      ),
     },
     {
       title: '操作',
