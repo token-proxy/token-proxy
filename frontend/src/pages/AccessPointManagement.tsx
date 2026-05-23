@@ -269,7 +269,7 @@ export default function AccessPointManagement(): ReactNode {
     {
       title: '映射规则数',
       key: 'mapping_count',
-      width: 100,
+      width: 120,
       render: (_: unknown, record: AccessPoint) =>
         record.model_mappings?.length ?? 0,
     },
