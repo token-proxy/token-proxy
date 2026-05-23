@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import {
-  Table, Button, Tag, Space, Popconfirm, SideSheet, Form,
+  Table, Button, Space, Popconfirm, SideSheet, Form,
   Toast, Typography,
 } from '@douyinfe/semi-ui';
 import api from '../api.ts';
+import StatusToggle from '../components/StatusToggle.tsx';
+import { formatDate } from '../utils/format.ts';
 
 const { Title } = Typography;
 
@@ -127,17 +129,6 @@ export default function UserManagement(): ReactNode {
     }
   };
 
-  const formatDate = (dateStr: string): string => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
   const columns = [
     { title: '用户名', dataIndex: 'username', key: 'username' },
     { title: '姓名', dataIndex: 'display_name', key: 'display_name', width: 140 },
@@ -146,28 +137,14 @@ export default function UserManagement(): ReactNode {
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (_: string, record: UserResponse) => {
-        const enabled = record.status === 'enabled';
-        const operating = operatingIds.includes(record.id);
-        const tag = (
-          <Tag
-            color={enabled ? 'green' : 'red'}
-            style={{ cursor: operating ? 'not-allowed' : 'pointer', opacity: operating ? 0.5 : 1 }}
-          >
-            {enabled ? '启用' : '禁用'}
-          </Tag>
-        );
-        if (operating) return tag;
-        return (
-          <Popconfirm
-            title={`确认${enabled ? '禁用' : '启用'}此用户?`}
-            onConfirm={() => handleToggleStatus(record)}
-            position="bottomRight"
-          >
-            {tag}
-          </Popconfirm>
-        );
-      },
+      render: (_: string, record: UserResponse) => (
+        <StatusToggle
+          enabled={record.status === 'enabled'}
+          loading={operatingIds.includes(record.id)}
+          confirmTitle={`确认${record.status === 'enabled' ? '禁用' : '启用'}此用户?`}
+          onToggle={() => handleToggleStatus(record)}
+        />
+      ),
     },
     {
       title: '创建时间',
