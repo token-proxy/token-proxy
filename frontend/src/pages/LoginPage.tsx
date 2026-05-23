@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Card, Form, Button, Toast, Typography } from '@douyinfe/semi-ui';
 
@@ -12,12 +12,15 @@ interface LoginFormValues {
 export default function LoginPage(): ReactNode {
   const navigate = useNavigate();
   const token = localStorage.getItem('access_token');
+  const [submitting, setSubmitting] = useState(false);
 
   if (token) {
     return <Navigate to="/dashboard" replace />;
   }
 
   const handleSubmit = async (values: LoginFormValues) => {
+    if (submitting) return;
+    setSubmitting(true);
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -41,6 +44,8 @@ export default function LoginPage(): ReactNode {
       navigate('/dashboard', { replace: true });
     } catch {
       Toast.error('网络错误');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -70,7 +75,7 @@ export default function LoginPage(): ReactNode {
             placeholder="请输入密码"
             rules={[{ required: true, message: '请输入密码' }]}
           />
-          <Button type="primary" htmlType="submit" block style={{ marginTop: 16 }}>
+          <Button type="primary" htmlType="submit" loading={submitting} block style={{ marginTop: 16 }}>
             登录
           </Button>
         </Form>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import {
   Table, Button, Tag, Space, Popconfirm, SideSheet,
   Toast, Typography, Select, Input,
@@ -53,6 +53,20 @@ export default function AccessPointManagement(): ReactNode {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [editingAp, setEditingAp] = useState<AccessPoint | null>(null);
   const [saving, setSaving] = useState(false);
+  const [operatingIds, setOperatingIds] = useState<string[]>([]);
+  const [copyingUrl, setCopyingUrl] = useState(false);
+  const operatingIdsRef = useRef<Set<string>>(new Set());
+
+  const setOperation = (key: string, operating: boolean) => {
+    const next = new Set(operatingIdsRef.current);
+    if (operating) {
+      next.add(key);
+    } else {
+      next.delete(key);
+    }
+    operatingIdsRef.current = next;
+    setOperatingIds([...next]);
+  };
 
   // Form state
   const [formData, setFormData] = useState<AccessPointFormData>({
@@ -206,16 +220,22 @@ export default function AccessPointManagement(): ReactNode {
   };
 
   const handleDelete = async (id: string) => {
+    if (operatingIdsRef.current.has(id)) return;
+    setOperation(id, true);
     try {
       await api.delete(`/api/access-points/${id}`);
       Toast.success('接入点已删除');
       loadAccessPoints();
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '删除失败');
+    } finally {
+      setOperation(id, false);
     }
   };
 
   const handleToggleEnabled = async (ap: AccessPoint) => {
+    if (operatingIdsRef.current.has(ap.id)) return;
+    setOperation(ap.id, true);
     const nextStatus = ap.status === 'enabled' ? 'disabled' : 'enabled';
     try {
       await api.put(`/api/access-points/${ap.id}`, { status: nextStatus });
@@ -223,17 +243,24 @@ export default function AccessPointManagement(): ReactNode {
       loadAccessPoints();
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '操作失败');
+    } finally {
+      setOperation(ap.id, false);
     }
   };
 
-  const copyAccessUrl = (shortCode: string) => {
+  const copyAccessUrl = async (shortCode: string) => {
+    if (copyingUrl) return;
+    setCopyingUrl(true);
     const baseUrl = `${window.location.protocol}//${window.location.host}`;
     const url = `${baseUrl}/ap/${shortCode}`;
-    navigator.clipboard.writeText(url).then(() => {
+    try {
+      await navigator.clipboard.writeText(url);
       Toast.success('接入 URL 已复制');
-    }).catch(() => {
+    } catch {
       Toast.error('复制失败');
-    });
+    } finally {
+      setCopyingUrl(false);
+    }
   };
 
   const columns = [
@@ -254,15 +281,23 @@ export default function AccessPointManagement(): ReactNode {
       width: 100,
       render: (_: string, record: AccessPoint) => {
         const enabled = record.status === 'enabled';
+        const operating = operatingIds.includes(record.id);
+        const tag = (
+          <Tag
+            color={enabled ? 'green' : 'red'}
+            style={{ cursor: operating ? 'not-allowed' : 'pointer', opacity: operating ? 0.5 : 1 }}
+          >
+            {enabled ? '启用' : '禁用'}
+          </Tag>
+        );
+        if (operating) return tag;
         return (
           <Popconfirm
             title={`确认${enabled ? '禁用' : '启用'}?`}
             onConfirm={() => handleToggleEnabled(record)}
             position="bottomRight"
           >
-            <Tag color={enabled ? 'green' : 'red'} style={{ cursor: 'pointer' }}>
-              {enabled ? '启用' : '禁用'}
-            </Tag>
+            {tag}
           </Popconfirm>
         );
       },
@@ -273,14 +308,18 @@ export default function AccessPointManagement(): ReactNode {
       width: 220,
       render: (_: unknown, record: AccessPoint) => (
         <Space>
-          <Button size="small" onClick={() => copyAccessUrl(record.short_code)}>复制 URL</Button>
+          <Button size="small" onClick={() => copyAccessUrl(record.short_code)} loading={copyingUrl}>
+            复制 URL
+          </Button>
           <Button size="small" onClick={() => openEditDrawer(record)}>编辑</Button>
           <Popconfirm
             title="确认删除此接入点?"
             onConfirm={() => handleDelete(record.id)}
             position="bottomRight"
           >
-            <Button size="small" type="danger">删除</Button>
+            <Button size="small" type="danger" loading={operatingIds.includes(record.id)}>
+              删除
+            </Button>
           </Popconfirm>
         </Space>
       ),

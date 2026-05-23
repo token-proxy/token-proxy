@@ -112,6 +112,10 @@ function truncateMiddle(str: string | null | undefined, maxLen = 16): string {
   return str.slice(0, half) + '...' + str.slice(-half);
 }
 
+function toIsoString(value: string | Date): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
 function buildQueryString(params: Record<string, string | number | boolean | null | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -231,7 +235,7 @@ export default function SessionLogPage(): ReactNode {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize] = useState(20);
   const [filters, setFilters] = useState<SessionListFilters>({});
 
   // Detail mode state
@@ -355,8 +359,8 @@ export default function SessionLogPage(): ReactNode {
     if (Array.isArray(value) && value.length === 2) {
       setFilters((prev) => ({
         ...prev,
-        startTime: value[0] ? value[0].toISOString() : undefined,
-        endTime: value[1] ? value[1].toISOString() : undefined,
+        startTime: value[0] ? toIsoString(value[0]) : undefined,
+        endTime: value[1] ? toIsoString(value[1]) : undefined,
       }));
     } else {
       setFilters((prev) => ({ ...prev, startTime: undefined, endTime: undefined }));
@@ -598,7 +602,7 @@ export default function SessionLogPage(): ReactNode {
           size="small"
           scroll={{ x: 'max-content' }}
           pagination={false}
-          expandedRowRender={(record: LogDetail) => (
+          expandedRowRender={(record?: LogDetail) => record ? (
             <div style={{ padding: 12 }}>
               <Text strong style={{ display: 'block', marginBottom: 4 }}>请求体:</Text>
               <pre
@@ -631,7 +635,7 @@ export default function SessionLogPage(): ReactNode {
                 {record.response_body || '(空)'}
               </pre>
             </div>
-          )}
+          ) : null}
         />
 
         {/* Raw Content Modal */}
@@ -800,10 +804,10 @@ export default function SessionLogPage(): ReactNode {
           total,
           onChange: handlePageChange,
         }}
-        onRow={(record: SessionSummary) => ({
+        onRow={(record?: SessionSummary) => record ? ({
           onClick: () => navigate(`/sessions/${encodeURIComponent(record.session_id)}`),
           style: { cursor: 'pointer' },
-        })}
+        }) : {}}
         empty={
           <Empty description={sessionsLoading ? '' : '暂无会话数据'} />
         }

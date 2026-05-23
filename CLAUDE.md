@@ -120,6 +120,7 @@ src/
 - 路由: react-router-dom v7 (BrowserRouter + Routes + AdminLayout)
 - 路由结构: `/login`, `/dashboard`, `/providers`, `/access-points`, `/sessions`, `/logs`, `/users`, `/settings`
 - 后端通信: `frontend/src/api.ts` (axios/fetch 封装)
+- **防重复点击**: 所有触发 API 调用或异步操作的按钮必须设置 `loading`/`disabled` 状态, 操作完成后才解除锁定。管理列表页使用 `operatingId` 实现行级按钮独立锁定
 
 ## 注意事项
 
