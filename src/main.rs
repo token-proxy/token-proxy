@@ -13,6 +13,7 @@ use token_proxy::application::services::log_service::LogService;
 use token_proxy::application::services::provider_service::ProviderService;
 use token_proxy::application::services::proxy_service::ProxyService;
 use token_proxy::application::services::user_service::UserService;
+use token_proxy::application::services::user_api_key_service::UserApiKeyService;
 use token_proxy::application::AppState;
 use token_proxy::config::Config;
 use token_proxy::domain::repositories::access_point_repository::AccessPointRepository;
@@ -22,7 +23,9 @@ use token_proxy::domain::repositories::log_repository::LogRepository;
 use token_proxy::domain::repositories::provider_repository::ProviderRepository;
 use token_proxy::domain::repositories::refresh_token_repository::RefreshTokenRepository;
 use token_proxy::domain::repositories::user_repository::UserRepository;
+use token_proxy::domain::repositories::user_api_key_repository::UserApiKeyRepository;
 use token_proxy::domain::services::encryption_service::EncryptionService;
+use token_proxy::infrastructure::persistence::repositories::user_api_key_repository::SeaOrmUserApiKeyRepository;
 use token_proxy::infrastructure::auth::jwt::JwtService;
 use token_proxy::infrastructure::encryption::aes256_gcm::Aes256GcmEncryptionService;
 use token_proxy::infrastructure::http_client::proxy_client::ProxyClient;
@@ -183,6 +186,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let audit_log_repo: Arc<dyn AuditLogRepository> =
         Arc::new(SeaOrmAuditLogRepository::new(db.clone()));
 
+    let user_api_key_repo: Arc<dyn UserApiKeyRepository> =
+        Arc::new(SeaOrmUserApiKeyRepository::new(db.clone()));
+
     // ─── 创建 Application Services ───
 
     let provider_service = Arc::new(ProviderService::new(
@@ -198,7 +204,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         encryption_service.clone(),
     ));
 
-    let user_service = Arc::new(UserService::new(user_repo.clone()));
+    let user_service = Arc::new(UserService::new(
+        user_repo.clone(),
+        audit_log_repo.clone(),
+    ));
 
     let access_point_service = Arc::new(AccessPointService::new(
         access_point_repo.clone(),
@@ -217,9 +226,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         provider_repo.clone(),
         account_repo.clone(),
         encryption_service.clone(),
+        user_api_key_repo.clone(),
     ));
 
     let log_service = Arc::new(LogService::new(log_repo.clone()));
+
+    let user_api_key_service = Arc::new(UserApiKeyService::new(
+        user_api_key_repo.clone(),
+        audit_log_repo.clone(),
+    ));
 
     // ─── 首次启动：创建默认 admin 用户 ───
 
@@ -262,6 +277,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         provider_service,
         account_service,
         user_service,
+        user_api_key_service,
         access_point_service,
         auth_service,
         proxy_service,

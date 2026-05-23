@@ -17,6 +17,7 @@ use services::auth_service::AuthService;
 use services::log_service::LogService;
 use services::provider_service::ProviderService;
 use services::proxy_service::ProxyService;
+use services::user_api_key_service::UserApiKeyService;
 use services::user_service::UserService;
 
 /// 应用全局共享状态
@@ -27,6 +28,7 @@ pub struct AppState {
     pub provider_service: Arc<ProviderService>,
     pub account_service: Arc<AccountService>,
     pub user_service: Arc<UserService>,
+    pub user_api_key_service: Arc<UserApiKeyService>,
     pub access_point_service: Arc<AccessPointService>,
     pub auth_service: Arc<AuthService>,
     pub proxy_service: Arc<ProxyService>,

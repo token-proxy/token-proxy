@@ -8,6 +8,7 @@ import UserManagement from './pages/UserManagement.tsx';
 import SessionLogPage from './pages/SessionLogPage.tsx';
 import RequestLogPage from './pages/RequestLogPage.tsx';
 import SettingsPage from './pages/SettingsPage.tsx';
+import ProfilePage from './pages/ProfilePage.tsx';
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
           <Route path="logs" element={<RequestLogPage />} />
           <Route path="users" element={<UserManagement />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings/profile" element={<ProfilePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
