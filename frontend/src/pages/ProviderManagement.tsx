@@ -41,7 +41,9 @@ export default function ProviderManagement(): ReactNode {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [saving, setSaving] = useState(false);
+  const [operatingIds, setOperatingIds] = useState<string[]>([]);
   const formRef = useRef<FormApi>(null);
+  const operatingIdsRef = useRef<Set<string>>(new Set());
 
   // 模型管理
   const [providerModels, setProviderModels] = useState<string[]>([]);
@@ -56,6 +58,17 @@ export default function ProviderManagement(): ReactNode {
   const [accountForm, setAccountForm] = useState({ name: '', api_key: '' });
   const [accountSaving, setAccountSaving] = useState(false);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
+
+  const setOperation = (key: string, operating: boolean) => {
+    const next = new Set(operatingIdsRef.current);
+    if (operating) {
+      next.add(key);
+    } else {
+      next.delete(key);
+    }
+    operatingIdsRef.current = next;
+    setOperatingIds([...next]);
+  };
 
   const loadProviders = useCallback(async () => {
     setLoading(true);
@@ -126,16 +139,24 @@ export default function ProviderManagement(): ReactNode {
   };
 
   const handleDelete = async (id: string) => {
+    const operationKey = `provider:${id}`;
+    if (operatingIdsRef.current.has(operationKey)) return;
+    setOperation(operationKey, true);
     try {
       await api.delete(`/api/providers/${id}`);
       Toast.success('Provider 已删除');
       loadProviders();
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '删除失败');
+    } finally {
+      setOperation(operationKey, false);
     }
   };
 
   const handleToggleEnabled = async (provider: Provider) => {
+    const operationKey = `provider:${provider.id}`;
+    if (operatingIdsRef.current.has(operationKey)) return;
+    setOperation(operationKey, true);
     const nextStatus = provider.status === 'enabled' ? 'disabled' : 'enabled';
     try {
       await api.put(`/api/providers/${provider.id}`, { status: nextStatus });
@@ -143,6 +164,8 @@ export default function ProviderManagement(): ReactNode {
       loadProviders();
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '操作失败');
+    } finally {
+      setOperation(operationKey, false);
     }
   };
 
@@ -216,12 +239,17 @@ export default function ProviderManagement(): ReactNode {
 
   const handleDeleteAccount = async (id: string) => {
     if (!selectedProviderId) return;
+    const operationKey = `account:${id}`;
+    if (operatingIdsRef.current.has(operationKey)) return;
+    setOperation(operationKey, true);
     try {
       await api.delete(`/api/providers/${selectedProviderId}/accounts/${id}`);
       Toast.success('Account 已删除');
       loadAccounts(selectedProviderId);
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '删除 Account 失败');
+    } finally {
+      setOperation(operationKey, false);
     }
   };
 
@@ -249,15 +277,23 @@ export default function ProviderManagement(): ReactNode {
       width: 100,
       render: (_: string, record: Provider) => {
         const enabled = record.status === 'enabled';
+        const operating = operatingIds.includes(`provider:${record.id}`);
+        const tag = (
+          <Tag
+            color={enabled ? 'green' : 'red'}
+            style={{ cursor: operating ? 'not-allowed' : 'pointer', opacity: operating ? 0.5 : 1 }}
+          >
+            {enabled ? '启用' : '禁用'}
+          </Tag>
+        );
+        if (operating) return tag;
         return (
           <Popconfirm
             title={`确认${enabled ? '禁用' : '启用'}?`}
             onConfirm={() => handleToggleEnabled(record)}
             position="bottomRight"
           >
-            <Tag color={enabled ? 'green' : 'red'} style={{ cursor: 'pointer' }}>
-              {enabled ? '启用' : '禁用'}
-            </Tag>
+            {tag}
           </Popconfirm>
         );
       },
@@ -274,7 +310,9 @@ export default function ProviderManagement(): ReactNode {
             onConfirm={() => handleDelete(record.id)}
             position="bottomRight"
           >
-            <Button size="small" type="danger">删除</Button>
+            <Button size="small" type="danger" loading={operatingIds.includes(`provider:${record.id}`)}>
+              删除
+            </Button>
           </Popconfirm>
         </Space>
       ),
@@ -313,7 +351,9 @@ export default function ProviderManagement(): ReactNode {
             onConfirm={() => handleDeleteAccount(record.id)}
             position="bottomRight"
           >
-            <Button size="small" type="danger">删除</Button>
+            <Button size="small" type="danger" loading={operatingIds.includes(`account:${record.id}`)}>
+              删除
+            </Button>
           </Popconfirm>
         </Space>
       ),

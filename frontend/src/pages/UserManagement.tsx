@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import {
   Table, Button, Tag, Space, Popconfirm, SideSheet, Form,
   Toast, Typography,
@@ -28,8 +28,21 @@ export default function UserManagement(): ReactNode {
   const [sideSheetVisible, setSideSheetVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<UserResponse | null>(null);
   const [saving, setSaving] = useState(false);
+  const [operatingIds, setOperatingIds] = useState<string[]>([]);
+  const operatingIdsRef = useRef<Set<string>>(new Set());
 
   const currentUsername = localStorage.getItem('username') || '';
+
+  const setOperation = (key: string, operating: boolean) => {
+    const next = new Set(operatingIdsRef.current);
+    if (operating) {
+      next.add(key);
+    } else {
+      next.delete(key);
+    }
+    operatingIdsRef.current = next;
+    setOperatingIds([...next]);
+  };
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -83,6 +96,8 @@ export default function UserManagement(): ReactNode {
   };
 
   const handleToggleStatus = async (user: UserResponse) => {
+    if (operatingIdsRef.current.has(user.id)) return;
+    setOperation(user.id, true);
     const newStatus = user.status === 'enabled' ? 'disabled' : 'enabled';
     try {
       await api.put(`/api/users/${user.id}`, {
@@ -93,16 +108,22 @@ export default function UserManagement(): ReactNode {
       loadUsers();
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '操作失败');
+    } finally {
+      setOperation(user.id, false);
     }
   };
 
   const handleDelete = async (id: string) => {
+    if (operatingIdsRef.current.has(id)) return;
+    setOperation(id, true);
     try {
       await api.delete(`/api/users/${id}`);
       Toast.success('用户已删除');
       loadUsers();
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '删除失败');
+    } finally {
+      setOperation(id, false);
     }
   };
 
@@ -125,17 +146,28 @@ export default function UserManagement(): ReactNode {
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (_: string, record: UserResponse) => (
-        <Popconfirm
-          title={`确认${record.status === 'enabled' ? '禁用' : '启用'}此用户?`}
-          onConfirm={() => handleToggleStatus(record)}
-          position="bottomRight"
-        >
-          <Tag color={record.status === 'enabled' ? 'green' : 'red'} style={{ cursor: 'pointer' }}>
-            {record.status === 'enabled' ? '启用' : '禁用'}
+      render: (_: string, record: UserResponse) => {
+        const enabled = record.status === 'enabled';
+        const operating = operatingIds.includes(record.id);
+        const tag = (
+          <Tag
+            color={enabled ? 'green' : 'red'}
+            style={{ cursor: operating ? 'not-allowed' : 'pointer', opacity: operating ? 0.5 : 1 }}
+          >
+            {enabled ? '启用' : '禁用'}
           </Tag>
-        </Popconfirm>
-      ),
+        );
+        if (operating) return tag;
+        return (
+          <Popconfirm
+            title={`确认${enabled ? '禁用' : '启用'}此用户?`}
+            onConfirm={() => handleToggleStatus(record)}
+            position="bottomRight"
+          >
+            {tag}
+          </Popconfirm>
+        );
+      },
     },
     {
       title: '创建时间',
@@ -159,7 +191,8 @@ export default function UserManagement(): ReactNode {
             <Button
               size="small"
               type="danger"
-              disabled={record.username === currentUsername}
+              disabled={record.username === currentUsername || operatingIds.includes(record.id)}
+              loading={operatingIds.includes(record.id)}
             >
               删除
             </Button>
