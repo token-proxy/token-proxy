@@ -40,6 +40,9 @@ async fn proxy_messages(
     headers: HeaderMap,
     body: String,
 ) -> Result<Response, AppError> {
+    // 0. 认证用户 API key（必须携带有效的 Authorization: Bearer <user_api_key>）
+    let user_id = state.proxy_service.authenticate_request(&headers).await?;
+
     // 1. 解析代理上下文（验证 AP/Provider/Account 状态）
     let ctx = state.proxy_service.resolve_context(&short_code).await?;
 
@@ -85,6 +88,7 @@ async fn proxy_messages(
             headers,
             session_id,
             model_original,
+            user_id,
         )
         .await
     } else {
@@ -96,12 +100,14 @@ async fn proxy_messages(
             headers,
             session_id,
             model_original,
+            user_id,
         )
         .await
     }
 }
 
 /// 非流式转发
+#[allow(clippy::too_many_arguments)]
 async fn handle_non_streaming_proxy(
     state: AppState,
     ctx: ProxyContext,
@@ -110,6 +116,7 @@ async fn handle_non_streaming_proxy(
     headers: HeaderMap,
     session_id: String,
     model_original: Option<String>,
+    user_id: Uuid,
 ) -> Result<Response, AppError> {
     let start = Instant::now();
     let body_bytes = Bytes::from(body.clone());
@@ -132,7 +139,7 @@ async fn handle_non_streaming_proxy(
             id: Uuid::new_v4(),
             timestamp: chrono::Utc::now(),
             session_id,
-            user_id: None,
+            user_id: Some(user_id),
             access_point_id: Some(ctx.access_point.id),
             provider_id: Some(ctx.provider.id),
             account_id: Some(ctx.account.id),
@@ -171,6 +178,7 @@ async fn handle_non_streaming_proxy(
 }
 
 /// SSE 流式转发
+#[allow(clippy::too_many_arguments)]
 async fn handle_streaming_proxy(
     state: AppState,
     ctx: ProxyContext,
@@ -179,6 +187,7 @@ async fn handle_streaming_proxy(
     headers: HeaderMap,
     session_id: String,
     model_original: Option<String>,
+    user_id: Uuid,
 ) -> Result<Response, AppError> {
     let body_bytes = Bytes::from(body.clone());
     let start = Instant::now();
@@ -229,13 +238,14 @@ async fn handle_streaming_proxy(
             let model_orig = model_original;
             let model_mapped_val = model_mapped;
             let req_body = body;
+            let uid = user_id;
 
             tokio::spawn(async move {
                 let log_entry = LogEntry {
                     id: Uuid::new_v4(),
                     timestamp: chrono::Utc::now(),
                     session_id: sess,
-                    user_id: None,
+                    user_id: Some(uid),
                     access_point_id: Some(ap_id),
                     provider_id: Some(provider_id),
                     account_id: Some(account_id),

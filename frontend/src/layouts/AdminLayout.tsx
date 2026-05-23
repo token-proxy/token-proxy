@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Nav, Avatar, Dropdown } from '@douyinfe/semi-ui';
 
@@ -23,7 +23,17 @@ export default function AdminLayout(): ReactNode {
   const navigate = useNavigate();
   const location = useLocation();
   const [selectedKeys, setSelectedKeys] = useState([location.pathname.replace(/\/$/, '') || '/dashboard']);
-  const displayName = localStorage.getItem('display_name') || localStorage.getItem('username') || '管理员';
+  const [displayName, setDisplayName] = useState(
+    localStorage.getItem('display_name') || localStorage.getItem('username') || '管理员',
+  );
+
+  useEffect(() => {
+    const syncDisplayName = () => {
+      setDisplayName(localStorage.getItem('display_name') || localStorage.getItem('username') || '管理员');
+    };
+    window.addEventListener('storage', syncDisplayName);
+    return () => window.removeEventListener('storage', syncDisplayName);
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
@@ -64,6 +74,8 @@ export default function AdminLayout(): ReactNode {
           <Dropdown
             render={
               <Dropdown.Menu>
+                <Dropdown.Item onClick={() => navigate('/settings/profile')}>个人设置</Dropdown.Item>
+                <Dropdown.Divider />
                 <Dropdown.Item onClick={handleLogout}>退出登录</Dropdown.Item>
               </Dropdown.Menu>
             }

@@ -6,3 +6,4 @@ pub mod refresh_token;
 pub mod log_metadata;
 pub mod log_content;
 pub mod audit_log;
+pub mod user_api_key;
