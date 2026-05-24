@@ -10,13 +10,14 @@ use axum::{
 };
 use bytes::Bytes;
 use futures::StreamExt;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::application::services::proxy_service::ProxyContext;
 use crate::application::AppState;
 use crate::domain::entities::log_entry::{LogContent, LogEntry};
+use crate::domain::services::model_mapping_service::{find_matching_mapping, resolve_final_model};
 use crate::domain::value_objects::model_mapping::ModelMapping;
 use crate::shared::error::AppError;
 
@@ -53,14 +54,45 @@ async fn proxy_messages(
     // 3. 提取请求中的原始 model 名称
     let model_original = extract_model_from_body(&body);
 
-    // 4. 应用模型映射
-    let (modified_body, _delta) = apply_mappings_to_body(
-        &body,
-        &ctx.access_point.model_mappings,
-        model_original.as_deref(),
+    // 4. 应用统一模型匹配逻辑
+    //    优先级：精确匹配 > 前缀匹配 > __unmatched__ 规则 > Provider.default_model > 原始模型
+    let requested_model = model_original.as_deref().unwrap_or("");
+    let mapped_model = if !requested_model.is_empty() {
+        find_matching_mapping(&ctx.access_point.model_mappings, requested_model)
+            .map(|m| m.target_model.clone())
+    } else {
+        None
+    };
+    let final_model = resolve_final_model(
+        mapped_model.clone(),
+        ctx.provider.default_model.as_deref(),
+        requested_model,
     );
 
-    // 5. 判断是否流式请求
+    // 5. 根据映射结果替换请求体中的 model 字段
+    let modified_body = if mapped_model.is_some() {
+        // 找到匹配映射，应用最终解析后的模型到请求体
+        let mapping = ModelMapping {
+            source_model: requested_model.to_string(),
+            target_model: final_model.clone(),
+            match_type: Default::default(),
+        };
+        let (new_body, _delta) = mapping.apply_to_body(&body);
+        new_body
+    } else if !requested_model.is_empty() && final_model != requested_model {
+        // 使用 Provider.default_model 兜底，替换请求体
+        let mapping = ModelMapping {
+            source_model: requested_model.to_string(),
+            target_model: final_model.clone(),
+            match_type: Default::default(),
+        };
+        let (new_body, _delta) = mapping.apply_to_body(&body);
+        new_body
+    } else {
+        body.clone()
+    };
+
+    // 6. 判断是否流式请求
     let is_streaming = modified_body.contains("\"stream\":true")
         || headers
             .get("accept")
@@ -68,7 +100,7 @@ async fn proxy_messages(
             .map(|s| s.contains("text/event-stream"))
             .unwrap_or(false);
 
-    // 6. 构造上游 URL
+    // 7. 构造上游 URL
     let base_url = ctx
         .provider
         .anthropic_base_url
@@ -85,6 +117,7 @@ async fn proxy_messages(
             headers,
             session_id,
             model_original,
+            final_model,
             user_id,
         )
         .await
@@ -97,6 +130,7 @@ async fn proxy_messages(
             headers,
             session_id,
             model_original,
+            final_model,
             user_id,
         )
         .await
@@ -113,10 +147,12 @@ async fn handle_non_streaming_proxy(
     headers: HeaderMap,
     session_id: String,
     model_original: Option<String>,
+    model_mapped: String,
     user_id: Uuid,
 ) -> Result<Response, AppError> {
     let start = Instant::now();
     let body_bytes = Bytes::from(body.clone());
+    let request_headers = headers_to_json(&headers);
 
     // 转发请求到上游
     let (status, resp_headers, resp_body) = state
@@ -125,7 +161,6 @@ async fn handle_non_streaming_proxy(
         .await?;
 
     let duration = start.elapsed();
-    let model_mapped = extract_model_from_body(&body);
 
     // 异步记录日志（不阻塞响应）
     let log_service = state.log_service.clone();
@@ -141,7 +176,7 @@ async fn handle_non_streaming_proxy(
             provider_id: Some(ctx.provider.id),
             account_id: Some(ctx.account.id),
             model_original,
-            model_mapped,
+            model_mapped: Some(model_mapped),
             status_code: Some(status.as_u16() as i16),
             duration_ms: Some(duration.as_millis() as i32),
             error_message: None,
@@ -150,7 +185,7 @@ async fn handle_non_streaming_proxy(
         if let Ok(log_id_val) = log_service.create_log_entry(&log_entry).await {
             let content = LogContent {
                 log_id: log_id_val,
-                request_headers: serde_json::json!({}),
+                request_headers,
                 request_body: serde_json::from_str(&body).unwrap_or_default(),
                 response_body: String::from_utf8_lossy(&resp_body_clone).to_string(),
             };
@@ -184,10 +219,12 @@ async fn handle_streaming_proxy(
     headers: HeaderMap,
     session_id: String,
     model_original: Option<String>,
+    model_mapped: String,
     user_id: Uuid,
 ) -> Result<Response, AppError> {
     let body_bytes = Bytes::from(body.clone());
     let start = Instant::now();
+    let request_headers = headers_to_json(&headers);
 
     // 获取上游流式响应
     let upstream_resp = state
@@ -197,7 +234,6 @@ async fn handle_streaming_proxy(
 
     let status = upstream_resp.status();
     let resp_headers = upstream_resp.headers().clone();
-    let model_mapped = extract_model_from_body(&body);
 
     let log_service = state.log_service.clone();
     let log_buffer: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
@@ -233,8 +269,9 @@ async fn handle_streaming_proxy(
             let account_id = ctx.account.id;
             let sess = session_id;
             let model_orig = model_original;
-            let model_mapped_val = model_mapped;
+            let model_mapped_val = Some(model_mapped);
             let req_body = body;
+            let req_headers = request_headers;
             let uid = user_id;
 
             tokio::spawn(async move {
@@ -256,7 +293,7 @@ async fn handle_streaming_proxy(
                 if let Ok(log_id_val) = log_svc.create_log_entry(&log_entry).await {
                     let content = LogContent {
                         log_id: log_id_val,
-                        request_headers: serde_json::json!({}),
+                        request_headers: req_headers,
                         request_body: serde_json::from_str(&req_body).unwrap_or_default(),
                         response_body: buf,
                     };
@@ -298,16 +335,26 @@ fn extract_model_from_body(body: &str) -> Option<String> {
     })
 }
 
-/// 应用模型映射到请求体
-fn apply_mappings_to_body(
-    body: &str,
-    mappings: &[ModelMapping],
-    requested_model: Option<&str>,
-) -> (String, i64) {
-    let model = requested_model.unwrap_or("");
-    if let Some(mapping) = mappings.iter().find(|m| m.source_model == model) {
-        mapping.apply_to_body(body)
-    } else {
-        (body.to_string(), 0)
+fn headers_to_json(headers: &HeaderMap) -> Value {
+    let mut map = Map::new();
+
+    for (key, value) in headers {
+        let name = key.as_str();
+        let header_value = if is_sensitive_header(name) {
+            Value::String("[REDACTED]".to_string())
+        } else {
+            Value::String(value.to_str().unwrap_or("[non-UTF8]").to_string())
+        };
+        map.insert(name.to_string(), header_value);
     }
+
+    Value::Object(map)
+}
+
+fn is_sensitive_header(name: &str) -> bool {
+    name.eq_ignore_ascii_case("authorization")
+        || name.eq_ignore_ascii_case("x-api-key")
+        || name.eq_ignore_ascii_case("proxy-authorization")
+        || name.eq_ignore_ascii_case("cookie")
+        || name.eq_ignore_ascii_case("set-cookie")
 }

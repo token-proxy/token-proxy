@@ -52,6 +52,7 @@ impl ProviderService {
             openai_base_url: provider.openai_base_url.clone(),
             anthropic_base_url: provider.anthropic_base_url.clone(),
             models: provider.models.clone(),
+            default_model: provider.default_model.clone(),
             status: provider.status.to_string(),
             created_at: provider.created_at,
             updated_at: provider.updated_at,
@@ -74,7 +75,12 @@ impl ProviderService {
         req: CreateProviderRequest,
         user_id: Option<Uuid>,
     ) -> Result<ProviderResponse, AppError> {
-        let provider = Provider::new(req.name, req.openai_base_url, req.anthropic_base_url)?;
+        let provider = Provider::new(
+            req.name,
+            req.openai_base_url,
+            req.anthropic_base_url,
+            req.default_model,
+        )?;
         let saved = self
             .provider_repo
             .save(&provider)
@@ -91,6 +97,7 @@ impl ProviderService {
                 "name": &provider.name,
                 "openai_base_url": &provider.openai_base_url,
                 "anthropic_base_url": &provider.anthropic_base_url,
+                "default_model": &provider.default_model,
             })),
         )
         .await;
@@ -128,6 +135,14 @@ impl ProviderService {
         }
         if let Some(models) = req.models {
             provider.models = models;
+        }
+        if let Some(default_model) = req.default_model {
+            let trimmed = default_model.trim().to_string();
+            provider.default_model = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            };
         }
         if let Some(status_str) = req.status {
             let status: Status = status_str

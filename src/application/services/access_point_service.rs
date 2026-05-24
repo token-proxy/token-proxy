@@ -10,7 +10,7 @@ use crate::domain::repositories::access_point_repository::AccessPointRepository;
 use crate::domain::repositories::account_repository::AccountRepository;
 use crate::domain::repositories::provider_repository::ProviderRepository;
 use crate::domain::value_objects::access_point_type::AccessPointType;
-use crate::domain::value_objects::model_mapping::ModelMapping;
+use crate::domain::value_objects::model_mapping::{MatchType, ModelMapping};
 use crate::domain::value_objects::short_code::ShortCode;
 use crate::domain::value_objects::status::Status;
 use crate::shared::error::AppError;
@@ -41,6 +41,7 @@ impl AccessPointService {
             .map(|m| ModelMappingDto {
                 source_model: m.source_model.clone(),
                 target_model: m.target_model.clone(),
+                match_type: m.match_type.as_str().to_string(),
             })
             .collect();
 
@@ -115,8 +116,11 @@ impl AccessPointService {
             return Err(AppError::Conflict("关联的账号已被禁用".to_string()));
         }
 
-        // 默认接入类型为 Anthropic
-        let api_type = AccessPointType::Anthropic;
+        // 解析接入类型，默认 Anthropic
+        let api_type = match req.api_type {
+            Some(ref t) => t.parse::<AccessPointType>()?,
+            None => AccessPointType::Anthropic,
+        };
 
         let mut access_point = AccessPoint::new(
             req.name,
@@ -131,9 +135,13 @@ impl AccessPointService {
         if let Some(mappings) = req.model_mappings {
             access_point.model_mappings = mappings
                 .into_iter()
-                .map(|m| ModelMapping {
-                    source_model: m.source_model,
-                    target_model: m.target_model,
+                .map(|m| {
+                    let match_type = MatchType::from_str_value(&m.match_type).unwrap_or_default();
+                    ModelMapping {
+                        source_model: m.source_model,
+                        target_model: m.target_model,
+                        match_type,
+                    }
                 })
                 .collect();
         }
@@ -196,9 +204,13 @@ impl AccessPointService {
         if let Some(mappings) = req.model_mappings {
             ap.model_mappings = mappings
                 .into_iter()
-                .map(|m| ModelMapping {
-                    source_model: m.source_model,
-                    target_model: m.target_model,
+                .map(|m| {
+                    let match_type = MatchType::from_str_value(&m.match_type).unwrap_or_default();
+                    ModelMapping {
+                        source_model: m.source_model,
+                        target_model: m.target_model,
+                        match_type,
+                    }
                 })
                 .collect();
         }
