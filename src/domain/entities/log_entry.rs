@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// 日志条目实体，记录每次代理请求的元数据
+/// 日志条目实体，记录每次代理请求的元数据和可展示摘要
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     pub id: Uuid,
@@ -17,6 +17,23 @@ pub struct LogEntry {
     pub status_code: Option<i16>,
     pub duration_ms: Option<i32>,
     pub error_message: Option<String>,
+    pub request_index: i32,
+    pub client_session_id: Option<String>,
+    pub client_app: Option<String>,
+    pub client_user_agent: Option<String>,
+    pub conversation_source: String,
+    pub agent_id: Option<String>,
+    pub agent_type: Option<String>,
+    pub parent_agent_tool_use_id: Option<String>,
+    pub request_kind: Option<String>,
+    pub primary_tool_name: Option<String>,
+    pub message_preview: Option<String>,
+    pub message_full: Option<String>,
+    pub response_preview: Option<String>,
+    pub has_thinking: bool,
+    pub has_tool_use: bool,
+    pub has_error: bool,
+    pub raw_content_available: bool,
 }
 
 /// 日志内容实体，记录请求和响应的完整数据
@@ -26,4 +43,92 @@ pub struct LogContent {
     pub request_headers: serde_json::Value,
     pub request_body: serde_json::Value,
     pub response_body: String,
+}
+
+impl Default for LogEntry {
+    fn default() -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            session_id: String::new(),
+            user_id: None,
+            access_point_id: None,
+            provider_id: None,
+            account_id: None,
+            model_original: None,
+            model_mapped: None,
+            status_code: None,
+            duration_ms: None,
+            error_message: None,
+            request_index: 0,
+            client_session_id: None,
+            client_app: None,
+            client_user_agent: None,
+            conversation_source: "unknown".to_string(),
+            agent_id: None,
+            agent_type: None,
+            parent_agent_tool_use_id: None,
+            request_kind: None,
+            primary_tool_name: None,
+            message_preview: None,
+            message_full: None,
+            response_preview: None,
+            has_thinking: false,
+            has_tool_use: false,
+            has_error: false,
+            raw_content_available: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogConversationEvent {
+    pub id: Uuid,
+    pub log_id: Uuid,
+    pub session_id: String,
+    pub timestamp: DateTime<Utc>,
+    pub request_index: i32,
+    pub event_index: i32,
+    pub parent_event_id: Option<Uuid>,
+    pub parent_tool_use_id: Option<String>,
+    pub source: String,
+    pub role: String,
+    pub event_type: String,
+    pub agent_id: Option<String>,
+    pub agent_type: Option<String>,
+    pub tool_use_id: Option<String>,
+    pub tool_name: Option<String>,
+    pub title: Option<String>,
+    pub content: Option<String>,
+    pub content_preview: Option<String>,
+    pub thinking_content: Option<String>,
+    pub hidden_content: Option<serde_json::Value>,
+    pub display_payload: Option<serde_json::Value>,
+    pub confidence: i16,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogTokenUsage {
+    pub id: Uuid,
+    pub log_id: Uuid,
+    pub session_id: String,
+    pub timestamp: DateTime<Utc>,
+    pub user_id: Option<Uuid>,
+    pub access_point_id: Option<Uuid>,
+    pub provider_id: Option<Uuid>,
+    pub account_id: Option<Uuid>,
+    pub model_original: Option<String>,
+    pub model_mapped: Option<String>,
+    pub conversation_source: Option<String>,
+    pub agent_id: Option<String>,
+    pub agent_type: Option<String>,
+    pub input_tokens: i32,
+    pub output_tokens: i32,
+    pub cache_creation_input_tokens: i32,
+    pub cache_read_input_tokens: i32,
+    pub thinking_tokens: i32,
+    pub total_tokens: i32,
+    pub raw_usage: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
 }

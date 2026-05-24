@@ -1,7 +1,9 @@
 pub mod access_point_repository;
 pub mod account_repository;
 pub mod audit_log_repository;
+pub mod log_conversation_event_repository;
 pub mod log_repository;
+pub mod log_token_usage_repository;
 pub mod provider_repository;
 pub mod refresh_token_repository;
 pub mod user_api_key_repository;

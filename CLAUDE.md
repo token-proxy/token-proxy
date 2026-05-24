@@ -46,7 +46,7 @@ src/
 - docker-compose.yml (pgvector/pgvector:pg17 + app)
 - 特性亮点: Provider.default_model (从 models 列表选择)、模型映射 MatchType (exact/prefix)、统一模型匹配优先级、AccessPoint.api_type、DEFAULT_MODEL_SENTINEL 哨兵值
 
-## 数据库 Schema (9 个核心表)
+## 数据库 Schema (11 个核心表)
 
 | 表 | 说明 |
 |---|---|
@@ -56,8 +56,10 @@ src/
 | user_api_keys | 用户 API key (SHA-256 哈希存储, 支持吊销) |
 | access_points | 接入点 (短码、api_type、模型映射、跨聚合引用 Provider+Account) |
 | refresh_tokens | JWT 刷新令牌 |
-| log_metadata | 代理日志元数据 (PartitionManager 按月分区) |
-| log_contents | 代理日志内容 (JSON 请求/响应) |
+| log_metadata | 代理日志元数据和可展示摘要 (PartitionManager 按月分区) |
+| log_contents | 代理日志原始内容 (请求头、请求体、响应体, 按需查看) |
+| log_conversation_events | 会话详情事件流 (用户消息、thinking、tool_use、Agent 调用等) |
+| log_token_usage | token 用量统计 (input/output/cache/thinking/total) |
 | audit_logs | 操作审计日志 |
 
 - 物化视图: `daily_request_stats` (按天聚合统计, 含请求量/平均耗时/错误数)
@@ -70,7 +72,7 @@ src/
 - **加密**: AES-256-GCM (ENCRYPTION_KEY 环境变量 64 hex chars = 32 字节)
 - **密码**: argon2id
 - **分区**: PartitionManager 应用层管理, 按月 `RANGE (timestamp)`, 依赖原生 PostgreSQL 分区, 支持多副本 advisory lock 防冲突
-- **代理**: SSE 流式逐块转发 + 异步日志写入
+- **代理**: SSE 流式逐块转发 + 异步日志写入; 写日志时同步解析 Claude Code 请求头、请求体、SSE 响应、thinking、tool_use 和 usage, 将可展示摘要写入 `log_metadata`, 将会话事件写入 `log_conversation_events`, 将 token 统计写入 `log_token_usage`, 原始请求 / 响应仅保存在 `log_contents` 中按需查看
 - **路由**: 公开路径 (`/api/auth/*`, `/ap/*`, `/api/health`) 跳过 JWT 认证
 - **接入点认证**: `/ap/*` 路径跳过 JWT 中间件, 但在 ProxyService 中强制验证用户 API key (`Authorization: Bearer <user_api_key>`), 通过 SHA-256 哈希匹配后记录 user_id
 - **代理 Header 构造**: `ProxyClient` 构建新的上游请求时, 入站 `authorization` 只用于用户 API key 认证, 不参与上游请求构造; 上游请求使用解密后的账号 API key 设置 `Authorization: Bearer <account_key>`; 仅复制 `x-*` 自定义头、`accept`、`content-type` 等业务头, 并排除入站 `authorization` / `x-api-key`
@@ -138,6 +140,7 @@ src/
 - **主题切换**: 使用 `useTheme` hook + `ThemeProvider` (src-dashboard/hooks/useTheme.ts) 管理主题状态, 通过 localStorage key `theme_mode` 持久化, 支持 light / dark / system 三种模式; `ThemeToggle` 组件以 Dropdown 菜单形式展示在 AdminLayout 顶栏
 - **ModelMappingEditor**: 接入点表单中的模型映射编辑器, 仅保留一个"添加映射"按钮。源模型使用 Semi Select, 支持搜索和 allowCreate; 选项以 Semi Tag 前缀显示匹配类型 (`精准匹配`/`模式匹配`); 源模型选项包括: `__unmatched__`(模式匹配)、Claude Opus/Sonnet/Haiku 预设(模式匹配)、以及 Provider 的 models 列表(精准匹配)。`__unmatched__` 和 Claude 家族源模型保存为 `prefix` 匹配类型, 普通值/自定义输入值保存为 `exact` 匹配类型。目标模型使用 Semi Select, 选项包含 Provider.models 和 `__default_model__` 哨兵, 不允许 allowCreate; 选择 `__default_model__` 时 UI 显示为"默认模型 (实际模型)", 动态解析 Provider 当前 default_model 并展示; 当源模型为 `__unmatched__` 时, 目标模型自动填充为 `__default_model__`
 - **AccessPointDrawer 映射管理**: 接入点创建/编辑时选择 Provider 后, 会请求 `GET /api/providers/{id}` 刷新 Provider 的 models 和 default_model 列表; 创建态选择带默认模型的 Provider 时自动预填一条 `__unmatched__ -> __default_model__` 的映射规则。保存接入点时过滤映射, target_model 必须属于 Provider.models 或等于 `__default_model__` 哨兵
+- **日志前端展示**: 请求日志列表优先展示 `log_metadata.message_preview`, 内容超出时用 Semi Tooltip 展示 `message_full`; 会话详情页使用 `log_conversation_events` 渲染 `ClaudeSessionTimeline`, 默认不批量读取 `log_contents`; 点击“原始内容”时再请求 `/api/logs/{id}/raw`
 
 ## 注意事项
 
@@ -147,6 +150,7 @@ src/
 - 迁移文件在 `src/migrations/` 目录下, 使用 `sea-orm-migration`
 - 分区管理由 `src/infrastructure/persistence/partition_manager.rs` 的 PartitionManager 处理, 通过 pg_inherits 系统表管理分区
 - `log_metadata` 分区表的 `PRIMARY KEY` 必须包含 `timestamp`
+- 日志默认展示不得依赖 `log_contents`; `log_metadata` 和 `log_conversation_events` 必须足够支撑请求日志列表和会话详情页, `log_contents` 仅用于原始明细弹窗
 - `__unmatched__` 哨兵是模型映射中的特殊 source_model, 使用 `prefix` 匹配类型, 用于为所有未精确/前缀匹配的请求模型指定目标模型, 每个接入点最多一个。接入点创建时, Drawer 自动预填一条 `__unmatched__ -> __default_model__` 映射。保存接入点时过滤映射, target_model 必须属于 Provider.models 或等于 `__default_model__` 哨兵
 - `api_type` 枚举的实际范围在 `AccessPointType` 值对象中定义, 新增类型需要同步修改 Rust 枚举 + 数据库列约束 + 前端 Select 选项
 
@@ -159,7 +163,10 @@ src/
 | `src/config.rs` | 环境变量配置加载 |
 | `src/application/mod.rs` | AppState 定义 |
 | `src/shared/error.rs` | AppError 错误类型 |
-| `src/application/services/proxy_service.rs` | 核心代理转发引擎 (含用户 API key 认证) |
+| `src/application/services/proxy_service.rs` | 核心代理上下文解析引擎 (含用户 API key 认证) |
+| `src/application/services/log_service.rs` | 日志写入和查询服务 (metadata/content/events/token usage 编排) |
+| `src/infrastructure/parsers/log_content.rs` | 请求体、SSE、thinking、tool_use 和 token usage 解析器 |
+| `src/infrastructure/parsers/claude_code.rs` | Claude Code 请求头解析器 (`x-claude-code-session-id` / `x-claude-code-agent-id`) |
 | `src/application/services/user_api_key_service.rs` | 用户 API key 管理服务 |
 | `src/presentation/routes/me_routes.rs` | 个人设置路由 (`/api/users/me/*`) |
 | `src/migrations/m20260101_000001_initial.rs` | 初始数据库 Schema |
@@ -181,6 +188,7 @@ src/
 | `src-dashboard/components/ModelMappingEditor.tsx` | 模型映射编辑器 (单个添加按钮, 源 Select + search + allowCreate + label 显示匹配类型, 含未匹配/Claude 预设/Provider 模型, Claude 预设存 prefix 其余存 exact; 目标 Select 仅含 Provider models, 不允许 allowCreate) |
 | `src-dashboard/components/AccessPointDrawer.tsx` | 接入点创建/编辑抽屉 (选择 Provider 后有 default_model 则自动预填 `__unmatched__ -> default_model` 映射; 保存时过滤 target_model 不在 Provider.models 的映射) |
 | `src-dashboard/components/ThemeToggle.tsx` | 主题切换组件 (light/dark/system) |
+| `src-dashboard/components/ClaudeSessionTimeline.tsx` | 会话事件流展示组件 (用户消息、thinking、tool_use、Agent 调用) |
 | `src-dashboard/hooks/useTheme.ts` | 主题 Hook + ThemeProvider |
 | `src-dashboard/hooks/useAccessPoints.ts` | 接入点管理 Hook (含 api_type 传递) |
 | `src-dashboard/types/accessPoint.ts` | 接入点类型定义 (含 api_type, ModelMapping) |

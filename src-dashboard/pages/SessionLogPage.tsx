@@ -7,20 +7,19 @@ import {
 import { IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import api from '../api.ts';
-import ChatBubbleView from '../components/ChatBubbleView.tsx';
+import ClaudeSessionTimeline from '../components/ClaudeSessionTimeline.tsx';
 import LogFilterBar from '../components/LogFilterBar.tsx';
 import RawContentModal from '../components/RawContentModal.tsx';
-import SessionInfoHeader from '../components/SessionInfoHeader.tsx';
 import type {
   AccessPointItem,
+  ConversationEvent,
   LogDetail,
-  LogSummary,
   PaginatedResult,
   SessionListFilters,
   SessionSummary,
   UserItem,
 } from '../types/log.ts';
-import { formatDateTime, formatDuration, truncate, truncateMiddle } from '../utils/format.ts';
+import { formatDateTime, truncate, truncateMiddle } from '../utils/format.ts';
 import { buildQueryString, toIsoString } from '../utils/query.ts';
 
 const { Title, Text } = Typography;
@@ -44,9 +43,8 @@ export default function SessionLogPage(): ReactNode {
   const [filters, setFilters] = useState<SessionListFilters>({});
 
   // Detail mode state
-  const [sessionLogs, setSessionLogs] = useState<LogSummary[]>([]);
+  const [sessionEvents, setSessionEvents] = useState<ConversationEvent[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [logDetails, setLogDetails] = useState<Record<string, LogDetail>>({});
   const [rawModalVisible, setRawModalVisible] = useState(false);
   const [rawModalTitle, setRawModalTitle] = useState('');
   const [rawModalContent, setRawModalContent] = useState('');
@@ -111,26 +109,13 @@ export default function SessionLogPage(): ReactNode {
   const loadSessionDetail = useCallback(async (sid: string) => {
     setDetailLoading(true);
     try {
-      const summaries = await api.get<LogSummary[]>(
+      const events = await api.get<ConversationEvent[]>(
         `/api/logs/sessions/${encodeURIComponent(sid)}`,
       );
-      setSessionLogs(summaries);
-
-      // Load detail content in parallel
-      const detailResults = await Promise.allSettled(
-        summaries.map((s) => api.get<LogDetail>(`/api/logs/${s.id}`)),
-      );
-      const details: Record<string, LogDetail> = {};
-      for (const result of detailResults) {
-        if (result.status === 'fulfilled' && result.value) {
-          details[result.value.id] = result.value;
-        }
-      }
-      setLogDetails(details);
+      setSessionEvents(events);
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '加载会话详情失败');
-      setSessionLogs([]);
-      setLogDetails({});
+      setSessionEvents([]);
     } finally {
       setDetailLoading(false);
     }
@@ -141,17 +126,31 @@ export default function SessionLogPage(): ReactNode {
       loadSessionDetail(sessionId);
     }
     return () => {
-      setSessionLogs([]);
-      setLogDetails({});
+      setSessionEvents([]);
     };
   }, [sessionId, loadSessionDetail]);
 
   // ─── Modal helpers ───
 
-  const openRawModal = (title: string, content: string) => {
-    setRawModalTitle(title);
-    setRawModalContent(content);
+  const openRawModal = async (logId: string) => {
+    setRawModalTitle('原始日志内容');
+    setRawModalContent('加载中...');
     setRawModalVisible(true);
+    try {
+      const detail = await api.get<LogDetail>(`/api/logs/${logId}/raw`);
+      setRawModalContent([
+        '=== 请求头 ===',
+        JSON.stringify(detail.request_headers, null, 2),
+        '',
+        '=== 请求体 ===',
+        JSON.stringify(detail.request_body, null, 2),
+        '',
+        '=== 响应体 ===',
+        detail.response_body || '(空)',
+      ].join('\n'));
+    } catch (err) {
+      setRawModalContent(err instanceof Error ? err.message : '加载原始内容失败');
+    }
   };
 
   const closeRawModal = () => {
@@ -184,12 +183,10 @@ export default function SessionLogPage(): ReactNode {
   // ─── Detail View ───
 
   if (sessionId) {
-    const sortedDetails = sessionLogs
-      .map((s) => logDetails[s.id])
-      .filter((d): d is LogDetail => !!d)
-      .sort(
-        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-      );
+    const sortedEvents = [...sessionEvents].sort((a, b) => {
+      if (a.request_index !== b.request_index) return a.request_index - b.request_index;
+      return a.event_index - b.event_index;
+    });
 
     return (
       <div>
@@ -207,11 +204,28 @@ export default function SessionLogPage(): ReactNode {
           </Button>
         </div>
 
-        <SessionInfoHeader
-          sessionId={sessionId}
-          sessionLogs={sessionLogs}
-          userMap={userMap}
-        />
+        <div
+          style={{
+            background: 'var(--semi-color-fill-0)',
+            borderRadius: 8,
+            padding: 16,
+            marginBottom: 24,
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Text>
+              <strong>会话 ID:</strong>{' '}
+              <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{sessionId}</span>
+            </Text>
+            <Text><strong>事件总数:</strong> {sortedEvents.length}</Text>
+            {sortedEvents.length > 0 && (
+              <Text>
+                <strong>时间范围:</strong>{' '}
+                {formatDateTime(sortedEvents[0].timestamp)} ~ {formatDateTime(sortedEvents[sortedEvents.length - 1].timestamp)}
+              </Text>
+            )}
+          </div>
+        </div>
 
         <Title heading={6} style={{ marginBottom: 16 }}>对话内容</Title>
         {detailLoading ? (
@@ -219,21 +233,20 @@ export default function SessionLogPage(): ReactNode {
             <Spin />
             <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>加载对话内容中...</Text>
           </div>
-        ) : sortedDetails.length === 0 ? (
+        ) : sortedEvents.length === 0 ? (
           <Empty description="暂无对话数据" />
         ) : (
-          <ChatBubbleView details={sortedDetails} onOpenRaw={openRawModal} />
+          <ClaudeSessionTimeline events={sortedEvents} onOpenRaw={openRawModal} />
         )}
 
-        {/* Request Rounds Table */}
-        <Title heading={6} style={{ marginBottom: 16 }}>请求轮次</Title>
+        <Title heading={6} style={{ marginBottom: 16 }}>事件摘要</Title>
         <Table
           columns={[
             {
-              title: '轮次',
+              title: '序号',
               key: 'index',
-              width: 60,
-              render: (_: unknown, _r: LogDetail, i: number) => i + 1,
+              width: 70,
+              render: (_: unknown, _r: ConversationEvent, i: number) => i + 1,
             },
             {
               title: '时间',
@@ -242,66 +255,42 @@ export default function SessionLogPage(): ReactNode {
               render: (t: string) => formatDateTime(t),
             },
             {
-              title: '模型',
-              key: 'model',
-              render: (_: unknown, r: LogDetail) =>
-                `${r.model_original || '-'} → ${r.model_mapped || '-'}`,
-            },
-            {
-              title: '状态码',
-              dataIndex: 'status_code',
-              width: 100,
-              render: (code?: number | null) => (
-                <Tag color={(code ?? 0) >= 400 ? 'red' : 'green'}>{code ?? '-'}</Tag>
+              title: '来源',
+              key: 'source',
+              width: 120,
+              render: (_: unknown, r: ConversationEvent) => (
+                <Tag color={r.source === 'subagent' ? 'green' : 'blue'}>
+                  {r.source === 'subagent' ? '子代理' : '主代理'}
+                </Tag>
               ),
             },
             {
-              title: '耗时',
-              dataIndex: 'duration_ms',
-              width: 100,
-              render: (ms?: number | null) => formatDuration(ms),
+              title: '类型',
+              dataIndex: 'event_type',
+              width: 160,
+            },
+            {
+              title: '摘要',
+              key: 'summary',
+              render: (_: unknown, r: ConversationEvent) => truncate(r.content_preview || r.title || r.content || '', 100),
+            },
+            {
+              title: '操作',
+              key: 'actions',
+              width: 120,
+              render: (_: unknown, r: ConversationEvent) => (
+                <Button size="small" type="tertiary" onClick={() => openRawModal(r.log_id)}>
+                  原始内容
+                </Button>
+              ),
             },
           ]}
-          dataSource={sortedDetails}
+          dataSource={sortedEvents}
           rowKey="id"
           loading={detailLoading}
           size="small"
           scroll={{ x: 'max-content' }}
           pagination={false}
-          expandedRowRender={(record?: LogDetail) => record ? (
-            <div style={{ padding: 12 }}>
-              <Text strong style={{ display: 'block', marginBottom: 4 }}>请求体:</Text>
-              <pre
-                style={{
-                  background: 'var(--semi-color-fill-0)',
-                  padding: 12,
-                  borderRadius: 4,
-                  fontSize: 12,
-                  overflow: 'auto',
-                  maxHeight: 300,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-all',
-                }}
-              >
-                {JSON.stringify(record.request_body, null, 2) || '(空)'}
-              </pre>
-              <Text strong style={{ display: 'block', marginTop: 12, marginBottom: 4 }}>响应体:</Text>
-              <pre
-                style={{
-                  background: 'var(--semi-color-fill-0)',
-                  padding: 12,
-                  borderRadius: 4,
-                  fontSize: 12,
-                  overflow: 'auto',
-                  maxHeight: 300,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-all',
-                }}
-              >
-                {record.response_body || '(空)'}
-              </pre>
-            </div>
-          ) : null}
         />
 
         <RawContentModal

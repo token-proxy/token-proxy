@@ -30,6 +30,17 @@ export interface LogSummary {
   model_mapped?: string | null;
   status_code?: number | null;
   duration_ms?: number | null;
+  conversation_source: string;
+  agent_id?: string | null;
+  agent_type?: string | null;
+  request_kind?: string | null;
+  primary_tool_name?: string | null;
+  message_preview?: string | null;
+  message_full?: string | null;
+  response_preview?: string | null;
+  has_thinking: boolean;
+  has_tool_use: boolean;
+  raw_content_available: boolean;
 }
 
 export interface LogDetail {
@@ -48,6 +59,45 @@ export interface LogDetail {
   request_headers?: Record<string, unknown> | null;
   request_body?: Record<string, unknown> | null;
   response_body?: string | null;
+}
+
+export interface ConversationEvent {
+  id: string;
+  log_id: string;
+  session_id: string;
+  timestamp: string;
+  request_index: number;
+  event_index: number;
+  parent_event_id?: string | null;
+  parent_tool_use_id?: string | null;
+  source: string;
+  role: string;
+  event_type: string;
+  agent_id?: string | null;
+  agent_type?: string | null;
+  tool_use_id?: string | null;
+  tool_name?: string | null;
+  title?: string | null;
+  content?: string | null;
+  content_preview?: string | null;
+  thinking_content?: string | null;
+  hidden_content?: Record<string, unknown> | null;
+  display_payload?: Record<string, unknown> | null;
+  confidence: number;
+}
+
+export interface TokenUsage {
+  id: string;
+  log_id: string;
+  session_id: string;
+  timestamp: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  thinking_tokens: number;
+  total_tokens: number;
+  raw_usage?: Record<string, unknown> | null;
 }
 
 export interface PaginatedResult<T> {

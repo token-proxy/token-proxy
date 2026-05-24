@@ -34,16 +34,17 @@
 ```
 src/
 ├── domain/                 # 领域层 (零外部框架依赖)
-│   ├── entities/           # 7 个业务实体
+│   ├── entities/           # 7 个业务实体 (LogEntry 含内容、事件、token 用量实体)
 │   ├── value_objects/      # 6 个值对象 (新增 MatchType)
-│   ├── repositories/       # 8 个 Repository trait
+│   ├── repositories/       # Repository trait (含日志内容、事件和 token 用量)
 │   └── services/           # 2 个领域服务
 ├── application/            # 应用层 (用例编排, 依赖注入)
 │   ├── dto/                # 6 组 DTO
 │   ├── services/           # 8 个应用服务
 │   └── mod.rs              # AppState 全局共享状态
 ├── infrastructure/         # 基础设施层
-│   ├── persistence/        # SeaORM 实体 (10 个) + Repository 实现 (7 个)
+│   ├── persistence/        # SeaORM 实体 + Repository 实现 + 分区管理
+│   ├── parsers/            # Claude Code 请求头、SSE、消息摘要和 token usage 解析
 │   ├── encryption/         # AES-256-GCM 加密服务
 │   ├── auth/               # JWT 认证 + argon2 密码哈希
 │   └── http_client/        # reqwest 代理转发客户端
@@ -100,7 +101,7 @@ domain/
 | Provider | Account | - |
 | User | RefreshToken, UserApiKey | - |
 | AccessPoint | - | provider_id, account_id (Uuid) |
-| LogEntry | LogContent | user_id, access_point_id, provider_id, account_id (Uuid) |
+| LogEntry | LogContent, LogConversationEvent, LogTokenUsage | user_id, access_point_id, provider_id, account_id (Uuid) |
 
 ### 应用层 (application/)
 
@@ -123,7 +124,7 @@ application/
 │   ├── access_point_service.rs # 接入点管理用例 (含短码生成 + match_type 标准化: 创建/更新时对 __unmatched__ 和 Claude 家族源模型强制设置为 prefix)
 │   ├── auth_service.rs     # 认证用例 (登录/刷新/登出)
 │   ├── proxy_service.rs    # 核心代理转发用例 (含 Bearer API key 认证)
-│   └── log_service.rs      # 日志查询用例
+│   └── log_service.rs      # 日志写入 / 查询用例 (metadata、content、conversation events、token usage 编排)
 └── mod.rs                  # AppState 定义 (所有 Service 的引用容器)
 ```
 
@@ -142,8 +143,10 @@ infrastructure/
 │   │   ├── user.rs         # 映射 users 表
 │   │   ├── access_point.rs # 映射 access_points 表
 │   │   ├── refresh_token.rs # 映射 refresh_tokens 表
-│   │   ├── log_metadata.rs # 映射 log_metadata 表 (按月分区)
-│   │   ├── log_content.rs  # 映射 log_contents 表
+│   │   ├── log_metadata.rs # 映射 log_metadata 表 (按月分区, 含可展示摘要)
+│   │   ├── log_content.rs  # 映射 log_contents 表 (原始请求 / 响应)
+│   │   ├── log_conversation_event.rs # 映射 log_conversation_events 表
+│   │   ├── log_token_usage.rs # 映射 log_token_usage 表
 │   │   ├── audit_log.rs    # 映射 audit_logs 表
 │   │   └── user_api_key.rs # 映射 user_api_keys 表
 │   ├── partition_manager.rs # PartitionManager: 应用层分区自动管理

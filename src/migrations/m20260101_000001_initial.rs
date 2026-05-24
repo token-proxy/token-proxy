@@ -146,18 +146,35 @@ impl MigrationTrait for Migration {
             .execute_unprepared(
                 r#"
                 CREATE TABLE IF NOT EXISTS log_metadata (
-                    id              UUID NOT NULL,
-                    timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    session_id      VARCHAR(255) NOT NULL DEFAULT '',
-                    user_id         UUID,
-                    access_point_id UUID,
-                    provider_id     UUID,
-                    account_id      UUID,
-                    model_original  VARCHAR(255),
-                    model_mapped    VARCHAR(255),
-                    status_code     SMALLINT,
-                    duration_ms     INTEGER,
-                    error_message   TEXT,
+                    id                         UUID NOT NULL,
+                    timestamp                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    session_id                 VARCHAR(255) NOT NULL DEFAULT '',
+                    user_id                    UUID,
+                    access_point_id            UUID,
+                    provider_id                UUID,
+                    account_id                 UUID,
+                    model_original             VARCHAR(255),
+                    model_mapped               VARCHAR(255),
+                    status_code                SMALLINT,
+                    duration_ms                INTEGER,
+                    error_message              TEXT,
+                    request_index              INTEGER NOT NULL DEFAULT 0,
+                    client_session_id          VARCHAR(255),
+                    client_app                 VARCHAR(64),
+                    client_user_agent          TEXT,
+                    conversation_source        VARCHAR(32) NOT NULL DEFAULT 'unknown',
+                    agent_id                   VARCHAR(255),
+                    agent_type                 VARCHAR(64),
+                    parent_agent_tool_use_id   VARCHAR(255),
+                    request_kind               VARCHAR(64),
+                    primary_tool_name          VARCHAR(128),
+                    message_preview            TEXT,
+                    message_full               TEXT,
+                    response_preview           TEXT,
+                    has_thinking               BOOLEAN NOT NULL DEFAULT FALSE,
+                    has_tool_use               BOOLEAN NOT NULL DEFAULT FALSE,
+                    has_error                  BOOLEAN NOT NULL DEFAULT FALSE,
+                    raw_content_available      BOOLEAN NOT NULL DEFAULT TRUE,
                     PRIMARY KEY (id, timestamp)
                 ) PARTITION BY RANGE (timestamp);
 
@@ -184,7 +201,65 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 9. audit_logs 表
+        // 9. log_conversation_events 和 log_token_usage 表
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+                CREATE TABLE IF NOT EXISTS log_conversation_events (
+                    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    log_id              UUID NOT NULL,
+                    session_id          VARCHAR(255) NOT NULL,
+                    timestamp           TIMESTAMPTZ NOT NULL,
+                    request_index       INTEGER NOT NULL,
+                    event_index         INTEGER NOT NULL,
+                    parent_event_id     UUID,
+                    parent_tool_use_id  VARCHAR(255),
+                    source              VARCHAR(32) NOT NULL,
+                    role                VARCHAR(32) NOT NULL,
+                    event_type          VARCHAR(64) NOT NULL,
+                    agent_id            VARCHAR(255),
+                    agent_type          VARCHAR(64),
+                    tool_use_id         VARCHAR(255),
+                    tool_name           VARCHAR(128),
+                    title               TEXT,
+                    content             TEXT,
+                    content_preview     TEXT,
+                    thinking_content    TEXT,
+                    hidden_content      JSONB,
+                    display_payload     JSONB,
+                    confidence          SMALLINT NOT NULL DEFAULT 100,
+                    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+
+                CREATE TABLE IF NOT EXISTS log_token_usage (
+                    id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    log_id                      UUID NOT NULL UNIQUE,
+                    session_id                  VARCHAR(255) NOT NULL,
+                    timestamp                   TIMESTAMPTZ NOT NULL,
+                    user_id                     UUID,
+                    access_point_id             UUID,
+                    provider_id                 UUID,
+                    account_id                  UUID,
+                    model_original              VARCHAR(255),
+                    model_mapped                VARCHAR(255),
+                    conversation_source         VARCHAR(32),
+                    agent_id                    VARCHAR(255),
+                    agent_type                  VARCHAR(64),
+                    input_tokens                INTEGER NOT NULL DEFAULT 0,
+                    output_tokens               INTEGER NOT NULL DEFAULT 0,
+                    cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
+                    cache_read_input_tokens     INTEGER NOT NULL DEFAULT 0,
+                    thinking_tokens             INTEGER NOT NULL DEFAULT 0,
+                    total_tokens                INTEGER NOT NULL DEFAULT 0,
+                    raw_usage                   JSONB,
+                    created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                "#,
+            )
+            .await?;
+
+        // 10. audit_logs 表
         manager
             .create_table(
                 Table::create()
@@ -285,6 +360,38 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+                CREATE INDEX IF NOT EXISTS idx_log_metadata_client_session_id
+                    ON log_metadata (client_session_id);
+                CREATE INDEX IF NOT EXISTS idx_log_metadata_agent_id
+                    ON log_metadata (session_id, agent_id);
+                CREATE INDEX IF NOT EXISTS idx_log_metadata_session_request
+                    ON log_metadata (session_id, request_index);
+                CREATE INDEX IF NOT EXISTS idx_log_metadata_source
+                    ON log_metadata (conversation_source);
+                CREATE INDEX IF NOT EXISTS idx_log_events_session_sort
+                    ON log_conversation_events (session_id, request_index, event_index);
+                CREATE INDEX IF NOT EXISTS idx_log_events_log_id
+                    ON log_conversation_events (log_id);
+                CREATE INDEX IF NOT EXISTS idx_log_events_agent
+                    ON log_conversation_events (session_id, agent_id);
+                CREATE INDEX IF NOT EXISTS idx_log_events_parent
+                    ON log_conversation_events (parent_event_id);
+                CREATE INDEX IF NOT EXISTS idx_log_token_usage_session
+                    ON log_token_usage (session_id);
+                CREATE INDEX IF NOT EXISTS idx_log_token_usage_user_time
+                    ON log_token_usage (user_id, timestamp DESC);
+                CREATE INDEX IF NOT EXISTS idx_log_token_usage_model_time
+                    ON log_token_usage (model_mapped, timestamp DESC);
+                CREATE INDEX IF NOT EXISTS idx_log_token_usage_agent
+                    ON log_token_usage (session_id, agent_id);
+                "#,
+            )
+            .await?;
+
+        manager
             .create_index(
                 Index::create()
                     .name("idx_audit_logs_timestamp")
@@ -332,6 +439,13 @@ impl MigrationTrait for Migration {
 
         manager
             .drop_table(Table::drop().table(AuditLogs::Table).to_owned())
+            .await?;
+
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "DROP TABLE IF EXISTS log_token_usage CASCADE; DROP TABLE IF EXISTS log_conversation_events CASCADE;",
+            )
             .await?;
 
         manager
@@ -449,6 +563,23 @@ enum LogMetadata {
     StatusCode,
     DurationMs,
     ErrorMessage,
+    RequestIndex,
+    ClientSessionId,
+    ClientApp,
+    ClientUserAgent,
+    ConversationSource,
+    AgentId,
+    AgentType,
+    ParentAgentToolUseId,
+    RequestKind,
+    PrimaryToolName,
+    MessagePreview,
+    MessageFull,
+    ResponsePreview,
+    HasThinking,
+    HasToolUse,
+    HasError,
+    RawContentAvailable,
 }
 
 #[derive(DeriveIden)]
