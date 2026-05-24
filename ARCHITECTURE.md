@@ -5,7 +5,7 @@
 ## 目录结构总览
 
 ```
-├── src/                    # 后端 Rust 核心代码 (103 个 .rs 文件)
+├── src/                    # 后端 Rust 核心代码 (97 个 .rs 文件)
 ├── src-dashboard/          # 前端管理面板 SPA (30 个 .ts/.tsx 源文件)
 ├── public/                 # 前端静态资源 (favicon, icons)
 ├── index.html              # 前端 HTML 入口 (Vite)
@@ -35,7 +35,7 @@
 src/
 ├── domain/                 # 领域层 (零外部框架依赖)
 │   ├── entities/           # 7 个业务实体
-│   ├── value_objects/      # 5 个值对象
+│   ├── value_objects/      # 6 个值对象 (新增 MatchType)
 │   ├── repositories/       # 8 个 Repository trait
 │   └── services/           # 2 个领域服务
 ├── application/            # 应用层 (用例编排, 依赖注入)
@@ -65,7 +65,7 @@ src/
 ```
 domain/
 ├── entities/               # 纯业务 struct, 包含领域校验逻辑
-│   ├── provider.rs         # LLM 提供商 (OpenAI/Anthropic)
+│   ├── provider.rs         # LLM 提供商 (含 default_model 默认模型)
 │   ├── account.rs          # API 账号 (跨聚合引用 Provider)
 │   ├── user.rs             # 管理员用户
 │   ├── access_point.rs     # 接入点 (跨聚合引用 Provider + Account)
@@ -75,9 +75,9 @@ domain/
 ├── value_objects/          # 不可变值对象
 │   ├── short_code.rs       # 接入点短码 (生成/校验)
 │   ├── api_key.rs          # API Key (掩码展示)
-│   ├── model_mapping.rs    # 模型映射对 (source → target)
+│   ├── model_mapping.rs    # 模型映射对 (source → target, 支持 exact/prefix 匹配) + 常量 (UNMATCHED_MODEL_SENTINEL, DEFAULT_MODEL_SENTINEL, Claude 模型族前缀); __unmatched__ 作为兜底规则优先级最低, 前端视为模式匹配; __default_model__ 作为目标模型哨兵, 运行态由 resolve_final_model 解析为 Provider.default_model
 │   ├── status.rs           # 启用/禁用状态枚举
-│   └── access_point_type.rs # 接入点类型枚举
+│   └── access_point_type.rs # 接入点类型枚举 (Anthropic)
 ├── repositories/           # Repository trait (接口定义)
 │   ├── provider_repository.rs
 │   ├── account_repository.rs
@@ -88,7 +88,7 @@ domain/
 │   └── user_api_key_repository.rs
 └── services/               # 领域服务
     ├── encryption_service.rs  # 加密服务 trait (encrypt/decrypt)
-    └── model_mapping_service.rs # 模型映射纯函数 (含单元测试)
+    └── model_mapping_service.rs # 统一匹配逻辑: find_matching_mapping (精确 > 前缀 > __unmatched__ 兜底) + resolve_final_model (映射结果 → 若为 __default_model__ 哨兵则解析为 Provider.default_model → 原始模型)
 ```
 
 **领域实体 ≠ ORM 实体**：domain/entities 是纯业务 Rust struct，infrastructure/persistence/entities 是 SeaORM `DeriveEntityModel`，repository 实现中完成手工映射。
@@ -251,14 +251,28 @@ shared/
 │   ├── api.ts                      # API 通信层 (fetch 封装)
 │   ├── assets/                     # 静态资源
 │   ├── components/                 # 通用组件
+│   │   ├── ThemeToggle.tsx          # 主题切换 (light/dark/system)
+│   │   ├── AccessPointDrawer.tsx    # 接入点创建/编辑表单 (含 api_type、Provider 选择并显示默认模型; 将 Provider.models + Provider.default_model 传递给 ModelMappingEditor 作为目标模型候选列表)
+│   │   ├── AccessPointTable.tsx     # 接入点列表表格
+│   │   ├── ModelMappingEditor.tsx   # 模型映射编辑器 (源模型 Select 用 Semi Tag 前缀显示"精准匹配/模式匹配", 预设含 __unmatched__(prefix) 和 Claude 家族(prefix), 支持 allowCreate 自定义; 目标模型 Select 包含 Provider.models + Provider.default_model + 附加的"默认模型"选项 (DEFAULT_MODEL 哨兵值), 禁止创建; 导出 matchTypeForSource 和 UNMATCHED_MODEL 供外部使用)
+│   │   ├── StatusToggle.tsx         # 状态切换开关
+│   │   ├── StatCard.tsx             # 统计卡片
+│   │   ├── TrendChart.tsx           # 趋势图表
+│   │   ├── LogFilterBar.tsx         # 日志过滤栏
+│   │   ├── SessionInfoHeader.tsx    # 会话信息头部
+│   │   ├── LogDetailModal.tsx       # 日志详情弹窗
+│   │   ├── RawContentModal.tsx      # 原始内容查看弹窗
+│   │   └── ChatBubbleView.tsx       # 聊天气泡视图
 │   ├── hooks/                      # 自定义 hooks
+│   │   ├── useTheme.ts             # 主题管理 (ThemeProvider + useTheme, 三种模式)
+│   │   └── useAccessPoints.ts      # 接入点数据管理 (Provider/Account 加载; 创建/编辑时过滤 target_model 不在 Provider.models + Provider.default_model + DEFAULT_MODEL 哨兵的映射; 删除/切换状态/复制 URL)
 │   ├── layouts/
 │   │   └── AdminLayout.tsx         # 管理界面布局 (Semi Design Navigation)
 │   ├── pages/
 │   │   ├── LoginPage.tsx           # POST /api/auth/login
 │   │   ├── DashboardPage.tsx       # 仪表盘概览
-│   │   ├── ProviderManagement.tsx  # CRUD /api/providers
-│   │   ├── AccessPointManagement.tsx # CRUD /api/access-points
+│   │   ├── ProviderManagement.tsx  # CRUD /api/providers (表格 default_model 列使用 Tag 渲染; 编辑面板模型列表 TagInput + 下方独立 default_model Select; models 为空时禁用选择; TagInput 移除模型联动清空 default_model; 保存时若 default_model 不在 models 中则自动清空)
+│   │   ├── AccessPointManagement.tsx # CRUD /api/access-points (Provider 切换时, 创建态下若有 default_model 则自动生成 __unmatched__(prefix) → __default_model__ 哨兵映射; 保存委托 useAccessPoints hook 过滤无效映射)
 │   │   ├── UserManagement.tsx      # CRUD /api/users
 │   │   ├── ProfilePage.tsx         # 个人设置 (profile/密码/API key 管理)
 │   │   ├── SessionLogPage.tsx      # GET /api/logs/sessions
@@ -295,6 +309,10 @@ shared/
 
 `api.ts` 封装了基于 fetch 的 HTTP 客户端，自动附加 JWT `Authorization` 头，401 响应时自动清除令牌并跳转登录页。提供 `get`、`post`、`put`、`delete` 四个方法。
 
+### 主题系统
+
+前端支持 light / dark / system 三种主题模式，通过 `useTheme.ts` hook 管理。系统主题自动跟随 `prefers-color-scheme` 媒体查询。`ThemeProvider` 在根组件包装，通过 `document.body` 的 `theme-mode` 属性控制 Semi Design 暗色模式切换。`ThemeToggle` 组件位于管理面板侧边栏和登录页。
+
 ## 数据库架构详解 (migration/)
 
 迁移使用独立的 workspace crate (`migration/`)，基于 `sea-orm-migration`。
@@ -305,14 +323,15 @@ migration/
 └── src/
     ├── lib.rs
     ├── m20260101_000001_initial.rs              # 初始 Schema (8 个表 + 物化视图)
-    └── m20260523_000001_user_api_keys.rs        # 用户 API key 表
+    ├── m20260523_000001_user_api_keys.rs        # 用户 API key 表
+    └── m20260524_000001_provider_default_model.rs # providers 表增加 default_model 列
 ```
 
 ### 数据库表
 
 | 表 | 说明 | 关键字段 |
 |----|------|---------|
-| providers | LLM 提供商 | name, openai_base_url, anthropic_base_url, models |
+| providers | LLM 提供商 | name, openai_base_url, anthropic_base_url, models, default_model |
 | accounts | API 账号 | encrypted_key, key_tail (末 6 位), provider_id (FK) |
 | users | 管理员用户 | username, password_hash |
 | access_points | 接入点 | short_code (唯一), api_type, provider_id, account_id |
@@ -347,7 +366,7 @@ POST /ap/{short_code}/v1/messages
 3. 通过 AccessPoint.account_id → 查找 Account (验证 enabled, 解密 API Key)
     │
     ▼
-4. 应用模型映射 (替换 JSON 中 model 字段, 同步 Content-Length)
+4. 统一模型映射: find_matching_mapping (精确匹配 > 前缀匹配 > __unmatched__ 规则), 若匹配到 target_model == __default_model__ 哨兵则通过 resolve_final_model 解析为 Provider.default_model; 无映射时以 Provider.default_model 或原始模型兜底; 替换 JSON 中 model 字段, 记录最终 model_mapped
     │
     ▼
 5. 构建新的上游请求: 入站 `authorization` 只用于用户 API key 认证, 不参与上游请求构造; 上游请求使用解密后的账号 API key 设置 `Authorization: Bearer <account_key>`, 仅复制 `x-*` 自定义头、`accept`、`content-type` 等业务头, 并排除入站 `authorization` / `x-api-key`
@@ -430,9 +449,9 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 维度 | 状态 |
 |------|------|
 | Phase 1 MVP | 已完成 |
-| 后端 | 96 个 .rs 文件, cargo check 零错误零警告 |
+| 后端 | 97 个 .rs 文件, cargo check 零错误零警告 |
 | 前端 | 30 个 .ts/.tsx 源文件, tsc --noEmit 零错误 |
-| Schema 迁移 | 初始迁移就绪 (8 表 + 1 物化视图) |
+| Schema 迁移 | 3 个迁移文件 (初始表 + user_api_keys + provider_default_model) |
 | Docker 构建 | 多阶段构建就绪 |
 | 容器编排 | docker-compose.yml 就绪 |
 
@@ -443,3 +462,7 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 2026-05-19 | 初始化架构文档，记录 DDD 四层架构、代理转发流程、安全设计和项目状态 |
 | 2026-05-20 | 应用层分区管理替代 pg_partman：新增 PartitionManager，迁移移除 pg_partman 依赖改为原生分区语法 + 种子分区，Config 新增 3 个分区配置项，main.rs 新增分区初始化和后台定时任务 |
 | 2026-05-24 | 调整代理 Header 构造语义：`ProxyClient` 独立构建上游请求，入站 `authorization` 只用于用户 API key 认证，上游 provider 认证由账号 API key 单独生成；同时实现 `decrypt_account_key` 解密逻辑（从 stub 变为完整实现） |
+| 2026-05-24 | Provider 增加 `default_model` 字段（全链路：domain entity、SeaORM entity、DTO、service、migration）；CreateAccessPointRequest 支持 `api_type` 参数（当前有效类型为 Anthropic）；ModelMapping 增加 `MatchType`（exact/prefix）和常量（`UNMATCHED_MODEL_SENTINEL`、Claude 模型族前缀）；实现统一模型匹配逻辑（精确 > 前缀 > `__unmatched__` > Provider.default_model），代理路由使用统一匹配并记录最终 `model_mapped` |
+| 2026-05-24 | 前端新增主题切换系统：`useTheme` hook（light/dark/system 三种模式）、`ThemeToggle` 组件、`ThemeProvider` 包裹根组件；接入点表单新增 `api_type` 选择器和 `ModelMappingEditor`（支持 Anthropic 模型族 Opus/Sonnet/Haiku 快捷添加前缀匹配规则） |
+| 2026-05-24 | 前端 Provider 表格 default_model 列使用 Tag 渲染; Provider 编辑面板 default_model Select 移至模型列表 TagInput 下方, TagInput 移除模型联动清空 default_model; ModelMappingEditor 源模型下拉展示匹配类型说明, 目标模型下拉仅含 Provider 已注册 models 且禁止创建; 保存时过滤 target_model 不在 Provider.models 的映射 (useAccessPoints hook 实现) |
+| 2026-05-24 | 同步架构文档与实际代码：`__unmatched__` 视为模式匹配, 自动生成的未匹配规则使用 prefix; Select 选项用 Semi Tag 前缀显示"精准匹配/模式匹配"; 目标模型 Select 包含 Provider.models + Provider.default_model; 保存过滤也允许 Provider.default_model |
