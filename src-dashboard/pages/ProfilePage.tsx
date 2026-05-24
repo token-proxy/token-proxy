@@ -397,7 +397,8 @@ export default function ProfilePage(): ReactNode {
                     </Button>
                   </div>
                 }
-                maskClosable={false}
+                width={560}
+                maskClosable
               >
                 <Form
                   onSubmit={handleCreateApiKey}
@@ -416,11 +417,13 @@ export default function ProfilePage(): ReactNode {
                 title="API Key 创建成功"
                 visible={!!createdKey}
                 onCancel={handleCreatedKeyModalClose}
+                width={640}
                 footer={
                   <Button type="primary" onClick={handleCreatedKeyModalClose}>
                     已保存，关闭
                   </Button>
                 }
+                maskClosable
               >
                 {createdKey && (
                   <div>
