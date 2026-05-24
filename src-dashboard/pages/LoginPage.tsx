@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Card, Form, Button, Toast, Typography } from '@douyinfe/semi-ui';
+import ThemeToggle from '../components/ThemeToggle';
 
 const { Title } = Typography;
 
@@ -58,9 +59,12 @@ export default function LoginPage(): ReactNode {
       background: 'var(--semi-color-fill-0)',
     }}>
       <Card style={{ width: 400, padding: 24 }}>
-        <Title heading={3} style={{ textAlign: 'center', marginBottom: 32 }}>
-          Token Proxy
-        </Title>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+          <Title heading={3} style={{ margin: 0 }}>
+            Token Proxy
+          </Title>
+          <ThemeToggle size="small" />
+        </div>
         <Form onSubmit={handleSubmit}>
           <Form.Input
             field="username"

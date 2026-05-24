@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Nav, Avatar, Dropdown } from '@douyinfe/semi-ui';
+import { Layout, Nav, Dropdown } from '@douyinfe/semi-ui';
+import { IconUserCircle } from '@douyinfe/semi-icons';
+import ThemeToggle from '../components/ThemeToggle';
 
 const { Header, Sider, Content } = Layout;
 
@@ -65,12 +67,18 @@ export default function AdminLayout(): ReactNode {
       </Sider>
       <Layout>
         <Header style={{
+          height: 64,
+          minHeight: 64,
           backgroundColor: 'var(--semi-color-bg-1)',
+          borderBottom: '1px solid var(--semi-color-border)',
           padding: '0 24px',
           display: 'flex',
           justifyContent: 'flex-end',
           alignItems: 'center',
+          gap: 12,
+          boxSizing: 'border-box',
         }}>
+          <ThemeToggle />
           <Dropdown
             clickToHide
             render={
@@ -86,7 +94,7 @@ export default function AdminLayout(): ReactNode {
             }
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <Avatar size="small" color="orange">{displayName[0]}</Avatar>
+              <IconUserCircle size="large" />
               <span>{displayName}</span>
             </div>
           </Dropdown>
