@@ -124,6 +124,7 @@ src/
 - 路由结构: `/login`, `/dashboard`, `/providers`, `/access-points`, `/sessions`, `/logs`, `/users`, `/settings`, `/settings/profile`
 - 后端通信: `frontend/src/api.ts` (axios/fetch 封装)
 - **防重复点击**: 所有触发 API 调用或异步操作的按钮必须设置 `loading`/`disabled` 状态, 操作完成后才解除锁定。管理列表页使用 `operatingId` 实现行级按钮独立锁定
+- **Modal 表单提交**: 包含 `Form` 的 `Modal` 必须使用 `footer` 承载取消 / 确认按钮, 不要把操作按钮放在 `Form` 内容区; `footer` 中的确认按钮必须通过 `getFormApi` 保存的 `formApi.submitForm()` 触发表单提交, 并设置 `loading`/`disabled` 防重复触发
 - **改密自动登出**: 修改密码操作成功后, 前端必须清除所有 localStorage 令牌 (`access_token`, `refresh_token`, `username`, `display_name`) 并跳转 `/login`, 强制用户重新认证
 
 ## 注意事项

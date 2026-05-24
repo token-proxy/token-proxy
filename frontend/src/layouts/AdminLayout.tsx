@@ -72,11 +72,16 @@ export default function AdminLayout(): ReactNode {
           alignItems: 'center',
         }}>
           <Dropdown
+            clickToHide
             render={
               <Dropdown.Menu>
-                <Dropdown.Item onClick={() => navigate('/settings/profile')}>个人设置</Dropdown.Item>
+                <Dropdown.Item onClick={() => navigate('/settings/profile')}>
+                  个人设置
+                </Dropdown.Item>
                 <Dropdown.Divider />
-                <Dropdown.Item onClick={handleLogout}>退出登录</Dropdown.Item>
+                <Dropdown.Item onClick={handleLogout}>
+                  退出登录
+                </Dropdown.Item>
               </Dropdown.Menu>
             }
           >

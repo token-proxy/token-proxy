@@ -4,6 +4,7 @@ import {
   Card, Tabs, TabPane, Form, Button, Input, Toast,
   Typography, Table, Tag, Popconfirm, Modal,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import api from '../api.ts';
 
 const { Title, Text } = Typography;
@@ -85,6 +86,7 @@ export default function ProfilePage(): ReactNode {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreateApiKeyResponse | null>(null);
+  const createFormRef = useRef<FormApi | null>(null);
 
   /* ---- Load profile ---- */
   const loadProfile = useCallback(async () => {
@@ -381,31 +383,32 @@ export default function ProfilePage(): ReactNode {
                 title="创建 API Key"
                 visible={createModalVisible}
                 onCancel={() => setCreateModalVisible(false)}
-                footer={null}
+                footer={
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <Button disabled={createSaving} onClick={() => setCreateModalVisible(false)}>
+                      取消
+                    </Button>
+                    <Button
+                      type="primary"
+                      loading={createSaving}
+                      onClick={() => createFormRef.current?.submitForm()}
+                    >
+                      创建
+                    </Button>
+                  </div>
+                }
                 maskClosable={false}
               >
-                <Form onSubmit={handleCreateApiKey}>
+                <Form
+                  onSubmit={handleCreateApiKey}
+                  getFormApi={(api) => { createFormRef.current = api; }}
+                >
                   <Form.Input
                     field="description"
                     label="备注"
                     placeholder="请输入备注信息"
                     rules={[{ required: true, message: '请输入备注' }]}
                   />
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'flex-end',
-                      gap: 8,
-                      marginTop: 16,
-                    }}
-                  >
-                    <Button onClick={() => setCreateModalVisible(false)}>
-                      取消
-                    </Button>
-                    <Button type="primary" htmlType="submit" loading={createSaving}>
-                      创建
-                    </Button>
-                  </div>
                 </Form>
               </Modal>
 
