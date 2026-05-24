@@ -4,10 +4,21 @@
 *.pdb
 Cargo.lock
 
+# Logs
+*.log
+logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
 # Node / Frontend
 node_modules/
-frontend/dist/
-frontend/.vite/
+dist/
+dist-ssr
+.vite/
+*.local
 package-lock.json
 pnpm-lock.yaml
 
@@ -27,9 +38,3 @@ pnpm-lock.yaml
 # OS
 .DS_Store
 Thumbs.db
-
-# Docker
-docker-compose.override.yml
-
-# Logs
-*.log

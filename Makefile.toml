@@ -3,7 +3,6 @@ default_to_workspace = false
 
 [env]
 PROJECT_NAME = "token-proxy"
-FRONTEND_DIR = "frontend"
 BACKEND_PORT = "3000"
 FRONTEND_PORT = "5173"
 
@@ -15,7 +14,6 @@ run_task = { name = ["dev-frontend", "dev-backend"], parallel = true }
 
 [tasks.dev-frontend]
 description = "启动前端 Vite dev server"
-cwd = "${FRONTEND_DIR}"
 command = "npm"
 args = ["run", "dev"]
 
@@ -33,7 +31,6 @@ run_task = { name = ["build-frontend", "build-backend"], parallel = false }
 
 [tasks.build-frontend]
 description = "构建前端静态资源"
-cwd = "${FRONTEND_DIR}"
 command = "npm"
 args = ["run", "build"]
 
@@ -71,7 +68,6 @@ command = "cargo"
 args = ["check"]
 
 [tasks.check-frontend]
-cwd = "${FRONTEND_DIR}"
 command = "npx"
 args = ["tsc", "--noEmit"]
 
