@@ -6,7 +6,15 @@
 
 ```
 ├── src/                    # 后端 Rust 核心代码 (103 个 .rs 文件)
-├── frontend/               # 前端 React SPA (15 个 .ts/.tsx 源文件)
+├── src-dashboard/          # 前端管理面板 SPA (30 个 .ts/.tsx 源文件)
+├── public/                 # 前端静态资源 (favicon, icons)
+├── index.html              # 前端 HTML 入口 (Vite)
+├── vite.config.ts          # Vite 构建配置
+├── tsconfig.json           # TypeScript 根配置
+├── tsconfig.app.json       # TypeScript 应用配置
+├── tsconfig.node.json      # TypeScript Node 配置
+├── eslint.config.js        # ESLint 配置
+├── package.json            # 前端依赖声明
 ├── migration/              # 数据库迁移 (独立 workspace crate)
 ├── target/                 # Rust 构建产物
 ├── node_modules/           # 前端依赖 (root 级, 供 cargo-make 使用)
@@ -229,30 +237,41 @@ shared/
 | PARTITION_PREMAKE_MONTHS | u32 | 提前创建未来分区数 | 3 |
 | PARTITION_RETENTION_MONTHS | u32 | 分区保留月数 | 12 |
 
-## 前端架构详解 (frontend/)
+## 前端架构详解 (src-dashboard/)
 
-前端是单页应用 (SPA)，构建产物通过 `rust-embed` 嵌入 Rust 二进制，生产环境与后端同源部署。
+前端是单页应用 (SPA)，构建产物嵌入 Rust 二进制，生产环境与后端同源部署。
 
 ```
-frontend/
-├── src/
+├── src-dashboard/                  # 前端管理面板源代码
 │   ├── main.tsx                    # React 入口
 │   ├── App.tsx                     # 路由定义 (react-router-dom v7)
+│   ├── App.css                     # 应用全局样式
+│   ├── index.css                   # 基础样式重置
+│   ├── styles.css                  # 额外样式
 │   ├── api.ts                      # API 通信层 (fetch 封装)
+│   ├── assets/                     # 静态资源
+│   ├── components/                 # 通用组件
+│   ├── hooks/                      # 自定义 hooks
 │   ├── layouts/
 │   │   └── AdminLayout.tsx         # 管理界面布局 (Semi Design Navigation)
-│   └── pages/
-│       ├── LoginPage.tsx           # POST /api/auth/login
-│       ├── DashboardPage.tsx       # 仪表盘概览
-│       ├── ProviderManagement.tsx  # CRUD /api/providers
-│       ├── AccessPointManagement.tsx # CRUD /api/access-points
-│       ├── UserManagement.tsx      # CRUD /api/users
-│       ├── ProfilePage.tsx         # 个人设置 (profile/密码/API key 管理)
-│       ├── SessionLogPage.tsx      # GET /api/logs/sessions
-│       ├── RequestLogPage.tsx      # GET /api/logs
-│       └── SettingsPage.tsx        # 设置页面
-├── tsconfig.json                   # TypeScript 配置
+│   ├── pages/
+│   │   ├── LoginPage.tsx           # POST /api/auth/login
+│   │   ├── DashboardPage.tsx       # 仪表盘概览
+│   │   ├── ProviderManagement.tsx  # CRUD /api/providers
+│   │   ├── AccessPointManagement.tsx # CRUD /api/access-points
+│   │   ├── UserManagement.tsx      # CRUD /api/users
+│   │   ├── ProfilePage.tsx         # 个人设置 (profile/密码/API key 管理)
+│   │   ├── SessionLogPage.tsx      # GET /api/logs/sessions
+│   │   ├── RequestLogPage.tsx      # GET /api/logs
+│   │   └── SettingsPage.tsx        # 设置页面
+│   ├── types/                      # TypeScript 类型定义
+│   └── utils/                      # 工具函数
+├── index.html                      # HTML 入口 (Vite)
 ├── vite.config.ts                  # Vite 构建配置
+├── tsconfig.json                   # TypeScript 根配置
+├── tsconfig.app.json               # TypeScript 应用配置
+├── tsconfig.node.json              # TypeScript Node 配置
+├── eslint.config.js                # ESLint 配置
 └── package.json                    # 依赖声明
 ```
 
@@ -412,7 +431,7 @@ docker compose up -d    # 启动 PostgreSQL + App
 |------|------|
 | Phase 1 MVP | 已完成 |
 | 后端 | 96 个 .rs 文件, cargo check 零错误零警告 |
-| 前端 | 15 个 .ts/.tsx 源文件, tsc --noEmit 零错误 |
+| 前端 | 30 个 .ts/.tsx 源文件, tsc --noEmit 零错误 |
 | Schema 迁移 | 初始迁移就绪 (8 表 + 1 物化视图) |
 | Docker 构建 | 多阶段构建就绪 |
 | 容器编排 | docker-compose.yml 就绪 |

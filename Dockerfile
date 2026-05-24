@@ -1,11 +1,13 @@
 # ─── 阶段 1: 构建前端 ─────────────────────────────
 FROM node:22-alpine AS frontend-builder
 
-WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json* ./
+WORKDIR /app
+COPY package.json package-lock.json* ./
 RUN npm ci
 
-COPY frontend/ ./
+COPY index.html tsconfig.json tsconfig.app.json tsconfig.node.json vite.config.ts eslint.config.js ./
+COPY public/ public/
+COPY src-dashboard/ src-dashboard/
 RUN npm run build
 
 # ─── 阶段 2: 构建后端 ─────────────────────────────
@@ -21,7 +23,7 @@ RUN cargo build --release 2>/dev/null || true
 RUN rm -rf src
 
 COPY src/ src/
-COPY --from=frontend-builder /app/frontend/dist frontend/dist/
+COPY --from=frontend-builder /app/dist frontend/dist/
 
 RUN cargo build --release
 

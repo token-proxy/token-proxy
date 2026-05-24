@@ -108,7 +108,7 @@ src/
 - 如: `服务监听地址: {}`, `接入点 '{}' 未找到`
 - 错误消息使用中文, 技术标识符/日志字段使用英文
 - 后端: 67 个 Rust 源文件, 遵循 Rust 2021 edition 惯例
-- 前端: 15 个 TypeScript 源文件, 遵循 TypeScript 6 严格模式
+- 前端: 30 个 TypeScript 源文件, 遵循 TypeScript 6 严格模式
 
 ### 后端 (Rust)
 
@@ -119,11 +119,11 @@ src/
 
 ### 前端 (React + Semi Design)
 
-- 页面组件集中在 `frontend/src/pages/`
+- 页面组件集中在 `src-dashboard/pages/`
 - 使用 `@douyinfe/semi-ui` 组件库
 - 路由: react-router-dom v7 (BrowserRouter + Routes + AdminLayout)
 - 路由结构: `/login`, `/dashboard`, `/providers`, `/access-points`, `/sessions`, `/logs`, `/users`, `/settings`, `/settings/profile`
-- 后端通信: `frontend/src/api.ts` (axios/fetch 封装)
+- 后端通信: `src-dashboard/api.ts` (axios/fetch 封装)
 - **防重复点击**: 所有触发 API 调用或异步操作的按钮必须设置 `loading`/`disabled` 状态, 操作完成后才解除锁定。管理列表页使用 `operatingId` 实现行级按钮独立锁定
 - **Modal 表单提交**: 包含 `Form` 的 `Modal` 必须使用 `footer` 承载取消 / 确认按钮, 不要把操作按钮放在 `Form` 内容区; `footer` 中的确认按钮必须通过 `getFormApi` 保存的 `formApi.submitForm()` 触发表单提交, 并设置 `loading`/`disabled` 防重复触发
 - **改密自动登出**: 修改密码操作成功后, 前端必须清除所有 localStorage 令牌 (`access_token`, `refresh_token`, `username`, `display_name`) 并跳转 `/login`, 强制用户重新认证
@@ -131,7 +131,7 @@ src/
 ## 注意事项
 
 - `.rs` 空文件留作占位用, 不应删除
-- 前端构建产物 (`frontend/dist/`) 会被嵌入后端二进制
+- 前端构建产物 (`dist/`) 会被嵌入后端二进制
 - 所有 Repository 实现以 `SeaOrm` 为前缀 (如 `SeaOrmProviderRepository`)
 - 迁移文件在 `src/migrations/` 目录下, 使用 `sea-orm-migration`
 - 分区管理由 `src/infrastructure/persistence/partition_manager.rs` 的 PartitionManager 处理, 通过 pg_inherits 系统表管理分区
@@ -157,5 +157,5 @@ src/
 | `src/infrastructure/persistence/repositories/user_api_key_repository.rs` | UserApiKey 仓储实现 |
 | `src/domain/entities/user_api_key.rs` | 用户 API key 领域实体 |
 | `src/domain/repositories/user_api_key_repository.rs` | UserApiKey Repository trait |
-| `frontend/src/App.tsx` | 前端路由定义 |
-| `frontend/src/pages/ProfilePage.tsx` | 个人设置页 (个人资料/改密/API key 管理) |
+| `src-dashboard/App.tsx` | 前端路由定义 |
+| `src-dashboard/pages/ProfilePage.tsx` | 个人设置页 (个人资料/改密/API key 管理) |
