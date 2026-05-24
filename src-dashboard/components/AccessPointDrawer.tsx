@@ -1,6 +1,6 @@
 import { Button, Input, Select, SideSheet } from '@douyinfe/semi-ui';
 import type { ReactNode } from 'react';
-import ModelMappingEditor from './ModelMappingEditor.tsx';
+import ModelMappingEditor, { matchTypeForSource } from './ModelMappingEditor.tsx';
 import type {
   AccessPoint,
   AccessPointFormData,
@@ -41,8 +41,11 @@ export default function AccessPointDrawer({
   onSave,
 }: AccessPointDrawerProps): ReactNode {
   const handleAddMapping = () => {
-    onMappingsChange([...mappings, { source_model: '', target_model: '' }]);
+    onMappingsChange([...mappings, { source_model: '', target_model: '', match_type: 'exact' }]);
   };
+
+  const selectedProvider = providers.find((provider) => provider.id === formData.provider_id);
+  const modelOptions = selectedProvider?.models ?? [];
 
   const handleRemoveMapping = (index: number) => {
     onMappingsChange(mappings.filter((_, i) => i !== index));
@@ -50,7 +53,12 @@ export default function AccessPointDrawer({
 
   const handleMappingChange = (index: number, field: keyof ModelMapping, value: string) => {
     const next = [...mappings];
-    next[index] = { ...next[index], [field]: value };
+    const currentMapping = next[index];
+    if (field === 'source_model') {
+      next[index] = { ...currentMapping, source_model: value, match_type: matchTypeForSource(value) };
+    } else {
+      next[index] = { ...currentMapping, [field]: value };
+    }
     onMappingsChange(next);
   };
 
@@ -92,6 +100,11 @@ export default function AccessPointDrawer({
             ))}
           </Select>
         </div>
+        {selectedProvider && (
+          <div style={{ marginTop: 8, color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+            默认模型: {selectedProvider.default_model || '未设置'}
+          </div>
+        )}
         <div style={{ marginTop: 16 }}>
           <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>Account</div>
           <Select
@@ -108,9 +121,22 @@ export default function AccessPointDrawer({
             ))}
           </Select>
         </div>
+        <div style={{ marginTop: 16 }}>
+          <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>API 类型</div>
+          <Select
+            value={formData.api_type}
+            onChange={(value) => onFormChange({ ...formData, api_type: value as string })}
+            style={{ width: '100%' }}
+          >
+            <Select.Option value="anthropic">Anthropic</Select.Option>
+          </Select>
+        </div>
 
         <ModelMappingEditor
           mappings={mappings}
+          apiType={formData.api_type}
+          modelOptions={modelOptions}
+          defaultModel={selectedProvider?.default_model}
           onAdd={handleAddMapping}
           onRemove={handleRemoveMapping}
           onChange={handleMappingChange}

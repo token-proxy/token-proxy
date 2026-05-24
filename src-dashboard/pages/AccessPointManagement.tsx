@@ -3,7 +3,7 @@ import { Button, Typography } from '@douyinfe/semi-ui';
 import AccessPointDrawer from '../components/AccessPointDrawer.tsx';
 import AccessPointTable from '../components/AccessPointTable.tsx';
 import useAccessPoints from '../hooks/useAccessPoints.ts';
-import type { AccessPoint, AccessPointFormData, ModelMapping } from '../types/accessPoint.ts';
+import { DEFAULT_MODEL, UNMATCHED_MODEL, type AccessPoint, type AccessPointFormData, type ModelMapping } from '../types/accessPoint.ts';
 
 const { Title } = Typography;
 
@@ -56,7 +56,19 @@ export default function AccessPointManagement(): ReactNode {
   };
 
   const handleProviderChange = (providerId: string) => {
+    const provider = providers.find((item) => item.id === providerId);
     setFormData({ ...formData, provider_id: providerId, account_id: undefined });
+    if (!editingAccessPoint && provider?.default_model) {
+      setMappings([
+        {
+          source_model: UNMATCHED_MODEL,
+          target_model: DEFAULT_MODEL,
+          match_type: 'prefix',
+        },
+      ]);
+    } else if (!editingAccessPoint) {
+      setMappings([]);
+    }
     loadAccountsByProvider(providerId);
   };
 

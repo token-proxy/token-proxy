@@ -1,6 +1,11 @@
+export const UNMATCHED_MODEL = '__unmatched__';
+export const DEFAULT_MODEL = '__default_model__';
+
 export interface ProviderOption {
   id: string;
   name: string;
+  models?: string[];
+  default_model?: string;
 }
 
 export interface AccountOption {
@@ -14,6 +19,7 @@ export interface AccountOption {
 export interface ModelMapping {
   source_model: string;
   target_model: string;
+  match_type?: string;
 }
 
 export interface AccessPoint {

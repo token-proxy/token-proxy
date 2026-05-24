@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import {
   Table, Button, Tag, Space, Popconfirm, SideSheet, Form,
-  Toast, Typography, TagInput, Input, Tooltip,
+  Toast, Typography, TagInput, Input, Tooltip, Select,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { IconEyeOpened, IconEyeClosedSolid } from '@douyinfe/semi-icons';
@@ -15,6 +15,7 @@ interface Provider {
   name: string;
   openai_base_url?: string;
   anthropic_base_url?: string;
+  default_model?: string;
   status: string;
   models?: string[];
   account_count?: number;
@@ -34,6 +35,7 @@ interface ProviderFormData {
   name: string;
   openai_base_url?: string;
   anthropic_base_url?: string;
+  default_model?: string;
 }
 
 export default function ProviderManagement(): ReactNode {
@@ -48,6 +50,7 @@ export default function ProviderManagement(): ReactNode {
 
   // 模型管理
   const [providerModels, setProviderModels] = useState<string[]>([]);
+  const [providerDefaultModel, setProviderDefaultModel] = useState<string | undefined>();
   const [discovering, setDiscovering] = useState(false);
 
   // Account 管理
@@ -92,6 +95,7 @@ export default function ProviderManagement(): ReactNode {
     setAccounts([]);
     setSelectedProviderId(null);
     setProviderModels([]);
+    setProviderDefaultModel(undefined);
     setDrawerVisible(true);
   };
 
@@ -99,6 +103,7 @@ export default function ProviderManagement(): ReactNode {
     setEditingProvider(provider);
     setSelectedProviderId(provider.id);
     setProviderModels(provider.models ?? []);
+    setProviderDefaultModel(provider.default_model);
     setDrawerVisible(true);
     loadAccounts(provider.id);
   };
@@ -119,15 +124,19 @@ export default function ProviderManagement(): ReactNode {
   const handleSaveProvider = async (values: ProviderFormData) => {
     setSaving(true);
     try {
+      const defaultModel = providerDefaultModel && providerModels.includes(providerDefaultModel)
+        ? providerDefaultModel
+        : '';
       if (editingProvider) {
         // 编辑态：将基础字段 + 模型列表合并为一次 PUT
         await api.put(`/api/providers/${editingProvider.id}`, {
           ...values,
+          default_model: defaultModel,
           models: providerModels,
         });
         Toast.success('Provider 已更新');
       } else {
-        await api.post('/api/providers', values);
+        await api.post('/api/providers', { ...values, default_model: defaultModel });
         Toast.success('Provider 已创建');
       }
       setDrawerVisible(false);
@@ -179,13 +188,24 @@ export default function ProviderManagement(): ReactNode {
         `/api/providers/${editingProvider.id}/discover-models`,
         {},
       );
-      setProviderModels(resp.models ?? []);
-      Toast.success(`自动发现完成，共 ${resp.models?.length ?? 0} 个模型`);
+      const models = resp.models ?? [];
+      setProviderModels(models);
+      if (providerDefaultModel && !models.includes(providerDefaultModel)) {
+        setProviderDefaultModel(undefined);
+      }
+      Toast.success(`自动发现完成，共 ${models.length} 个模型`);
       loadProviders();
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '自动发现模型失败');
     } finally {
       setDiscovering(false);
+    }
+  };
+
+  const handleProviderModelsChange = (models: string[]) => {
+    setProviderModels(models);
+    if (providerDefaultModel && !models.includes(providerDefaultModel)) {
+      setProviderDefaultModel(undefined);
     }
   };
 
@@ -258,6 +278,13 @@ export default function ProviderManagement(): ReactNode {
     { title: '名称', dataIndex: 'name', key: 'name', width: 140 },
     { title: 'OpenAI 端点', dataIndex: 'openai_base_url', key: 'openai', width: 200, render: (text?: string) => text || '-' },
     { title: 'Anthropic 端点', dataIndex: 'anthropic_base_url', key: 'anthropic', width: 200, render: (text?: string) => text || '-' },
+    {
+      title: '默认模型',
+      dataIndex: 'default_model',
+      key: 'default_model',
+      width: 180,
+      render: (text?: string) => text ? <Tag color="blue" size="small">{text}</Tag> : '-',
+    },
     {
       title: '模型',
       dataIndex: 'models',
@@ -405,6 +432,7 @@ export default function ProviderManagement(): ReactNode {
           />
         </Form>
 
+
         {editingProvider && (
           <>
             <div style={{ marginTop: 32, borderTop: '1px solid var(--semi-color-border)', paddingTop: 24 }}>
@@ -431,7 +459,7 @@ export default function ProviderManagement(): ReactNode {
               </div>
               <TagInput
                 value={providerModels}
-                onChange={(v) => setProviderModels(v as string[])}
+                onChange={(v) => handleProviderModelsChange(v as string[])}
                 placeholder="输入模型名后回车，或点击自动发现"
                 allowDuplicates={false}
                 style={{ width: '100%' }}
@@ -441,6 +469,21 @@ export default function ProviderManagement(): ReactNode {
                   ? '缺少可用的 API Key，请先添加一个 Account 后再使用自动发现；模型列表会随底部"保存"按钮一并提交'
                   : `将使用 Account "${accounts[0].name}" 的 API Key 调用上游 /v1/models 接口；模型列表会随底部"保存"按钮一并提交`}
               </Text>
+              <div style={{ marginTop: 16 }}>
+                <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>默认模型</div>
+                <Select
+                  value={providerDefaultModel}
+                  placeholder={providerModels.length === 0 ? '模型列表为空，无法选择默认模型' : '从已有模型中选择'}
+                  showClear
+                  disabled={providerModels.length === 0}
+                  optionList={providerModels.map((m) => ({ value: m, label: m }))}
+                  onChange={(value) => setProviderDefaultModel(value as string | undefined)}
+                  style={{ width: '100%' }}
+                />
+                <Text type="tertiary" size="small" style={{ marginTop: 6, display: 'block' }}>
+                  默认模型必须来自模型列表；从模型列表移除当前默认模型时会立即清空。
+                </Text>
+              </div>
             </div>
 
             <div style={{ marginTop: 32, borderTop: '1px solid var(--semi-color-border)', paddingTop: 24 }}>
@@ -480,7 +523,7 @@ export default function ProviderManagement(): ReactNode {
                         {editingAccount ? 'API Key (留空表示不修改)' : 'API Key'}
                       </div>
                       {/*
-                        故意不使用 type="password"，避免触发浏览器密码管理器的"保存账号密码"弹窗。
+                        故意不使用 type="password"，避免触发浏览器密码管理器的“保存账号密码”弹窗。
                         改为普通 text input + CSS 视觉遮罩（webkit-text-security）+ 自定义眼睛按钮。
                       */}
                       <Input
@@ -521,6 +564,7 @@ export default function ProviderManagement(): ReactNode {
                   </div>
               </SideSheet>
             </div>
+
           </>
         )}
       </SideSheet>

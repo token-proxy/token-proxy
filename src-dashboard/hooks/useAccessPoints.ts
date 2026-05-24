@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Toast } from '@douyinfe/semi-ui';
 import api from '../api.ts';
-import type { AccessPoint, AccessPointFormData, AccountOption, ModelMapping, ProviderOption } from '../types/accessPoint.ts';
+import { DEFAULT_MODEL, type AccessPoint, type AccessPointFormData, type AccountOption, type ModelMapping, type ProviderOption } from '../types/accessPoint.ts';
 
 const EMPTY_FORM: AccessPointFormData = {
   name: '',
   short_code: '',
   provider_id: undefined,
   account_id: undefined,
-  api_type: 'default',
+  api_type: 'anthropic',
 };
 
 export default function useAccessPoints() {
@@ -92,13 +92,21 @@ export default function useAccessPoints() {
       return false;
     }
 
-    const validMappings = mappings.filter((mapping) => mapping.source_model && mapping.target_model);
+    const provider = providers.find((item) => item.id === formData.provider_id);
+    const allowedTargetModels = new Set([
+      ...(provider?.models ?? []),
+      ...(provider?.default_model ? [DEFAULT_MODEL] : []),
+    ]);
+    const validMappings = mappings.filter(
+      (mapping) => mapping.source_model && mapping.target_model && allowedTargetModels.has(mapping.target_model),
+    );
 
     if (editingAccessPoint) {
       await api.put(`/api/access-points/${editingAccessPoint.id}`, {
         name: formData.name,
         provider_id: formData.provider_id,
         account_id: formData.account_id,
+        api_type: formData.api_type,
         model_mappings: validMappings.length > 0 ? validMappings : undefined,
       });
       Toast.success('接入点已更新');
@@ -107,6 +115,7 @@ export default function useAccessPoints() {
         name: formData.name,
         provider_id: formData.provider_id,
         account_id: formData.account_id,
+        api_type: formData.api_type,
         short_code: formData.short_code || undefined,
         model_mappings: validMappings.length > 0 ? validMappings : undefined,
       });
