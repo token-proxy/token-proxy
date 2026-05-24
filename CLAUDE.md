@@ -65,7 +65,7 @@ src/
 
 ## 关键决策
 
-- **接入 URL**: `/ap/<short_code>` -- 用户指定或自动生成
+- **接入 URL**: `/ap/<short_code>` -- 用户指定或自动生成 (默认 16 位随机短码)
 - **JWT**: Access Token 30min + Refresh Token 7day
 - **加密**: AES-256-GCM (ENCRYPTION_KEY 环境变量 64 hex chars = 32 字节)
 - **密码**: argon2id
@@ -78,9 +78,9 @@ src/
 - **模型映射匹配方式**: 由源模型值决定——`__unmatched__` 哨兵和 Claude 家族预设 (`claude-opus-*`/`claude-sonnet-*`/`claude-haiku-*`) 自动使用 `prefix` 匹配; 普通值或自定义输入使用 `exact` 匹配
 - **模型映射优先级**: 请求模型按以下顺序匹配——精确匹配 > 前缀匹配 > `__unmatched__` 哨兵规则 (target 为 `__default_model__` 时通过 `resolve_final_model` 解析为 Provider 当前 default_model) > Provider.default_model 兜底 > 原始请求模型
 - **Claude 模型族前缀常量**: `claude-opus-` / `claude-sonnet-` / `claude-haiku-`, 在前端 ModelMappingEditor 中以预设选项形式展示
-- **Provider.default_model**: 可选配置, 当模型映射均未匹配时作为兜底, 替换请求体中的 model 字段。表格中使用 Tag 展示; 编辑表单中 Select 位于模型列表下方, 紧邻 TagInput; 模型列表为空时 Select 禁用; 模型列表移除当前默认模型时立即清空 Select 值; 保存时若 models 不含 default_model 则提交空字符串清空
+- **Provider.default_model**: 可选配置, 当模型映射均未匹配时作为兜底, 替换请求体中的 model 字段。表格中使用 Tag 展示; 编辑表单中 Select 位于模型列表下方, 紧邻 TagInput; 默认模型 label 样式与模型列表一致; 编辑态提交按钮文案统一使用 "更新"; 模型列表为空时 Select 禁用; 模型列表移除当前默认模型时立即清空 Select 值; 保存时若 models 不含 default_model 则提交空字符串清空
 - **AccessPoint.api_type**: 接入点 API 类型枚举, 当前有效类型为 `Anthropic`; 前端表单限定 Select 选项
-- **DEFAULT_MODEL_SENTINEL**: 模型映射目标模型哨兵值 `__default_model__`, 前后端常量同名但独立定义 (后端 `DEFAULT_MODEL_SENTINEL`, 前端 `DEFAULT_MODEL`)。当映射的 target_model 为该哨兵值时, 代理转发通过 `resolve_final_model` 函数动态解析为 Provider 当前 `default_model`。`__unmatched__ -> 默认模型` 自动规则的 target_model 保存为 `__default_model__`, 接入点映射无需跟随 Provider 默认模型变更
+- **DEFAULT_MODEL_SENTINEL**: 模型映射目标模型哨兵值 `__default_model__`, 前后端常量同名但独立定义 (后端 `DEFAULT_MODEL_SENTINEL`, 前端 `DEFAULT_MODEL`)。当映射的 target_model 为该哨兵值时, 代理转发通过 `resolve_final_model` 函数动态解析为 Provider 当前 `default_model`; 前端选择该哨兵时 UI 展示格式为 "默认模型 (实际模型)", 通过请求 Provider 详情动态显示当前 default_model 名称。`__unmatched__ -> 默认模型` 自动规则的 target_model 保存为 `__default_model__`, 接入点映射无需跟随 Provider 默认模型变更
 
 ## Makefile 任务
 
@@ -136,8 +136,8 @@ src/
 - **Modal 表单提交**: 包含 `Form` 的 `Modal` 必须使用 `footer` 承载取消 / 确认按钮, 不要把操作按钮放在 `Form` 内容区; `footer` 中的确认按钮必须通过 `getFormApi` 保存的 `formApi.submitForm()` 触发表单提交, 并设置 `loading`/`disabled` 防重复触发
 - **改密自动登出**: 修改密码操作成功后, 前端必须清除所有 localStorage 令牌 (`access_token`, `refresh_token`, `username`, `display_name`) 并跳转 `/login`, 强制用户重新认证
 - **主题切换**: 使用 `useTheme` hook + `ThemeProvider` (src-dashboard/hooks/useTheme.ts) 管理主题状态, 通过 localStorage key `theme_mode` 持久化, 支持 light / dark / system 三种模式; `ThemeToggle` 组件以 Dropdown 菜单形式展示在 AdminLayout 顶栏
-- **ModelMappingEditor**: 接入点表单中的模型映射编辑器, 仅保留一个"添加映射"按钮。源模型使用 Semi Select, 支持搜索和 allowCreate; 选项以 Semi Tag 前缀显示匹配类型 (`精准匹配`/`模式匹配`); 源模型选项包括: `__unmatched__`(模式匹配)、Claude Opus/Sonnet/Haiku 预设(模式匹配)、以及 Provider 的 models 列表(精准匹配)。`__unmatched__` 和 Claude 家族源模型保存为 `prefix` 匹配类型, 普通值/自定义输入值保存为 `exact` 匹配类型。目标模型使用 Semi Select, 选项包含 Provider.models 和 `__default_model__` 哨兵 (展示为"默认模型"), 不允许 allowCreate; 当源模型为 `__unmatched__` 时, 目标模型自动填充为 `__default_model__`
-- **AccessPointDrawer 映射管理**: 接入点创建时选择 Provider 后, 自动预填一条 `__unmatched__ -> __default_model__` 的映射规则。保存接入点时过滤映射, target_model 必须属于 Provider.models 或等于 `__default_model__` 哨兵
+- **ModelMappingEditor**: 接入点表单中的模型映射编辑器, 仅保留一个"添加映射"按钮。源模型使用 Semi Select, 支持搜索和 allowCreate; 选项以 Semi Tag 前缀显示匹配类型 (`精准匹配`/`模式匹配`); 源模型选项包括: `__unmatched__`(模式匹配)、Claude Opus/Sonnet/Haiku 预设(模式匹配)、以及 Provider 的 models 列表(精准匹配)。`__unmatched__` 和 Claude 家族源模型保存为 `prefix` 匹配类型, 普通值/自定义输入值保存为 `exact` 匹配类型。目标模型使用 Semi Select, 选项包含 Provider.models 和 `__default_model__` 哨兵, 不允许 allowCreate; 选择 `__default_model__` 时 UI 显示为"默认模型 (实际模型)", 动态解析 Provider 当前 default_model 并展示; 当源模型为 `__unmatched__` 时, 目标模型自动填充为 `__default_model__`
+- **AccessPointDrawer 映射管理**: 接入点创建/编辑时选择 Provider 后, 会请求 `GET /api/providers/{id}` 刷新 Provider 的 models 和 default_model 列表; 创建态选择带默认模型的 Provider 时自动预填一条 `__unmatched__ -> __default_model__` 的映射规则。保存接入点时过滤映射, target_model 必须属于 Provider.models 或等于 `__default_model__` 哨兵
 
 ## 注意事项
 

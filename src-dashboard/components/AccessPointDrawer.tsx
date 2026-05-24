@@ -84,7 +84,7 @@ export default function AccessPointDrawer({
           <Input
             value={formData.short_code}
             onChange={(value: string) => onFormChange({ ...formData, short_code: value })}
-            placeholder="留空则自动生成"
+            placeholder="留空则自动生成 16 位短码"
           />
         </div>
         <div style={{ marginTop: 16 }}>

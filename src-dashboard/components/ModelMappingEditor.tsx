@@ -25,9 +25,9 @@ const MATCH_TYPE_LABELS: Record<MappingMatchType, string> = {
   prefix: '模式匹配',
 };
 
-const labelForModel = (value: string) => {
+const labelForModel = (value: string, defaultModel?: string) => {
   if (value === UNMATCHED_MODEL) return '未匹配';
-  if (value === DEFAULT_MODEL) return '默认模型';
+  if (value === DEFAULT_MODEL) return defaultModel ? `默认模型 (${defaultModel})` : '默认模型';
   return ANTHROPIC_FAMILIES.find((family) => family.value === value)?.label ?? value;
 };
 
@@ -37,12 +37,12 @@ const matchTypeForSource = (value: string): MappingMatchType => (
 
 const uniqueOptions = (values: string[]) => [...new Set(values.filter(Boolean))];
 
-const optionLabel = (type: MappingMatchType, value: string) => (
+const optionLabel = (type: MappingMatchType, value: string, defaultModel?: string) => (
   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
     <Tag color={type === 'prefix' ? 'purple' : 'blue'} size="small">
       {MATCH_TYPE_LABELS[type]}
     </Tag>
-    <span>{labelForModel(value)}</span>
+    <span>{labelForModel(value, defaultModel)}</span>
   </span>
 );
 
@@ -74,7 +74,7 @@ export default function ModelMappingEditor({
   });
   const targetOptionList = targetValues.map((value) => ({
     value,
-    label: optionLabel('exact', value),
+    label: optionLabel('exact', value, defaultModel),
   }));
 
   return (

@@ -53,6 +53,12 @@ export default function useAccessPoints() {
     }
   }, []);
 
+  const loadProviderById = useCallback(async (providerId: string) => {
+    const provider = await api.get<ProviderOption>(`/api/providers/${providerId}`);
+    setProviders((current) => current.map((item) => (item.id === provider.id ? provider : item)));
+    return provider;
+  }, []);
+
   const loadAccountsByProvider = useCallback(async (providerId: string) => {
     setAccountsLoading(true);
     try {
@@ -179,6 +185,7 @@ export default function useAccessPoints() {
     operatingIds,
     copyingUrl,
     emptyForm: EMPTY_FORM,
+    loadProviderById,
     loadAccountsByProvider,
     clearAccounts,
     saveAccessPoint,
