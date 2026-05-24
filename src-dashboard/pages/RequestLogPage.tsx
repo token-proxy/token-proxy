@@ -3,6 +3,7 @@ import {
   Table, Button, Tag, Typography, Toast, Empty,
   Select, Input,
 } from '@douyinfe/semi-ui';
+import { IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import api from '../api.ts';
 import LogDetailModal from '../components/LogDetailModal.tsx';
@@ -235,7 +236,16 @@ export default function RequestLogPage(): ReactNode {
 
   return (
     <div>
-      <Title heading={3} style={{ marginBottom: 16 }}>请求日志</Title>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <Title heading={3} style={{ margin: 0 }}>请求日志</Title>
+        <Button
+          icon={<IconRefresh />}
+          loading={loading}
+          onClick={() => fetchLogs()}
+        >
+          刷新
+        </Button>
+      </div>
 
       <LogFilterBar
         users={users.map((user) => ({ id: user.id, label: user.display_name }))}
