@@ -1,5 +1,7 @@
 body {
   margin: 0;
+  color: var(--semi-color-text-0);
+  background-color: var(--semi-color-bg-0);
 }
 
 /* Semi Table: 当 scroll.x 启用后，Semi 切换为 table-layout: fixed 并通过内联 width 控制表格宽度，
