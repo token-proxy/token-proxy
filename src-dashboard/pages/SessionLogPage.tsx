@@ -4,6 +4,7 @@ import {
   Table, Button, Tag, Typography, Toast, Spin, Empty,
   Tooltip,
 } from '@douyinfe/semi-ui';
+import { IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import api from '../api.ts';
 import ChatBubbleView from '../components/ChatBubbleView.tsx';
@@ -197,6 +198,13 @@ export default function SessionLogPage(): ReactNode {
             &larr; 返回会话列表
           </Button>
           <Title heading={3} style={{ margin: 0 }}>会话详情</Title>
+          <Button
+            icon={<IconRefresh />}
+            loading={detailLoading}
+            onClick={() => loadSessionDetail(sessionId)}
+          >
+            刷新
+          </Button>
         </div>
 
         <SessionInfoHeader
@@ -310,7 +318,16 @@ export default function SessionLogPage(): ReactNode {
 
   return (
     <div>
-      <Title heading={3} style={{ marginBottom: 16 }}>会话日志</Title>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <Title heading={3} style={{ margin: 0 }}>会话日志</Title>
+        <Button
+          icon={<IconRefresh />}
+          loading={sessionsLoading}
+          onClick={() => fetchSessions()}
+        >
+          刷新
+        </Button>
+      </div>
 
       <LogFilterBar
         users={users.map((user) => ({ id: user.id, label: user.display_name }))}
