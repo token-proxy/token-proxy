@@ -331,12 +331,15 @@ POST /ap/{short_code}/v1/messages
 4. 应用模型映射 (替换 JSON 中 model 字段, 同步 Content-Length)
     │
     ▼
-5. 转发到上游 LLM API
+5. 构建新的上游请求: 入站 `authorization` 只用于用户 API key 认证, 不参与上游请求构造; 上游请求使用解密后的账号 API key 设置 `Authorization: Bearer <account_key>`, 仅复制 `x-*` 自定义头、`accept`、`content-type` 等业务头, 并排除入站 `authorization` / `x-api-key`
+    │
+    ▼
+6. 发送到上游 LLM API
     ├── 非流式: 完整响应 → 返回
     └── SSE 流式: 逐块转发 → 逐块返回
     │
     ▼
-6. 异步写入日志 (log_metadata + log_contents, 不阻塞响应)
+7. 异步写入日志 (log_metadata + log_contents, 不阻塞响应)
 ```
 
 ## 核心架构原则
@@ -358,6 +361,7 @@ POST /ap/{short_code}/v1/messages
 | 认证令牌 | JWT Access Token (30 分钟) + Refresh Token (7 天) |
 | 令牌吊销 | Refresh Token 原子级别 revoked 标记 |
 | 错误隔离 | 加密/数据库错误不暴露原始详情 |
+| Header 构造 | 上游请求独立构建，入站 `authorization` 只用于用户 API key 认证，provider 认证由账号 API key 单独生成 |
 | 传输安全 | 建议部署时配置 HTTPS 反向代理 |
 
 ## 构建与部署
@@ -419,3 +423,4 @@ docker compose up -d    # 启动 PostgreSQL + App
 |------|---------|
 | 2026-05-19 | 初始化架构文档，记录 DDD 四层架构、代理转发流程、安全设计和项目状态 |
 | 2026-05-20 | 应用层分区管理替代 pg_partman：新增 PartitionManager，迁移移除 pg_partman 依赖改为原生分区语法 + 种子分区，Config 新增 3 个分区配置项，main.rs 新增分区初始化和后台定时任务 |
+| 2026-05-24 | 调整代理 Header 构造语义：`ProxyClient` 独立构建上游请求，入站 `authorization` 只用于用户 API key 认证，上游 provider 认证由账号 API key 单独生成；同时实现 `decrypt_account_key` 解密逻辑（从 stub 变为完整实现） |

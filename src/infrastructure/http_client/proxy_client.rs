@@ -52,7 +52,7 @@ impl ProxyClient {
         let mut req_builder = self
             .client
             .post(base_url)
-            .header("x-api-key", api_key)
+            .header("authorization", format!("Bearer {}", api_key))
             .header("anthropic-version", "2023-06-01")
             .body(body);
 
@@ -61,15 +61,11 @@ impl ProxyClient {
             req_builder = req_builder.header("content-type", content_type.clone());
         }
 
-        // 透传其他自定义头（以 x- 开头或与代理相关的头）
+        // 复制上游请求需要的业务头
         for (key, value) in headers.iter() {
             let key_str = key.as_str().to_lowercase();
-            if key_str.starts_with("x-")
-                || key_str == "authorization"
-                || key_str == "accept"
-            {
-                if key_str != "x-api-key" {
-                    // 不覆盖已设置的 key
+            if key_str.starts_with("x-") || key_str == "accept" {
+                if key_str != "authorization" && key_str != "x-api-key" {
                     req_builder = req_builder.header(key, value.clone());
                 }
             }
@@ -103,7 +99,7 @@ impl ProxyClient {
         let mut req_builder = self
             .client
             .post(base_url)
-            .header("x-api-key", api_key)
+            .header("authorization", format!("Bearer {}", api_key))
             .header("anthropic-version", "2023-06-01")
             .body(body);
 
@@ -112,15 +108,11 @@ impl ProxyClient {
             req_builder = req_builder.header("content-type", content_type.clone());
         }
 
-        // 透传其他有用头
+        // 复制上游请求需要的业务头
         for (key, value) in headers.iter() {
             let key_str = key.as_str().to_lowercase();
-            if key_str.starts_with("x-")
-                || key_str == "authorization"
-                || key_str == "accept"
-                || key_str == "accept-language"
-            {
-                if key_str != "x-api-key" {
+            if key_str.starts_with("x-") || key_str == "accept" || key_str == "accept-language" {
+                if key_str != "authorization" && key_str != "x-api-key" {
                     req_builder = req_builder.header(key, value.clone());
                 }
             }
