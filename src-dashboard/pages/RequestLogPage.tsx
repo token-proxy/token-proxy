@@ -6,6 +6,7 @@ import {
 import { IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import api from '../api.ts';
+import CopyableIdText from '../components/CopyableIdText.tsx';
 import LogDetailModal from '../components/LogDetailModal.tsx';
 import LogFilterBar from '../components/LogFilterBar.tsx';
 import type {
@@ -158,6 +159,12 @@ export default function RequestLogPage(): ReactNode {
 
   const columns = [
     {
+      title: 'ID',
+      dataIndex: 'id',
+      width: 240,
+      render: (id: string) => <CopyableIdText value={id} />,
+    },
+    {
       title: '时间',
       dataIndex: 'timestamp',
       width: 180,
@@ -195,12 +202,8 @@ export default function RequestLogPage(): ReactNode {
     {
       title: '会话 ID',
       dataIndex: 'session_id',
-      width: 160,
-      render: (id: string) => (
-        <span style={{ fontFamily: 'monospace', fontSize: 12 }}>
-          {truncateMiddle(id, 20)}
-        </span>
-      ),
+      width: 260,
+      render: (id: string) => <CopyableIdText value={id} />,
     },
     {
       title: '用户',
@@ -212,21 +215,31 @@ export default function RequestLogPage(): ReactNode {
     {
       title: '接入点',
       key: 'ap',
-      width: 100,
-      render: (_: unknown, r: LogSummary) =>
-        r.access_point_id ? (apMap[r.access_point_id] || truncateMiddle(r.access_point_id, 8)) : '-',
+      width: 180,
+      render: (_: unknown, r: LogSummary) => {
+        if (!r.access_point_id) {
+          return '-';
+        }
+
+        const accessPointName = apMap[r.access_point_id];
+        if (accessPointName) {
+          return <span className="monospace-text nowrap-text">{accessPointName}</span>;
+        }
+
+        return <CopyableIdText value={r.access_point_id} />;
+      },
     },
     {
       title: '原始模型',
       dataIndex: 'model_original',
       width: 120,
-      render: (m?: string | null) => m || '-',
+      render: (m?: string | null) => <span className="nowrap-text">{m || '-'}</span>,
     },
     {
       title: '映射模型',
       dataIndex: 'model_mapped',
       width: 120,
-      render: (m?: string | null) => m || '-',
+      render: (m?: string | null) => <span className="nowrap-text">{m || '-'}</span>,
     },
     {
       title: '状态码',
@@ -242,7 +255,7 @@ export default function RequestLogPage(): ReactNode {
       title: '耗时',
       dataIndex: 'duration_ms',
       width: 80,
-      render: (ms?: number | null) => formatDuration(ms),
+      render: (ms?: number | null) => <span className="nowrap-text">{formatDuration(ms)}</span>,
     },
     {
       title: '操作',

@@ -10,3 +10,27 @@ body {
 .semi-table {
   width: 100% !important;
 }
+
+.monospace-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.nowrap-text {
+  white-space: nowrap;
+}
+
+.copyable-id-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  color: var(--semi-color-primary);
+  vertical-align: -0.125em;
+  cursor: pointer;
+}
+
+.copyable-id-icon-success {
+  color: var(--semi-color-success);
+}
