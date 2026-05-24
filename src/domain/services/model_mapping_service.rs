@@ -1,5 +1,5 @@
 use crate::domain::value_objects::model_mapping::{
-    MatchType, ModelMapping, DEFAULT_MODEL_SENTINEL, UNMATCHED_MODEL_SENTINEL,
+    normalize_match_type, MatchType, ModelMapping, DEFAULT_MODEL_SENTINEL, UNMATCHED_MODEL_SENTINEL,
 };
 
 /// 应用模型映射到请求体的纯函数
@@ -48,10 +48,10 @@ pub fn find_matching_mapping<'a>(
         return Some(m);
     }
     // 2. 前缀匹配
-    if let Some(m) = mappings
-        .iter()
-        .find(|m| m.match_type == MatchType::Prefix && requested_model.starts_with(&m.source_model))
-    {
+    if let Some(m) = mappings.iter().find(|m| {
+        normalize_match_type(&m.source_model, m.match_type) == MatchType::Prefix
+            && requested_model.starts_with(&m.source_model)
+    }) {
         return Some(m);
     }
     // 3. __unmatched__ 规则
@@ -113,6 +113,17 @@ mod tests {
         let found = find_matching_mapping(&mappings, "claude-sonnet-4-20250101");
         assert!(found.is_some());
         assert_eq!(found.unwrap().target_model, "claude-sonnet-4-20250514");
+    }
+
+    #[test]
+    fn test_find_matching_mapping_claude_haiku_family_prefix() {
+        let mappings = vec![ModelMapping::new_exact(
+            "claude-haiku-".to_string(),
+            "claude-3-5-haiku-20241022".to_string(),
+        )];
+        let found = find_matching_mapping(&mappings, "claude-haiku-4-5-20251001");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().target_model, "claude-3-5-haiku-20241022");
     }
 
     #[test]
