@@ -21,10 +21,7 @@ use crate::shared::error::AppError;
 /// - `DELETE /api/providers/{provider_id}/accounts/{id}`     → delete_account
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route(
-            "/api/providers/{provider_id}/accounts",
-            get(list_accounts),
-        )
+        .route("/api/providers/{provider_id}/accounts", get(list_accounts))
         .route(
             "/api/providers/{provider_id}/accounts",
             post(create_account),

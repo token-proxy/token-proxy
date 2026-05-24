@@ -102,7 +102,9 @@ impl AuthService {
             .ok_or_else(|| AppError::Unauthorized("无效的 refresh token".to_string()))?;
 
         if !stored_token.is_valid() {
-            return Err(AppError::Unauthorized("refresh token 已过期或已吊销".to_string()));
+            return Err(AppError::Unauthorized(
+                "refresh token 已过期或已吊销".to_string(),
+            ));
         }
 
         // 原子吊销旧 token

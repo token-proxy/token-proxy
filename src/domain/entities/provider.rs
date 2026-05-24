@@ -47,8 +47,12 @@ impl Provider {
         Ok(Provider {
             id: Uuid::new_v4(),
             name,
-            openai_base_url: openai_base_url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty()),
-            anthropic_base_url: anthropic_base_url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty()),
+            openai_base_url: openai_base_url
+                .map(|u| u.trim().to_string())
+                .filter(|u| !u.is_empty()),
+            anthropic_base_url: anthropic_base_url
+                .map(|u| u.trim().to_string())
+                .filter(|u| !u.is_empty()),
             models: Vec::new(),
             status: Status::Enabled,
             created_at: now,
@@ -83,7 +87,11 @@ mod tests {
 
     #[test]
     fn test_provider_new_empty_name() {
-        let result = Provider::new("  ".to_string(), None, Some("https://api.anthropic.com".to_string()));
+        let result = Provider::new(
+            "  ".to_string(),
+            None,
+            Some("https://api.anthropic.com".to_string()),
+        );
         assert!(result.is_err());
     }
 

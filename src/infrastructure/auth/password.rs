@@ -19,8 +19,8 @@ pub fn hash_password(password: &str) -> Result<String, AppError> {
 
 /// 使用 Argon2id 验证密码与哈希是否匹配
 pub fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
-    let parsed_hash =
-        PasswordHash::new(hash).map_err(|e| AppError::Internal(format!("无效的密码哈希: {}", e)))?;
+    let parsed_hash = PasswordHash::new(hash)
+        .map_err(|e| AppError::Internal(format!("无效的密码哈希: {}", e)))?;
 
     let argon2 = Argon2::default();
     Ok(argon2

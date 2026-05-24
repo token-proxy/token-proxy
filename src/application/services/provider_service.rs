@@ -334,10 +334,7 @@ impl ProviderService {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         if accounts.is_empty() {
-            tracing::warn!(
-                "[discover] provider {} 没有已启用的 Account",
-                provider.id
-            );
+            tracing::warn!("[discover] provider {} 没有已启用的 Account", provider.id);
             return Err(AppError::NotFound(
                 "缺少可用的 API Key，请先为此 Provider 添加 Account".to_string(),
             ));
@@ -402,9 +399,7 @@ impl ProviderService {
             .header("anthropic-version", "2023-06-01")
             .send()
             .await
-            .map_err(|e| {
-                AppError::Upstream(format!("模型自动发现请求失败 ({}): {}", url, e))
-            })?;
+            .map_err(|e| AppError::Upstream(format!("模型自动发现请求失败 ({}): {}", url, e)))?;
 
         let status = response.status();
         if !status.is_success() {
@@ -420,7 +415,7 @@ impl ProviderService {
         let body: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| AppError::Upstream(format!("解析模型列表响应失败: {}", e))) ?;
+            .map_err(|e| AppError::Upstream(format!("解析模型列表响应失败: {}", e)))?;
 
         // OpenAI: { "data": [{ "id": "gpt-4", ... }, ...] }
         // Anthropic: { "data": [{ "id": "claude-...", "type": "model" }, ...], "has_more": ... }
@@ -428,7 +423,11 @@ impl ProviderService {
         let models = extract_model_ids(&body);
 
         if models.is_empty() {
-            tracing::warn!("上游 {} 返回了 200，但未能从响应中解析出模型 ID。响应体: {}", url, body);
+            tracing::warn!(
+                "上游 {} 返回了 200，但未能从响应中解析出模型 ID。响应体: {}",
+                url,
+                body
+            );
         }
 
         Ok(models)

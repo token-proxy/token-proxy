@@ -19,11 +19,11 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Result<Self, String> {
-        let database_url = std::env::var("DATABASE_URL")
-            .map_err(|_| "DATABASE_URL 环境变量未设置".to_string())?;
+        let database_url =
+            std::env::var("DATABASE_URL").map_err(|_| "DATABASE_URL 环境变量未设置".to_string())?;
 
-        let jwt_secret = std::env::var("JWT_SECRET")
-            .map_err(|_| "JWT_SECRET 环境变量未设置".to_string())?;
+        let jwt_secret =
+            std::env::var("JWT_SECRET").map_err(|_| "JWT_SECRET 环境变量未设置".to_string())?;
 
         let encryption_key_hex = std::env::var("ENCRYPTION_KEY")
             .map_err(|_| "ENCRYPTION_KEY 环境变量未设置".to_string())?;
@@ -55,7 +55,7 @@ impl Config {
         Ok(Config {
             database_url,
             jwt_secret,
-            jwt_access_expiry: Duration::from_secs(30 * 60),      // 30 分钟
+            jwt_access_expiry: Duration::from_secs(30 * 60), // 30 分钟
             jwt_refresh_expiry: Duration::from_secs(7 * 24 * 3600), // 7 天
             encryption_key,
             server_port,
@@ -93,6 +93,9 @@ fn hex_char_to_val(c: u8) -> Result<u8, String> {
         b'0'..=b'9' => Ok(c - b'0'),
         b'a'..=b'f' => Ok(c - b'a' + 10),
         b'A'..=b'F' => Ok(c - b'A' + 10),
-        _ => Err(format!("ENCRYPTION_KEY 包含无效十六进制字符: '{}'", c as char)),
+        _ => Err(format!(
+            "ENCRYPTION_KEY 包含无效十六进制字符: '{}'",
+            c as char
+        )),
     }
 }

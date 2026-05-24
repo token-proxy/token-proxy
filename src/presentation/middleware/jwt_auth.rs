@@ -9,11 +9,7 @@ use crate::application::AppState;
 use crate::shared::error::AppError;
 
 /// 公开路径（无需认证）
-const PUBLIC_PATHS: &[&str] = &[
-    "/api/auth/login",
-    "/api/auth/refresh",
-    "/api/health",
-];
+const PUBLIC_PATHS: &[&str] = &["/api/auth/login", "/api/auth/refresh", "/api/health"];
 
 /// `/ap/*` 代理转发路径也是公开的
 fn is_public_path(path: &str) -> bool {
@@ -69,10 +65,7 @@ where
 {
     type Rejection = AppError;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        _state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let claims = parts
             .extensions
             .get::<crate::application::dto::auth_dto::Claims>()

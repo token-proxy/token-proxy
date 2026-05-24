@@ -26,9 +26,7 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// GET /api/users
-async fn list_users(
-    State(state): State<AppState>,
-) -> Result<Json<Vec<UserResponse>>, AppError> {
+async fn list_users(State(state): State<AppState>) -> Result<Json<Vec<UserResponse>>, AppError> {
     let users = state.user_service.list_all().await?;
     Ok(Json(users))
 }

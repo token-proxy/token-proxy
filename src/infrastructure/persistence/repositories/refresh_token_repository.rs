@@ -3,15 +3,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
 };
 
 use crate::domain::entities::refresh_token::RefreshToken;
 use crate::domain::repositories::refresh_token_repository::RefreshTokenRepository;
-use crate::infrastructure::persistence::entities::refresh_token::{
-    ActiveModel, Column, Entity,
-};
+use crate::infrastructure::persistence::entities::refresh_token::{ActiveModel, Column, Entity};
 use crate::shared::error::AppError;
 use uuid::Uuid;
 
@@ -116,7 +113,8 @@ impl RefreshTokenRepository for SeaOrmRefreshTokenRepository {
             Some(model) => {
                 let mut active: ActiveModel = model.into();
                 active.revoked = sea_orm::Set(true);
-                active.update(db)
+                active
+                    .update(db)
                     .await
                     .map_err(|e| AppError::Database(e.to_string()))?;
             }

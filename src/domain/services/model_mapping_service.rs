@@ -30,13 +30,12 @@ mod tests {
 
     #[test]
     fn test_apply_model_mappings_with_match() {
-        let mappings = vec![
-            ModelMapping {
-                source_model: "claude-sonnet-4-20250514".to_string(),
-                target_model: "claude-sonnet-4-20250514-v2".to_string(),
-            },
-        ];
-        let body = r#"{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"hi"}]}"#;
+        let mappings = vec![ModelMapping {
+            source_model: "claude-sonnet-4-20250514".to_string(),
+            target_model: "claude-sonnet-4-20250514-v2".to_string(),
+        }];
+        let body =
+            r#"{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"hi"}]}"#;
         let (new_body, _delta) = apply_model_mappings(body, &mappings, "claude-sonnet-4-20250514");
         let parsed: serde_json::Value = serde_json::from_str(&new_body).unwrap();
         assert_eq!(parsed["model"], "claude-sonnet-4-20250514-v2");
@@ -44,12 +43,10 @@ mod tests {
 
     #[test]
     fn test_apply_model_mappings_no_match() {
-        let mappings = vec![
-            ModelMapping {
-                source_model: "model-a".to_string(),
-                target_model: "model-b".to_string(),
-            },
-        ];
+        let mappings = vec![ModelMapping {
+            source_model: "model-a".to_string(),
+            target_model: "model-b".to_string(),
+        }];
         let body = r#"{"model":"model-c","messages":[]}"#;
         let (new_body, delta) = apply_model_mappings(body, &mappings, "model-c");
         assert_eq!(new_body, body);

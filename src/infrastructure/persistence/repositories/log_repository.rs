@@ -13,9 +13,7 @@ use crate::domain::repositories::log_repository::{LogQuery, LogRepository};
 use crate::infrastructure::persistence::entities::log_content::{
     ActiveModel as ContentActiveModel, Entity as ContentEntity,
 };
-use crate::infrastructure::persistence::entities::log_metadata::{
-    ActiveModel, Column, Entity,
-};
+use crate::infrastructure::persistence::entities::log_metadata::{ActiveModel, Column, Entity};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
@@ -244,11 +242,8 @@ impl LogRepository for SeaOrmLogRepository {
             LIMIT $1
         "#;
 
-        let stmt = Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            sql,
-            [(limit as i64).into()],
-        );
+        let stmt =
+            Statement::from_sql_and_values(DbBackend::Postgres, sql, [(limit as i64).into()]);
 
         let results = db
             .query_all(stmt)
@@ -280,11 +275,8 @@ impl LogRepository for SeaOrmLogRepository {
             LIMIT $1
         "#;
 
-        let stmt = Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            sql,
-            [(limit as i64).into()],
-        );
+        let stmt =
+            Statement::from_sql_and_values(DbBackend::Postgres, sql, [(limit as i64).into()]);
 
         let results = db
             .query_all(stmt)

@@ -12,8 +12,8 @@ use token_proxy::application::services::auth_service::AuthService;
 use token_proxy::application::services::log_service::LogService;
 use token_proxy::application::services::provider_service::ProviderService;
 use token_proxy::application::services::proxy_service::ProxyService;
-use token_proxy::application::services::user_service::UserService;
 use token_proxy::application::services::user_api_key_service::UserApiKeyService;
+use token_proxy::application::services::user_service::UserService;
 use token_proxy::application::AppState;
 use token_proxy::config::Config;
 use token_proxy::domain::repositories::access_point_repository::AccessPointRepository;
@@ -22,20 +22,20 @@ use token_proxy::domain::repositories::audit_log_repository::AuditLogRepository;
 use token_proxy::domain::repositories::log_repository::LogRepository;
 use token_proxy::domain::repositories::provider_repository::ProviderRepository;
 use token_proxy::domain::repositories::refresh_token_repository::RefreshTokenRepository;
-use token_proxy::domain::repositories::user_repository::UserRepository;
 use token_proxy::domain::repositories::user_api_key_repository::UserApiKeyRepository;
+use token_proxy::domain::repositories::user_repository::UserRepository;
 use token_proxy::domain::services::encryption_service::EncryptionService;
-use token_proxy::infrastructure::persistence::repositories::user_api_key_repository::SeaOrmUserApiKeyRepository;
 use token_proxy::infrastructure::auth::jwt::JwtService;
 use token_proxy::infrastructure::encryption::aes256_gcm::Aes256GcmEncryptionService;
 use token_proxy::infrastructure::http_client::proxy_client::ProxyClient;
+use token_proxy::infrastructure::persistence::partition_manager::PartitionManager;
 use token_proxy::infrastructure::persistence::repositories::access_point_repository::SeaOrmAccessPointRepository;
 use token_proxy::infrastructure::persistence::repositories::account_repository::SeaOrmAccountRepository;
 use token_proxy::infrastructure::persistence::repositories::audit_log_repository::SeaOrmAuditLogRepository;
 use token_proxy::infrastructure::persistence::repositories::log_repository::SeaOrmLogRepository;
 use token_proxy::infrastructure::persistence::repositories::provider_repository::SeaOrmProviderRepository;
 use token_proxy::infrastructure::persistence::repositories::refresh_token_repository::SeaOrmRefreshTokenRepository;
-use token_proxy::infrastructure::persistence::partition_manager::PartitionManager;
+use token_proxy::infrastructure::persistence::repositories::user_api_key_repository::SeaOrmUserApiKeyRepository;
 use token_proxy::infrastructure::persistence::repositories::user_repository::SeaOrmUserRepository;
 use token_proxy::presentation::routes;
 
@@ -44,8 +44,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 加载 .env（可选）
     dotenvy::dotenv().ok();
 
+    // 初始化 tracing 日志
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    tracing_subscriber::fmt()
+        .json()
+        .with_env_filter(env_filter)
+        .init();
+
     // ─── 迁移命令行模式 ───
-    // 用法: cargo make migration <up|down|fresh|status>
+    // 用法: cargo make migrate <up|down|fresh|status>
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 && args[1] == "migrate" {
         let subcommand = args.get(2).map(|s| s.as_str()).unwrap_or("up");
@@ -80,13 +87,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
-
-    // 初始化 tracing 日志
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    tracing_subscriber::fmt()
-        .json()
-        .with_env_filter(env_filter)
-        .init();
 
     tracing::info!("token-proxy 服务启动中...");
 
@@ -171,8 +171,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let account_repo: Arc<dyn AccountRepository> =
         Arc::new(SeaOrmAccountRepository::new(db.clone()));
 
-    let user_repo: Arc<dyn UserRepository> =
-        Arc::new(SeaOrmUserRepository::new(db.clone()));
+    let user_repo: Arc<dyn UserRepository> = Arc::new(SeaOrmUserRepository::new(db.clone()));
 
     let access_point_repo: Arc<dyn AccessPointRepository> =
         Arc::new(SeaOrmAccessPointRepository::new(db.clone()));
@@ -180,8 +179,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let refresh_token_repo: Arc<dyn RefreshTokenRepository> =
         Arc::new(SeaOrmRefreshTokenRepository::new(db.clone()));
 
-    let log_repo: Arc<dyn LogRepository> =
-        Arc::new(SeaOrmLogRepository::new(db.clone()));
+    let log_repo: Arc<dyn LogRepository> = Arc::new(SeaOrmLogRepository::new(db.clone()));
 
     let audit_log_repo: Arc<dyn AuditLogRepository> =
         Arc::new(SeaOrmAuditLogRepository::new(db.clone()));
@@ -204,10 +202,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         encryption_service.clone(),
     ));
 
-    let user_service = Arc::new(UserService::new(
-        user_repo.clone(),
-        audit_log_repo.clone(),
-    ));
+    let user_service = Arc::new(UserService::new(user_repo.clone(), audit_log_repo.clone()));
 
     let access_point_service = Arc::new(AccessPointService::new(
         access_point_repo.clone(),
@@ -245,9 +240,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if users.is_empty() {
         let password = generate_random_password(12);
-        let password_hash =
-            token_proxy::infrastructure::auth::password::hash_password(&password)
-                .map_err(|e| format!("密码哈希失败: {}", e))?;
+        let password_hash = token_proxy::infrastructure::auth::password::hash_password(&password)
+            .map_err(|e| format!("密码哈希失败: {}", e))?;
 
         let admin = token_proxy::domain::entities::user::User::new(
             "admin".to_string(),

@@ -73,10 +73,7 @@ impl AccessPointService {
                 .await
                 .map_err(|e| AppError::Database(e.to_string()))?;
             if existing.is_some() {
-                return Err(AppError::Conflict(format!(
-                    "短码 '{}' 已被使用",
-                    code
-                )));
+                return Err(AppError::Conflict(format!("短码 '{}' 已被使用", code)));
             }
             code
         } else {
