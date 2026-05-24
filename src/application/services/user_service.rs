@@ -65,8 +65,7 @@ impl UserService {
 
         // 哈希密码
         let password_hash =
-            hash_password(&req.password)
-                .map_err(|e| AppError::Internal(e.to_string()))?;
+            hash_password(&req.password).map_err(|e| AppError::Internal(e.to_string()))?;
 
         let user = User::new(trimmed_username, req.display_name, password_hash);
 
@@ -79,11 +78,7 @@ impl UserService {
         Ok(Self::to_response(&saved))
     }
 
-    pub async fn update(
-        &self,
-        id: Uuid,
-        req: UpdateUserRequest,
-    ) -> Result<UserResponse, AppError> {
+    pub async fn update(&self, id: Uuid, req: UpdateUserRequest) -> Result<UserResponse, AppError> {
         let mut user = self
             .user_repo
             .find_by_id(id)
@@ -104,8 +99,7 @@ impl UserService {
                 return Err(AppError::Validation("密码长度不能少于 6 位".to_string()));
             }
             user.password_hash =
-                hash_password(&password)
-                    .map_err(|e| AppError::Internal(e.to_string()))?;
+                hash_password(&password).map_err(|e| AppError::Internal(e.to_string()))?;
         }
 
         if let Some(status_str) = req.status {
@@ -212,8 +206,8 @@ impl UserService {
             return Err(AppError::Validation("新密码长度不能少于 6 位".to_string()));
         }
 
-        let new_hash = hash_password(&req.new_password)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let new_hash =
+            hash_password(&req.new_password).map_err(|e| AppError::Internal(e.to_string()))?;
 
         let mut mutable_user = user;
         mutable_user.password_hash = new_hash;

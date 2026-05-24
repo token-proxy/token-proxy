@@ -27,7 +27,6 @@ pub struct ProxyService {
     access_point_repo: Arc<dyn AccessPointRepository>,
     provider_repo: Arc<dyn ProviderRepository>,
     account_repo: Arc<dyn AccountRepository>,
-    #[allow(dead_code)]
     encryption_service: Arc<dyn EncryptionService>,
     user_api_key_repo: Arc<dyn UserApiKeyRepository>,
 }
@@ -79,10 +78,7 @@ impl ProxyService {
             .await
             .map_err(|e| AppError::Database(e.to_string()))?
             .ok_or_else(|| {
-                AppError::NotFound(format!(
-                    "接入点 '{}' 关联的提供商未找到",
-                    short_code
-                ))
+                AppError::NotFound(format!("接入点 '{}' 关联的提供商未找到", short_code))
             })?;
 
         if !provider.status.is_enabled() {
@@ -99,10 +95,7 @@ impl ProxyService {
             .await
             .map_err(|e| AppError::Database(e.to_string()))?
             .ok_or_else(|| {
-                AppError::NotFound(format!(
-                    "接入点 '{}' 关联的账号未找到",
-                    short_code
-                ))
+                AppError::NotFound(format!("接入点 '{}' 关联的账号未找到", short_code))
             })?;
 
         if !account.status.is_enabled() {
@@ -112,14 +105,8 @@ impl ProxyService {
             )));
         }
 
-        // 解密 API Key
-        // 注意: 此处假设 account 实体在 Infra 层持久化时保存了 encrypted_api_key 字段。
-        // 实际解密逻辑依赖于 SeaOrmAccountRepository 如何存储和提供加密数据。
-        // 这里通过缓存/关联查询获取已加密的 api_key 密文（base64 编码）
-        // 解密流程由 Infra 层的 AccountRepository 实现配合完成
-        let decrypted_api_key = self
-            .decrypt_account_key(&account)
-            .await?;
+        // 4. 解密 API Key
+        let decrypted_api_key = self.decrypt_account_key(account.id).await?;
 
         Ok(ProxyContext {
             access_point,
@@ -130,19 +117,27 @@ impl ProxyService {
     }
 
     /// 解密账号的 API Key
-    ///
-    /// 该方法需要从 Account 实体或其关联数据中获取加密的 API Key，
-    /// 然后使用 encryption_service 解密。
-    ///
-    /// 由于 Account 实体本身只有 api_key_suffix，没有 encrypted_api_key 字段，
-    /// 实际的解密流程会在 SeaOrmAccountRepository 中实现。
-    /// 此处仅作为 Service 层的编排接口，具体的解密由 Infra 层配合完成。
-    async fn decrypt_account_key(&self, _account: &Account) -> Result<String, AppError> {
-        // 此方法实际由 Infra 层 AccountRepository 的实现提供解密能力
-        // 在后续开发中，这里会从 repository 获取加密的 api_key 并调用 encryption_service.decrypt
-        Err(AppError::Internal(
-            "API Key 解密功能需要在 Infra 层实现后启用".to_string(),
-        ))
+    async fn decrypt_account_key(&self, account_id: Uuid) -> Result<String, AppError> {
+        let encrypted_key = self
+            .account_repo
+            .get_encrypted_api_key(account_id)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        if encrypted_key.is_empty() {
+            return Err(AppError::NotFound(
+                "API Key 未正确存储，请删除并重新添加 Account".to_string(),
+            ));
+        }
+
+        let decrypted = self
+            .encryption_service
+            .decrypt(&encrypted_key)
+            .await
+            .map_err(|e| AppError::Encryption(e.to_string()))?;
+
+        String::from_utf8(decrypted)
+            .map_err(|_| AppError::Internal("API Key 解码失败: 非法的 UTF-8 格式".to_string()))
     }
 
     /// 认证用户 API key
@@ -158,16 +153,12 @@ impl ProxyService {
         let auth_header = headers
             .get("authorization")
             .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| {
-                AppError::Unauthorized("缺少 Authorization 请求头".to_string())
-            })?;
+            .ok_or_else(|| AppError::Unauthorized("缺少 Authorization 请求头".to_string()))?;
 
         // 2. 提取 Bearer token
-        let token = auth_header
-            .strip_prefix("Bearer ")
-            .ok_or_else(|| {
-                AppError::Unauthorized("Authorization 格式应为 Bearer <token>".to_string())
-            })?;
+        let token = auth_header.strip_prefix("Bearer ").ok_or_else(|| {
+            AppError::Unauthorized("Authorization 格式应为 Bearer <token>".to_string())
+        })?;
 
         if token.is_empty() {
             return Err(AppError::Unauthorized("API key 不能为空".to_string()));
@@ -184,9 +175,7 @@ impl ProxyService {
             .find_by_key_hash(&key_hash)
             .await
             .map_err(|e| AppError::Database(e.to_string()))?
-            .ok_or_else(|| {
-                AppError::Unauthorized("API key 无效或已被撤销".to_string())
-            })?;
+            .ok_or_else(|| AppError::Unauthorized("API key 无效或已被撤销".to_string()))?;
 
         // 5. 检查状态
         if !api_key.status.is_enabled() {

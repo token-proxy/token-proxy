@@ -63,8 +63,7 @@ impl From<Provider> for ActiveModel {
             openai_base_url: Set(provider.openai_base_url),
             anthropic_base_url: Set(provider.anthropic_base_url),
             models: Set(
-                serde_json::to_value(&provider.models)
-                    .unwrap_or(serde_json::Value::Array(vec![])),
+                serde_json::to_value(&provider.models).unwrap_or(serde_json::Value::Array(vec![]))
             ),
             status: Set(provider.status.to_string()),
             created_at: Set(provider.created_at.with_timezone(&offset)),

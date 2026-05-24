@@ -2,10 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-};
 use sea_orm::IntoActiveModel;
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 use crate::domain::entities::user_api_key::UserApiKey;
 use crate::domain::repositories::user_api_key_repository::UserApiKeyRepository;

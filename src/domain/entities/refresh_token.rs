@@ -14,11 +14,7 @@ pub struct RefreshToken {
 
 impl RefreshToken {
     /// 创建新的 RefreshToken
-    pub fn new(
-        user_id: Uuid,
-        token_hash: String,
-        expires_at: DateTime<Utc>,
-    ) -> Self {
+    pub fn new(user_id: Uuid, token_hash: String, expires_at: DateTime<Utc>) -> Self {
         RefreshToken {
             id: Uuid::new_v4(),
             user_id,

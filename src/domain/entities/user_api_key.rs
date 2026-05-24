@@ -17,12 +17,7 @@ pub struct UserApiKey {
 
 impl UserApiKey {
     /// 创建新的 UserApiKey
-    pub fn new(
-        user_id: Uuid,
-        key_hash: String,
-        key_prefix: String,
-        description: String,
-    ) -> Self {
+    pub fn new(user_id: Uuid, key_hash: String, key_prefix: String, description: String) -> Self {
         UserApiKey {
             id: Uuid::new_v4(),
             user_id,

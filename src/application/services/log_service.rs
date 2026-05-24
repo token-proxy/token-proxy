@@ -148,10 +148,8 @@ impl LogService {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         // 按 session_id 分组
-        let mut session_map: std::collections::HashMap<
-            String,
-            Vec<LogEntry>,
-        > = std::collections::HashMap::new();
+        let mut session_map: std::collections::HashMap<String, Vec<LogEntry>> =
+            std::collections::HashMap::new();
 
         for entry in &result.items {
             session_map

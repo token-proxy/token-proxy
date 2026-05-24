@@ -91,17 +91,15 @@ impl JwtService {
             &DecodingKey::from_secret(self.secret.as_bytes()),
             &Validation::default(),
         )
-        .map_err(|e| {
-            match e.kind() {
-                jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
-                    AppError::Unauthorized("令牌已过期".to_string())
-                }
-                jsonwebtoken::errors::ErrorKind::InvalidToken
-                | jsonwebtoken::errors::ErrorKind::InvalidSignature => {
-                    AppError::Unauthorized("无效的令牌".to_string())
-                }
-                _ => AppError::Unauthorized(format!("令牌验证失败: {}", e)),
+        .map_err(|e| match e.kind() {
+            jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
+                AppError::Unauthorized("令牌已过期".to_string())
             }
+            jsonwebtoken::errors::ErrorKind::InvalidToken
+            | jsonwebtoken::errors::ErrorKind::InvalidSignature => {
+                AppError::Unauthorized("无效的令牌".to_string())
+            }
+            _ => AppError::Unauthorized(format!("令牌验证失败: {}", e)),
         })?;
 
         Ok(token_data.claims)

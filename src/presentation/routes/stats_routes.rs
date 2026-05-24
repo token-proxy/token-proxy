@@ -75,9 +75,7 @@ pub fn routes() -> Router<AppState> {
 /// GET /api/stats/overview
 ///
 /// 返回全局概览统计：请求总数、活跃接入点数量等。
-async fn get_overview(
-    State(state): State<AppState>,
-) -> Result<Json<OverviewResponse>, AppError> {
+async fn get_overview(State(state): State<AppState>) -> Result<Json<OverviewResponse>, AppError> {
     let total_requests = state.log_repo.count_total().await?;
     let active_access_points = state.log_repo.count_active_access_points().await?;
 

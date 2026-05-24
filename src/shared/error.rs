@@ -47,10 +47,16 @@ impl IntoResponse for AppError {
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
-            AppError::Encryption(_) => (StatusCode::INTERNAL_SERVER_ERROR, "内部加密错误".to_string()),
+            AppError::Encryption(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "内部加密错误".to_string(),
+            ),
             AppError::Database(msg) => {
                 error!(%msg, "数据库错误");
-                (StatusCode::INTERNAL_SERVER_ERROR, "内部数据库错误".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "内部数据库错误".to_string(),
+                )
             }
             AppError::Upstream(msg) => {
                 error!(%msg, "上游服务错误");
@@ -58,7 +64,10 @@ impl IntoResponse for AppError {
             }
             AppError::Internal(msg) => {
                 error!(%msg, "内部错误");
-                (StatusCode::INTERNAL_SERVER_ERROR, "内部服务器错误".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "内部服务器错误".to_string(),
+                )
             }
         };
 

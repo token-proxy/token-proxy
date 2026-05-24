@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sea_orm::{
-    ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-};
+use sea_orm::{ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 
 use crate::domain::entities::account::Account;
 use crate::domain::repositories::account_repository::AccountRepository;
@@ -50,7 +48,10 @@ impl AccountRepository for SeaOrmAccountRepository {
             .collect::<Result<Vec<Account>, AppError>>()
     }
 
-    async fn find_enabled_by_provider_id(&self, provider_id: Uuid) -> Result<Vec<Account>, AppError> {
+    async fn find_enabled_by_provider_id(
+        &self,
+        provider_id: Uuid,
+    ) -> Result<Vec<Account>, AppError> {
         let db = &*self.db;
         let models = Entity::find()
             .filter(Column::ProviderId.eq(provider_id))

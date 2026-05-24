@@ -24,10 +24,7 @@ use crate::shared::error::AppError;
 ///
 /// - `POST /ap/{short_code}/v1/messages` → proxy_messages
 pub fn routes() -> Router<AppState> {
-    Router::new().route(
-        "/ap/{short_code}/v1/messages",
-        post(proxy_messages),
-    )
+    Router::new().route("/ap/{short_code}/v1/messages", post(proxy_messages))
 }
 
 /// POST /ap/{short_code}/v1/messages
@@ -295,9 +292,10 @@ async fn handle_streaming_proxy(
 
 /// 从请求体 JSON 中提取 model 字段值
 fn extract_model_from_body(body: &str) -> Option<String> {
-    serde_json::from_str::<Value>(body)
-        .ok()
-        .and_then(|v| v.get("model").and_then(|m| m.as_str().map(|s| s.to_string())))
+    serde_json::from_str::<Value>(body).ok().and_then(|v| {
+        v.get("model")
+            .and_then(|m| m.as_str().map(|s| s.to_string()))
+    })
 }
 
 /// 应用模型映射到请求体

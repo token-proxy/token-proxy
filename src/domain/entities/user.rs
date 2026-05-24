@@ -16,11 +16,7 @@ pub struct User {
 
 impl User {
     /// 创建新的 User
-    pub fn new(
-        username: String,
-        display_name: String,
-        password_hash: String,
-    ) -> Self {
+    pub fn new(username: String, display_name: String, password_hash: String) -> Self {
         let now = Utc::now();
         User {
             id: Uuid::new_v4(),

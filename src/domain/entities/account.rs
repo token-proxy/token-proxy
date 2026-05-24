@@ -16,11 +16,7 @@ pub struct Account {
 
 impl Account {
     /// 创建新的 Account，仅存储 API Key 末尾 6 位
-    pub fn new(
-        provider_id: Uuid,
-        name: String,
-        api_key_suffix: String,
-    ) -> Self {
+    pub fn new(provider_id: Uuid, name: String, api_key_suffix: String) -> Self {
         let now = Utc::now();
         Account {
             id: Uuid::new_v4(),

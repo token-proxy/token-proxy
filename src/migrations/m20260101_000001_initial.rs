@@ -18,8 +18,12 @@ impl MigrationTrait for Migration {
                     .col(string_null(Providers::AnthropicBaseUrl))
                     .col(json(Providers::Models).default(Expr::cust("'[]'::json")))
                     .col(string(Providers::Status).default("enabled"))
-                    .col(timestamp_with_time_zone(Providers::CreatedAt).default(Expr::cust("NOW()")))
-                    .col(timestamp_with_time_zone(Providers::UpdatedAt).default(Expr::cust("NOW()")))
+                    .col(
+                        timestamp_with_time_zone(Providers::CreatedAt).default(Expr::cust("NOW()")),
+                    )
+                    .col(
+                        timestamp_with_time_zone(Providers::UpdatedAt).default(Expr::cust("NOW()")),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -80,8 +84,14 @@ impl MigrationTrait for Migration {
                     .col(json(AccessPoints::ModelMappings).default(Expr::cust("'[]'::json")))
                     .col(string(AccessPoints::Status).default("enabled"))
                     .col(uuid(AccessPoints::CreatedBy).not_null())
-                    .col(timestamp_with_time_zone(AccessPoints::CreatedAt).default(Expr::cust("NOW()")))
-                    .col(timestamp_with_time_zone(AccessPoints::UpdatedAt).default(Expr::cust("NOW()")))
+                    .col(
+                        timestamp_with_time_zone(AccessPoints::CreatedAt)
+                            .default(Expr::cust("NOW()")),
+                    )
+                    .col(
+                        timestamp_with_time_zone(AccessPoints::UpdatedAt)
+                            .default(Expr::cust("NOW()")),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .from(AccessPoints::Table, AccessPoints::ProviderId)
@@ -115,7 +125,10 @@ impl MigrationTrait for Migration {
                     .col(string(RefreshTokens::TokenHash).not_null())
                     .col(timestamp_with_time_zone(RefreshTokens::ExpiresAt).not_null())
                     .col(boolean(RefreshTokens::Revoked).default(false))
-                    .col(timestamp_with_time_zone(RefreshTokens::CreatedAt).default(Expr::cust("NOW()")))
+                    .col(
+                        timestamp_with_time_zone(RefreshTokens::CreatedAt)
+                            .default(Expr::cust("NOW()")),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .from(RefreshTokens::Table, RefreshTokens::UserId)
@@ -182,7 +195,9 @@ impl MigrationTrait for Migration {
                     .col(string(AuditLogs::EntityType).not_null())
                     .col(uuid_null(AuditLogs::EntityId))
                     .col(json(AuditLogs::Details))
-                    .col(timestamp_with_time_zone(AuditLogs::Timestamp).default(Expr::cust("NOW()")))
+                    .col(
+                        timestamp_with_time_zone(AuditLogs::Timestamp).default(Expr::cust("NOW()")),
+                    )
                     .to_owned(),
             )
             .await?;

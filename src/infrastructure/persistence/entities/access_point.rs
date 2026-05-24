@@ -112,10 +112,8 @@ impl From<AccessPoint> for ActiveModel {
             short_code: Set(ap.short_code.to_string()),
             provider_id: Set(ap.provider_id),
             account_id: Set(ap.account_id),
-            model_mappings: Set(
-                serde_json::to_value(&ap.model_mappings)
-                    .unwrap_or(serde_json::Value::Array(vec![])),
-            ),
+            model_mappings: Set(serde_json::to_value(&ap.model_mappings)
+                .unwrap_or(serde_json::Value::Array(vec![]))),
             status: Set(ap.status.to_string()),
             created_by: Set(ap.created_by),
             created_at: Set(ap.created_at.with_timezone(&offset)),

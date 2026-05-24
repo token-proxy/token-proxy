@@ -26,10 +26,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/providers/{id}", get(get_provider))
         .route("/api/providers/{id}", put(update_provider))
         .route("/api/providers/{id}", delete(delete_provider))
-        .route(
-            "/api/providers/{id}/discover-models",
-            post(discover_models),
-        )
+        .route("/api/providers/{id}/discover-models", post(discover_models))
 }
 
 /// GET /api/providers

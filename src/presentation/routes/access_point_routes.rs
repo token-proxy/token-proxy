@@ -42,10 +42,7 @@ async fn create_access_point(
     CurrentUser(created_by): CurrentUser,
     Json(req): Json<CreateAccessPointRequest>,
 ) -> Result<Json<AccessPointResponse>, AppError> {
-    let access_point = state
-        .access_point_service
-        .create(req, created_by)
-        .await?;
+    let access_point = state.access_point_service.create(req, created_by).await?;
     Ok(Json(access_point))
 }
 

@@ -37,11 +37,7 @@ impl ModelMappingCollection {
     /// 根据请求中的 model 名称查找匹配的映射并应用
     /// 返回 (新的请求体, 内容长度变化 delta)
     pub fn apply_all(&self, body: &str, requested_model: &str) -> (String, i64) {
-        if let Some(mapping) = self
-            .0
-            .iter()
-            .find(|m| m.source_model == requested_model)
-        {
+        if let Some(mapping) = self.0.iter().find(|m| m.source_model == requested_model) {
             mapping.apply_to_body(body)
         } else {
             (body.to_string(), 0)
@@ -83,10 +79,7 @@ mod tests {
         let body = r#"{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"hello"}]}"#;
         let (new_body, _delta) = mapping.apply_to_body(body);
         let parsed: serde_json::Value = serde_json::from_str(&new_body).unwrap();
-        assert_eq!(
-            parsed["model"],
-            "claude-sonnet-4-20250514-v2"
-        );
+        assert_eq!(parsed["model"], "claude-sonnet-4-20250514-v2");
     }
 
     #[test]

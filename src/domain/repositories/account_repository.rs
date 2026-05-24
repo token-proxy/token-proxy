@@ -12,7 +12,10 @@ pub trait AccountRepository: Send + Sync {
     async fn find_by_provider_id(&self, provider_id: Uuid) -> Result<Vec<Account>, AppError>;
 
     /// 根据提供商 ID 查找所有已启用的账号
-    async fn find_enabled_by_provider_id(&self, provider_id: Uuid) -> Result<Vec<Account>, AppError>;
+    async fn find_enabled_by_provider_id(
+        &self,
+        provider_id: Uuid,
+    ) -> Result<Vec<Account>, AppError>;
 
     /// 获取账号加密的 API Key 原始字节
     async fn get_encrypted_api_key(&self, account_id: Uuid) -> Result<Vec<u8>, AppError>;

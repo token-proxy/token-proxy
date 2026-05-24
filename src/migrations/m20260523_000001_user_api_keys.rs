@@ -15,10 +15,22 @@ impl MigrationTrait for Migration {
                     .col(uuid(UserApiKeys::UserId).not_null())
                     .col(string_len(UserApiKeys::KeyHash, 64).unique_key().not_null())
                     .col(string_len(UserApiKeys::KeyPrefix, 32).not_null())
-                    .col(string_len(UserApiKeys::Description, 255).not_null().default(""))
+                    .col(
+                        string_len(UserApiKeys::Description, 255)
+                            .not_null()
+                            .default(""),
+                    )
                     .col(timestamp_with_time_zone_null(UserApiKeys::LastUsedAt))
-                    .col(string_len(UserApiKeys::Status, 20).not_null().default("enabled"))
-                    .col(timestamp_with_time_zone(UserApiKeys::CreatedAt).not_null().default(Expr::cust("NOW()")))
+                    .col(
+                        string_len(UserApiKeys::Status, 20)
+                            .not_null()
+                            .default("enabled"),
+                    )
+                    .col(
+                        timestamp_with_time_zone(UserApiKeys::CreatedAt)
+                            .not_null()
+                            .default(Expr::cust("NOW()")),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .from(UserApiKeys::Table, UserApiKeys::UserId)

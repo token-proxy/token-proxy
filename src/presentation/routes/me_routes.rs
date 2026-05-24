@@ -27,10 +27,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/users/me", get(get_my_profile))
         .route("/api/users/me/profile", put(update_my_profile))
-        .route(
-            "/api/users/me/change-password",
-            put(change_my_password),
-        )
+        .route("/api/users/me/change-password", put(change_my_password))
         .route("/api/users/me/api-keys", get(list_my_api_keys))
         .route("/api/users/me/api-keys", post(create_my_api_key))
         .route(
@@ -80,10 +77,7 @@ async fn change_my_password(
     CurrentUser(user_id): CurrentUser,
     Json(req): Json<ChangePasswordRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    state
-        .user_service
-        .change_password(user_id, req)
-        .await?;
+    state.user_service.change_password(user_id, req).await?;
     Ok(Json(serde_json::json!({"message": "密码已修改"})))
 }
 
@@ -94,10 +88,7 @@ async fn list_my_api_keys(
     State(state): State<AppState>,
     CurrentUser(user_id): CurrentUser,
 ) -> Result<Json<Vec<UserApiKeyResponse>>, AppError> {
-    let keys = state
-        .user_api_key_service
-        .list_by_user(user_id)
-        .await?;
+    let keys = state.user_api_key_service.list_by_user(user_id).await?;
     Ok(Json(keys))
 }
 
@@ -129,9 +120,6 @@ async fn revoke_my_api_key(
     CurrentUser(user_id): CurrentUser,
     Path(key_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    state
-        .user_api_key_service
-        .revoke(user_id, key_id)
-        .await?;
+    state.user_api_key_service.revoke(user_id, key_id).await?;
     Ok(Json(serde_json::json!({"message": "API key 已撤销"})))
 }
