@@ -17,6 +17,7 @@ impl MigrationTrait for Migration {
                     .col(string_null(Providers::OpenaiBaseUrl))
                     .col(string_null(Providers::AnthropicBaseUrl))
                     .col(json(Providers::Models).default(Expr::cust("'[]'::json")))
+                    .col(string_null(Providers::DefaultModel))
                     .col(string(Providers::Status).default("enabled"))
                     .col(
                         timestamp_with_time_zone(Providers::CreatedAt).default(Expr::cust("NOW()")),
@@ -374,6 +375,7 @@ enum Providers {
     OpenaiBaseUrl,
     AnthropicBaseUrl,
     Models,
+    DefaultModel,
     Status,
     CreatedAt,
     UpdatedAt,

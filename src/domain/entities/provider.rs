@@ -11,6 +11,7 @@ pub struct Provider {
     pub openai_base_url: Option<String>,
     pub anthropic_base_url: Option<String>,
     pub models: Vec<String>,
+    pub default_model: Option<String>,
     pub status: Status,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -22,6 +23,7 @@ impl Provider {
         name: String,
         openai_base_url: Option<String>,
         anthropic_base_url: Option<String>,
+        default_model: Option<String>,
     ) -> Result<Self, AppError> {
         let name = name.trim().to_string();
         if name.is_empty() {
@@ -54,6 +56,9 @@ impl Provider {
                 .map(|u| u.trim().to_string())
                 .filter(|u| !u.is_empty()),
             models: Vec::new(),
+            default_model: default_model
+                .map(|m| m.trim().to_string())
+                .filter(|m| !m.is_empty()),
             status: Status::Enabled,
             created_at: now,
             updated_at: now,
@@ -71,6 +76,7 @@ mod tests {
             "Test Provider".to_string(),
             Some("https://api.openai.com".to_string()),
             Some("https://api.anthropic.com".to_string()),
+            Some("gpt-4".to_string()),
         )
         .unwrap();
         assert_eq!(provider.name, "Test Provider");
@@ -82,7 +88,32 @@ mod tests {
             provider.anthropic_base_url,
             Some("https://api.anthropic.com".to_string())
         );
+        assert_eq!(provider.default_model, Some("gpt-4".to_string()));
         assert!(provider.status.is_enabled());
+    }
+
+    #[test]
+    fn test_provider_new_default_model_empty() {
+        let provider = Provider::new(
+            "Test".to_string(),
+            Some("https://api.openai.com".to_string()),
+            None,
+            Some("  ".to_string()),
+        )
+        .unwrap();
+        assert_eq!(provider.default_model, None);
+    }
+
+    #[test]
+    fn test_provider_new_default_model_none() {
+        let provider = Provider::new(
+            "Test".to_string(),
+            Some("https://api.openai.com".to_string()),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(provider.default_model, None);
     }
 
     #[test]
@@ -91,13 +122,14 @@ mod tests {
             "  ".to_string(),
             None,
             Some("https://api.anthropic.com".to_string()),
+            None,
         );
         assert!(result.is_err());
     }
 
     #[test]
     fn test_provider_new_no_url() {
-        let result = Provider::new("Test".to_string(), None, None);
+        let result = Provider::new("Test".to_string(), None, None, None);
         assert!(result.is_err());
     }
 
@@ -106,6 +138,7 @@ mod tests {
         let provider = Provider::new(
             "OpenAI Only".to_string(),
             Some("https://api.openai.com".to_string()),
+            None,
             None,
         )
         .unwrap();

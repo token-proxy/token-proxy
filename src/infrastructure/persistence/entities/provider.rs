@@ -12,6 +12,7 @@ pub struct Model {
     pub anthropic_base_url: Option<String>,
     #[sea_orm(column_type = "JsonBinary")]
     pub models: Json,
+    pub default_model: Option<String>,
     pub status: String,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
@@ -46,6 +47,7 @@ impl TryFrom<Model> for Provider {
             openai_base_url: model.openai_base_url,
             anthropic_base_url: model.anthropic_base_url,
             models,
+            default_model: model.default_model,
             status: Status::from_str(&model.status)?,
             created_at: model.created_at.with_timezone(&Utc),
             updated_at: model.updated_at.with_timezone(&Utc),
@@ -65,6 +67,7 @@ impl From<Provider> for ActiveModel {
             models: Set(
                 serde_json::to_value(&provider.models).unwrap_or(serde_json::Value::Array(vec![]))
             ),
+            default_model: Set(provider.default_model),
             status: Set(provider.status.to_string()),
             created_at: Set(provider.created_at.with_timezone(&offset)),
             updated_at: Set(provider.updated_at.with_timezone(&offset)),

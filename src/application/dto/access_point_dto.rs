@@ -8,6 +8,8 @@ use uuid::Uuid;
 pub struct ModelMappingDto {
     pub source_model: String,
     pub target_model: String,
+    #[serde(default)]
+    pub match_type: String,
 }
 
 // ─── Request DTOs ───
@@ -18,6 +20,7 @@ pub struct CreateAccessPointRequest {
     pub provider_id: Uuid,
     pub account_id: Uuid,
     pub short_code: Option<String>,
+    pub api_type: Option<String>,
     pub model_mappings: Option<Vec<ModelMappingDto>>,
 }
 
