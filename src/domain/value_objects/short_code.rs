@@ -5,7 +5,7 @@ use std::fmt;
 
 const MIN_LENGTH: usize = 4;
 const MAX_LENGTH: usize = 16;
-const GENERATED_LENGTH: usize = 8;
+const GENERATED_LENGTH: usize = 16;
 const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -34,7 +34,7 @@ impl ShortCode {
         Ok(ShortCode(trimmed.to_string()))
     }
 
-    /// 随机生成 8 位字母数字短码
+    /// 随机生成 16 位字母数字短码
     pub fn generate() -> Self {
         let mut rng = rand::rngs::OsRng;
         let code: String = (0..GENERATED_LENGTH)
@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn test_short_code_generate() {
         let code = ShortCode::generate();
-        assert_eq!(code.as_str().len(), 8);
+        assert_eq!(code.as_str().len(), 16);
         assert!(code.as_str().chars().all(|c| c.is_alphanumeric()));
     }
 

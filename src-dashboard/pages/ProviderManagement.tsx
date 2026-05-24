@@ -403,7 +403,7 @@ export default function ProviderManagement(): ReactNode {
               loading={saving}
               onClick={() => formRef.current?.submitForm()}
             >
-              {editingProvider ? '保存' : '创建'}
+              {editingProvider ? '更新' : '创建'}
             </Button>
           </div>
         }
@@ -466,11 +466,11 @@ export default function ProviderManagement(): ReactNode {
               />
               <Text type="tertiary" size="small" style={{ marginTop: 6, display: 'block' }}>
                 {accounts.length === 0
-                  ? '缺少可用的 API Key，请先添加一个 Account 后再使用自动发现；模型列表会随底部"保存"按钮一并提交'
-                  : `将使用 Account "${accounts[0].name}" 的 API Key 调用上游 /v1/models 接口；模型列表会随底部"保存"按钮一并提交`}
+                  ? '缺少可用的 API Key，请先添加一个 Account 后再使用自动发现；模型列表会随底部提交按钮一并提交'
+                  : `将使用 Account "${accounts[0].name}" 的 API Key 调用上游 /v1/models 接口；模型列表会随底部提交按钮一并提交`}
               </Text>
               <div style={{ marginTop: 16 }}>
-                <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>默认模型</div>
+                <Text strong size="small" style={{ marginBottom: 8, display: 'block' }}>默认模型</Text>
                 <Select
                   value={providerDefaultModel}
                   placeholder={providerModels.length === 0 ? '模型列表为空，无法选择默认模型' : '从已有模型中选择'}

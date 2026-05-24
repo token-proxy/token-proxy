@@ -17,6 +17,7 @@ export default function AccessPointManagement(): ReactNode {
     operatingIds,
     copyingUrl,
     emptyForm,
+    loadProviderById,
     loadAccountsByProvider,
     clearAccounts,
     saveAccessPoint,
@@ -55,9 +56,18 @@ export default function AccessPointManagement(): ReactNode {
     setDrawerVisible(true);
   };
 
-  const handleProviderChange = (providerId: string) => {
-    const provider = providers.find((item) => item.id === providerId);
+  const handleProviderChange = async (providerId: string) => {
+    const currentProvider = providers.find((item) => item.id === providerId);
     setFormData({ ...formData, provider_id: providerId, account_id: undefined });
+    loadAccountsByProvider(providerId);
+
+    let provider = currentProvider;
+    try {
+      provider = await loadProviderById(providerId);
+    } catch {
+      provider = currentProvider;
+    }
+
     if (!editingAccessPoint && provider?.default_model) {
       setMappings([
         {
@@ -69,7 +79,6 @@ export default function AccessPointManagement(): ReactNode {
     } else if (!editingAccessPoint) {
       setMappings([]);
     }
-    loadAccountsByProvider(providerId);
   };
 
   const handleSave = async () => {
