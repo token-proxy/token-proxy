@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import {
   Table, Button, Tag, Typography, Toast, Empty,
-  Select, Input,
+  Select, Input, Tooltip,
 } from '@douyinfe/semi-ui';
 import { IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
@@ -116,7 +116,7 @@ export default function RequestLogPage(): ReactNode {
     setDetailModalVisible(true);
     setDetailData(null);
     try {
-      const data = await api.get<LogDetail>(`/api/logs/${id}`);
+      const data = await api.get<LogDetail>(`/api/logs/${id}/raw`);
       setDetailData(data);
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '加载日志详情失败');
@@ -162,6 +162,35 @@ export default function RequestLogPage(): ReactNode {
       dataIndex: 'timestamp',
       width: 180,
       render: (t: string) => formatDateTime(t),
+    },
+    {
+      title: '对话内容',
+      dataIndex: 'message_preview',
+      width: 360,
+      render: (_: unknown, r: LogSummary) => (
+        <Tooltip content={r.message_full || r.message_preview || '-'}>
+          <Text
+            ellipsis={{ showTooltip: false }}
+            style={{ maxWidth: 340, display: 'inline-block' }}
+          >
+            {r.message_preview || '-'}
+          </Text>
+        </Tooltip>
+      ),
+    },
+    {
+      title: '来源',
+      key: 'source',
+      width: 140,
+      render: (_: unknown, r: LogSummary) => (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          <Tag color={r.conversation_source === 'subagent' ? 'green' : 'blue'}>
+            {r.conversation_source === 'subagent' ? '子代理' : '主代理'}
+          </Tag>
+          {r.agent_type && <Tag>{r.agent_type}</Tag>}
+          {r.primary_tool_name && <Tag color="violet">{r.primary_tool_name}</Tag>}
+        </div>
+      ),
     },
     {
       title: '会话 ID',

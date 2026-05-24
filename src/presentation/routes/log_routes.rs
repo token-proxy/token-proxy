@@ -6,7 +6,8 @@ use axum::{
 use uuid::Uuid;
 
 use crate::application::dto::log_dto::{
-    LogDetailResponse, LogFilterParams, LogSummaryResponse, SessionSummaryResponse,
+    ConversationEventResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse,
+    SessionSummaryResponse, TokenUsageResponse,
 };
 use crate::application::AppState;
 use crate::shared::error::AppError;
@@ -27,7 +28,10 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/logs", get(query_logs))
         .route("/api/logs/sessions", get(get_sessions))
+        .route("/api/logs/sessions/{id}/token-usage", get(get_session_token_usage))
         .route("/api/logs/sessions/{id}", get(get_session_detail))
+        .route("/api/logs/{id}/raw", get(get_log_detail))
+        .route("/api/logs/{id}/token-usage", get(get_log_token_usage))
         .route("/api/logs/{id}", get(get_log_detail))
 }
 
@@ -66,7 +70,30 @@ async fn get_sessions(
 async fn get_session_detail(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<Json<Vec<LogSummaryResponse>>, AppError> {
-    let logs = state.log_service.get_session_detail(&session_id).await?;
-    Ok(Json(logs))
+) -> Result<Json<Vec<ConversationEventResponse>>, AppError> {
+    let events = state.log_service.get_session_detail(&session_id).await?;
+    Ok(Json(events))
+}
+
+async fn get_log_token_usage(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<TokenUsageResponse>, AppError> {
+    let usage = state
+        .log_service
+        .get_log_token_usage(id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("日志 {} 的 token 用量未找到", id)))?;
+    Ok(Json(usage))
+}
+
+async fn get_session_token_usage(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> Result<Json<Vec<TokenUsageResponse>>, AppError> {
+    let usages = state
+        .log_service
+        .get_session_token_usage_response(&session_id)
+        .await?;
+    Ok(Json(usages))
 }

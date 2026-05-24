@@ -19,7 +19,9 @@ use token_proxy::config::Config;
 use token_proxy::domain::repositories::access_point_repository::AccessPointRepository;
 use token_proxy::domain::repositories::account_repository::AccountRepository;
 use token_proxy::domain::repositories::audit_log_repository::AuditLogRepository;
+use token_proxy::domain::repositories::log_conversation_event_repository::LogConversationEventRepository;
 use token_proxy::domain::repositories::log_repository::LogRepository;
+use token_proxy::domain::repositories::log_token_usage_repository::LogTokenUsageRepository;
 use token_proxy::domain::repositories::provider_repository::ProviderRepository;
 use token_proxy::domain::repositories::refresh_token_repository::RefreshTokenRepository;
 use token_proxy::domain::repositories::user_api_key_repository::UserApiKeyRepository;
@@ -32,7 +34,9 @@ use token_proxy::infrastructure::persistence::partition_manager::PartitionManage
 use token_proxy::infrastructure::persistence::repositories::access_point_repository::SeaOrmAccessPointRepository;
 use token_proxy::infrastructure::persistence::repositories::account_repository::SeaOrmAccountRepository;
 use token_proxy::infrastructure::persistence::repositories::audit_log_repository::SeaOrmAuditLogRepository;
+use token_proxy::infrastructure::persistence::repositories::log_conversation_event_repository::SeaOrmLogConversationEventRepository;
 use token_proxy::infrastructure::persistence::repositories::log_repository::SeaOrmLogRepository;
+use token_proxy::infrastructure::persistence::repositories::log_token_usage_repository::SeaOrmLogTokenUsageRepository;
 use token_proxy::infrastructure::persistence::repositories::provider_repository::SeaOrmProviderRepository;
 use token_proxy::infrastructure::persistence::repositories::refresh_token_repository::SeaOrmRefreshTokenRepository;
 use token_proxy::infrastructure::persistence::repositories::user_api_key_repository::SeaOrmUserApiKeyRepository;
@@ -181,6 +185,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let log_repo: Arc<dyn LogRepository> = Arc::new(SeaOrmLogRepository::new(db.clone()));
 
+    let log_conversation_event_repo: Arc<dyn LogConversationEventRepository> =
+        Arc::new(SeaOrmLogConversationEventRepository::new(db.clone()));
+
+    let log_token_usage_repo: Arc<dyn LogTokenUsageRepository> =
+        Arc::new(SeaOrmLogTokenUsageRepository::new(db.clone()));
+
     let audit_log_repo: Arc<dyn AuditLogRepository> =
         Arc::new(SeaOrmAuditLogRepository::new(db.clone()));
 
@@ -224,7 +234,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         user_api_key_repo.clone(),
     ));
 
-    let log_service = Arc::new(LogService::new(log_repo.clone()));
+    let log_service = Arc::new(LogService::new(
+        log_repo.clone(),
+        log_conversation_event_repo.clone(),
+        log_token_usage_repo.clone(),
+    ));
 
     let user_api_key_service = Arc::new(UserApiKeyService::new(
         user_api_key_repo.clone(),
@@ -277,6 +291,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         proxy_service,
         log_service,
         log_repo,
+        log_conversation_event_repo,
+        log_token_usage_repo,
         audit_log_repo,
         jwt_service,
         proxy_client,

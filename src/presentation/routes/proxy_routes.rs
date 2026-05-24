@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::application::services::proxy_service::ProxyContext;
 use crate::application::AppState;
-use crate::domain::entities::log_entry::{LogContent, LogEntry};
+use crate::domain::entities::log_entry::LogEntry;
 use crate::domain::services::model_mapping_service::{find_matching_mapping, resolve_final_model};
 use crate::domain::value_objects::model_mapping::ModelMapping;
 use crate::shared::error::AppError;
@@ -180,17 +180,18 @@ async fn handle_non_streaming_proxy(
             status_code: Some(status.as_u16() as i16),
             duration_ms: Some(duration.as_millis() as i32),
             error_message: None,
+            ..Default::default()
         };
 
-        if let Ok(log_id_val) = log_service.create_log_entry(&log_entry).await {
-            let content = LogContent {
-                log_id: log_id_val,
+        log_service
+            .record_proxy_log(
+                log_entry,
                 request_headers,
-                request_body: serde_json::from_str(&body).unwrap_or_default(),
-                response_body: String::from_utf8_lossy(&resp_body_clone).to_string(),
-            };
-            log_service.save_log_content(&content).await.ok();
-        }
+                serde_json::from_str(&body).unwrap_or_default(),
+                String::from_utf8_lossy(&resp_body_clone).to_string(),
+            )
+            .await
+            .ok();
     });
 
     // 构建 HTTP 响应
@@ -288,17 +289,18 @@ async fn handle_streaming_proxy(
                     status_code: Some(200),
                     duration_ms: Some(elapsed.as_millis() as i32),
                     error_message: None,
+                    ..Default::default()
                 };
 
-                if let Ok(log_id_val) = log_svc.create_log_entry(&log_entry).await {
-                    let content = LogContent {
-                        log_id: log_id_val,
-                        request_headers: req_headers,
-                        request_body: serde_json::from_str(&req_body).unwrap_or_default(),
-                        response_body: buf,
-                    };
-                    log_svc.save_log_content(&content).await.ok();
-                }
+                log_svc
+                    .record_proxy_log(
+                        log_entry,
+                        req_headers,
+                        serde_json::from_str(&req_body).unwrap_or_default(),
+                        buf,
+                    )
+                    .await
+                    .ok();
             });
         }
     };
