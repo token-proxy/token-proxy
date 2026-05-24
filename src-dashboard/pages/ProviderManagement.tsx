@@ -393,8 +393,8 @@ export default function ProviderManagement(): ReactNode {
         title={editingProvider ? '编辑 Provider' : '创建 Provider'}
         visible={drawerVisible}
         onCancel={() => setDrawerVisible(false)}
-        width={640}
-        maskClosable={false}
+        width={760}
+        maskClosable
         footer={
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <Button onClick={() => setDrawerVisible(false)}>取消</Button>
@@ -505,8 +505,8 @@ export default function ProviderManagement(): ReactNode {
                 title={editingAccount ? '编辑 Account' : '添加 Account'}
                 visible={accountFormVisible}
                 onCancel={() => setAccountFormVisible(false)}
-                width={420}
-                maskClosable={false}
+                width={560}
+                maskClosable
               >
                 <div style={{ padding: '0 4px' }}>
                     <div>

@@ -67,8 +67,8 @@ export default function AccessPointDrawer({
       title={editingAccessPoint ? '编辑接入点' : '创建接入点'}
       visible={visible}
       onCancel={onClose}
-      width={600}
-      maskClosable={false}
+      width={760}
+      maskClosable
     >
       <div style={{ padding: '0 4px' }}>
         <div>
