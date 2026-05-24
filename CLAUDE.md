@@ -75,7 +75,7 @@ src/
 - **接入点认证**: `/ap/*` 路径跳过 JWT 中间件, 但在 ProxyService 中强制验证用户 API key (`Authorization: Bearer <user_api_key>`), 通过 SHA-256 哈希匹配后记录 user_id
 - **代理 Header 构造**: `ProxyClient` 构建新的上游请求时, 入站 `authorization` 只用于用户 API key 认证, 不参与上游请求构造; 上游请求使用解密后的账号 API key 设置 `Authorization: Bearer <account_key>`; 仅复制 `x-*` 自定义头、`accept`、`content-type` 等业务头, 并排除入站 `authorization` / `x-api-key`
 - **用户 API key**: 个人设置页管理, key 以 `tp_` 为前缀, 生成 40 位随机字符, 数据库仅存储 SHA-256 哈希和前缀, 完整 key 只创建时返回一次; 支持吊销操作
-- **模型映射匹配方式**: 由源模型值决定——`__unmatched__` 哨兵和 Claude 家族预设 (`claude-opus-*`/`claude-sonnet-*`/`claude-haiku-*`) 自动使用 `prefix` 匹配; 普通值或自定义输入使用 `exact` 匹配
+- **模型映射匹配方式**: 由源模型值决定——`__unmatched__` 哨兵和 Claude 家族预设 (`claude-opus-*`/`claude-sonnet-*`/`claude-haiku-*`) 自动使用 `prefix` 匹配; 普通值或自定义输入使用 `exact` 匹配。后端有双重安全网: (1) **写时归一化**——`AccessPointService` 创建/更新时调用 `normalize_match_type` 将 match_type 强制归一化; (2) **读时归一化**——`ModelMapping::matches` 和 `find_matching_mapping` 在匹配逻辑中再次调用 `normalize_match_type`, 确保无论数据库存储值如何, 匹配行为始终正确。`normalize_match_type` 定义在 `model_mapping.rs` 中, 依赖 `is_prefix_source_model` 判断 source_model 是否属于上述前缀类别
 - **模型映射优先级**: 请求模型按以下顺序匹配——精确匹配 > 前缀匹配 > `__unmatched__` 哨兵规则 (target 为 `__default_model__` 时通过 `resolve_final_model` 解析为 Provider 当前 default_model) > Provider.default_model 兜底 > 原始请求模型
 - **Claude 模型族前缀常量**: `claude-opus-` / `claude-sonnet-` / `claude-haiku-`, 在前端 ModelMappingEditor 中以预设选项形式展示
 - **Provider.default_model**: 可选配置, 当模型映射均未匹配时作为兜底, 替换请求体中的 model 字段。表格中使用 Tag 展示; 编辑表单中 Select 位于模型列表下方, 紧邻 TagInput; 默认模型 label 样式与模型列表一致; 编辑态提交按钮文案统一使用 "更新"; 模型列表为空时 Select 禁用; 模型列表移除当前默认模型时立即清空 Select 值; 保存时若 models 不含 default_model 则提交空字符串清空
@@ -170,7 +170,7 @@ src/
 | `src/infrastructure/persistence/repositories/user_api_key_repository.rs` | UserApiKey 仓储实现 |
 | `src/domain/entities/user_api_key.rs` | 用户 API key 领域实体 |
 | `src/domain/entities/provider.rs` | Provider 实体 (含 default_model) |
-| `src/domain/value_objects/model_mapping.rs` | ModelMapping + MatchType + 模型族前缀常量 |
+| `src/domain/value_objects/model_mapping.rs` | ModelMapping + MatchType + 模型族前缀常量 + normalize_match_type/is_prefix_source_model |
 | `src/domain/value_objects/access_point_type.rs` | AccessPointType 枚举 (Anthropic) |
 | `src/domain/services/model_mapping_service.rs` | 模型匹配领域服务 (精确 > 前缀 > __unmatched__ > default_model) |
 | `src/domain/repositories/user_api_key_repository.rs` | UserApiKey Repository trait |

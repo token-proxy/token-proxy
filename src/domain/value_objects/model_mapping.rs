@@ -37,6 +37,21 @@ impl MatchType {
     }
 }
 
+pub fn is_prefix_source_model(source_model: &str) -> bool {
+    matches!(
+        source_model,
+        UNMATCHED_MODEL_SENTINEL | CLAUDE_OPUS_PREFIX | CLAUDE_SONNET_PREFIX | CLAUDE_HAIKU_PREFIX
+    )
+}
+
+pub fn normalize_match_type(source_model: &str, match_type: MatchType) -> MatchType {
+    if is_prefix_source_model(source_model) {
+        MatchType::Prefix
+    } else {
+        match_type
+    }
+}
+
 /// 模型映射值对象，定义源模型到目标模型的映射关系
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelMapping {
@@ -67,7 +82,7 @@ impl ModelMapping {
 
     /// 判断此映射是否能匹配指定的模型名
     pub fn matches(&self, model: &str) -> bool {
-        match self.match_type {
+        match normalize_match_type(&self.source_model, self.match_type) {
             MatchType::Exact => self.source_model == model,
             MatchType::Prefix => model.starts_with(&self.source_model),
         }
@@ -123,7 +138,8 @@ impl ModelMappingCollection {
         }
         // 2. 前缀匹配
         if let Some(m) = self.0.iter().find(|m| {
-            m.match_type == MatchType::Prefix && requested_model.starts_with(&m.source_model)
+            normalize_match_type(&m.source_model, m.match_type) == MatchType::Prefix
+                && requested_model.starts_with(&m.source_model)
         }) {
             return Some(m);
         }
@@ -203,6 +219,16 @@ mod tests {
         assert!(mapping.matches("claude-sonnet-4-20240101"));
         assert!(!mapping.matches("claude-opus-4-20250514"));
         assert!(!mapping.matches("gpt-4"));
+    }
+
+    #[test]
+    fn test_model_mapping_matches_claude_haiku_family_prefix() {
+        let mapping = ModelMapping::new_exact(
+            "claude-haiku-".to_string(),
+            "claude-3-5-haiku-20241022".to_string(),
+        );
+        assert!(mapping.matches("claude-haiku-4-5-20251001"));
+        assert!(!mapping.matches("claude-sonnet-4-5-20251001"));
     }
 
     #[test]

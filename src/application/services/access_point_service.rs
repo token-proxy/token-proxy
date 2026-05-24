@@ -10,7 +10,7 @@ use crate::domain::repositories::access_point_repository::AccessPointRepository;
 use crate::domain::repositories::account_repository::AccountRepository;
 use crate::domain::repositories::provider_repository::ProviderRepository;
 use crate::domain::value_objects::access_point_type::AccessPointType;
-use crate::domain::value_objects::model_mapping::{MatchType, ModelMapping};
+use crate::domain::value_objects::model_mapping::{normalize_match_type, MatchType, ModelMapping};
 use crate::domain::value_objects::short_code::ShortCode;
 use crate::domain::value_objects::status::Status;
 use crate::shared::error::AppError;
@@ -137,6 +137,7 @@ impl AccessPointService {
                 .into_iter()
                 .map(|m| {
                     let match_type = MatchType::from_str_value(&m.match_type).unwrap_or_default();
+                    let match_type = normalize_match_type(&m.source_model, match_type);
                     ModelMapping {
                         source_model: m.source_model,
                         target_model: m.target_model,
@@ -206,6 +207,7 @@ impl AccessPointService {
                 .into_iter()
                 .map(|m| {
                     let match_type = MatchType::from_str_value(&m.match_type).unwrap_or_default();
+                    let match_type = normalize_match_type(&m.source_model, match_type);
                     ModelMapping {
                         source_model: m.source_model,
                         target_model: m.target_model,

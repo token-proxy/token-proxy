@@ -75,7 +75,7 @@ domain/
 ├── value_objects/          # 不可变值对象
 │   ├── short_code.rs       # 接入点短码 (生成/校验)
 │   ├── api_key.rs          # API Key (掩码展示)
-│   ├── model_mapping.rs    # 模型映射对 (source → target, 支持 exact/prefix 匹配) + 常量 (UNMATCHED_MODEL_SENTINEL, DEFAULT_MODEL_SENTINEL, Claude 模型族前缀); __unmatched__ 作为兜底规则优先级最低, 前端视为模式匹配; __default_model__ 作为目标模型哨兵, 运行态由 resolve_final_model 解析为 Provider.default_model
+│   ├── model_mapping.rs    # 模型映射对 (source → target, 支持 exact/prefix 匹配) + 常量 (UNMATCHED_MODEL_SENTINEL, DEFAULT_MODEL_SENTINEL, Claude 模型族前缀) + normalize_match_type 函数 (强制 __unmatched__ 和 Claude 家族前缀始终视为 prefix); __unmatched__ 作为兜底规则优先级最低, 前端视为模式匹配; __default_model__ 作为目标模型哨兵, 运行态由 resolve_final_model 解析为 Provider.default_model
 │   ├── status.rs           # 启用/禁用状态枚举
 │   └── access_point_type.rs # 接入点类型枚举 (Anthropic)
 ├── repositories/           # Repository trait (接口定义)
@@ -88,7 +88,7 @@ domain/
 │   └── user_api_key_repository.rs
 └── services/               # 领域服务
     ├── encryption_service.rs  # 加密服务 trait (encrypt/decrypt)
-    └── model_mapping_service.rs # 统一匹配逻辑: find_matching_mapping (精确 > 前缀 > __unmatched__ 兜底) + resolve_final_model (映射结果 → 若为 __default_model__ 哨兵则解析为 Provider.default_model → 原始模型)
+    └── model_mapping_service.rs # 统一匹配逻辑: find_matching_mapping (精确 > 前缀 > __unmatched__ 兜底) + resolve_final_model (映射结果 → 若为 __default_model__ 哨兵则解析为 Provider.default_model → 原始模型); 匹配过程使用 normalize_match_type 强制 Claude 家族源模型以 prefix 方式匹配, 消除客户端错误指定 exact 导致的不一致
 ```
 
 **领域实体 ≠ ORM 实体**：domain/entities 是纯业务 Rust struct，infrastructure/persistence/entities 是 SeaORM `DeriveEntityModel`，repository 实现中完成手工映射。
@@ -120,7 +120,7 @@ application/
 │   ├── account_service.rs  # 账号管理用例 (含加密解密)
 │   ├── user_service.rs     # 用户管理用例 (含密码哈希 + profile 更新 + 密码修改)
 │   ├── user_api_key_service.rs # 用户 API key 管理 (生成/列表/撤销, SHA-256 哈希)
-│   ├── access_point_service.rs # 接入点管理用例 (含短码生成)
+│   ├── access_point_service.rs # 接入点管理用例 (含短码生成 + match_type 标准化: 创建/更新时对 __unmatched__ 和 Claude 家族源模型强制设置为 prefix)
 │   ├── auth_service.rs     # 认证用例 (登录/刷新/登出)
 │   ├── proxy_service.rs    # 核心代理转发用例 (含 Bearer API key 认证)
 │   └── log_service.rs      # 日志查询用例
@@ -366,7 +366,7 @@ POST /ap/{short_code}/v1/messages
 3. 通过 AccessPoint.account_id → 查找 Account (验证 enabled, 解密 API Key)
     │
     ▼
-4. 统一模型映射: find_matching_mapping (精确匹配 > 前缀匹配 > __unmatched__ 规则), 若匹配到 target_model == __default_model__ 哨兵则通过 resolve_final_model 解析为 Provider.default_model; 无映射时以 Provider.default_model 或原始模型兜底; 替换 JSON 中 model 字段, 记录最终 model_mapped
+4. 统一模型映射: find_matching_mapping 使用 normalize_match_type 进行匹配 (精确匹配 > 前缀匹配 > __unmatched__ 规则, 其中 Claude 家族前缀和 __unmatched__ 始终以 prefix 方式匹配, 消除客户端错误指定 exact 导致的不一致), 若匹配到 target_model == __default_model__ 哨兵则通过 resolve_final_model 解析为 Provider.default_model; 无映射时以 Provider.default_model 或原始模型兜底; 替换 JSON 中 model 字段, 记录最终 model_mapped
     │
     ▼
 5. 构建新的上游请求: 入站 `authorization` 只用于用户 API key 认证, 不参与上游请求构造; 上游请求使用解密后的账号 API key 设置 `Authorization: Bearer <account_key>`, 仅复制 `x-*` 自定义头、`accept`、`content-type` 等业务头, 并排除入站 `authorization` / `x-api-key`
@@ -466,3 +466,4 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 2026-05-24 | 前端新增主题切换系统：`useTheme` hook（light/dark/system 三种模式）、`ThemeToggle` 组件、`ThemeProvider` 包裹根组件；接入点表单新增 `api_type` 选择器和 `ModelMappingEditor`（支持 Anthropic 模型族 Opus/Sonnet/Haiku 快捷添加前缀匹配规则） |
 | 2026-05-24 | 前端 Provider 表格 default_model 列使用 Tag 渲染; Provider 编辑面板 default_model Select 移至模型列表 TagInput 下方, TagInput 移除模型联动清空 default_model; ModelMappingEditor 源模型下拉展示匹配类型说明, 目标模型下拉仅含 Provider 已注册 models 且禁止创建; 保存时过滤 target_model 不在 Provider.models 的映射 (useAccessPoints hook 实现) |
 | 2026-05-24 | 同步架构文档与实际代码：`__unmatched__` 视为模式匹配, 自动生成的未匹配规则使用 prefix; Select 选项用 Semi Tag 前缀显示"精准匹配/模式匹配"; 目标模型 Select 包含 Provider.models + Provider.default_model; 保存过滤也允许 Provider.default_model |
+| 2026-05-24 | 服务端强化匹配类型: 新增 `normalize_match_type` 和 `is_prefix_source_model` 函数, 强制 `__unmatched__` 和 Claude 家族前缀 (claude-opus-/claude-sonnet-/claude-haiku-) 始终视为 `prefix` 匹配; AccessPointService 创建/更新时执行 match_type 标准化; 前端 ModelMappingEditor 对 apiType 做大小写兼容 |

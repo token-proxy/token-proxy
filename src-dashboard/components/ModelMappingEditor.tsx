@@ -55,8 +55,9 @@ export default function ModelMappingEditor({
   onRemove,
   onChange,
 }: ModelMappingEditorProps): ReactNode {
+  const isAnthropicApi = apiType?.toLowerCase() === 'anthropic';
   const sourceValues = uniqueOptions([
-    ...(apiType === 'anthropic' ? ANTHROPIC_FAMILIES.map((family) => family.value) : []),
+    ...(isAnthropicApi ? ANTHROPIC_FAMILIES.map((family) => family.value) : []),
     ...modelOptions,
     ...mappings.map((mapping) => mapping.source_model),
   ]);
