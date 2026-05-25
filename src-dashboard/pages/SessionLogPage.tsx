@@ -461,9 +461,12 @@ export default function SessionLogPage(): ReactNode {
               render: (_: unknown, r: SessionSummary) => (
               <Button
                 size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/sessions/${encodeURIComponent(r.session_id)}`);
+                onClick={() => {
+                  window.open(
+                    `/sessions/${encodeURIComponent(r.session_id)}`,
+                    '_blank',
+                    'noopener',
+                  );
                 }}
               >
                 查看详情
@@ -481,10 +484,6 @@ export default function SessionLogPage(): ReactNode {
           total,
           onChange: handlePageChange,
         }}
-        onRow={(record?: SessionSummary) => record ? ({
-          onClick: () => navigate(`/sessions/${encodeURIComponent(record.session_id)}`),
-          style: { cursor: 'pointer' },
-        }) : {}}
         empty={
           <Empty description={sessionsLoading ? '' : '暂无会话数据'} />
         }
