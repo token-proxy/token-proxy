@@ -1,9 +1,12 @@
-import { Button, Empty, Modal, Tag, Typography } from '@douyinfe/semi-ui';
-import type { ReactNode } from 'react';
+import { IconCopy } from '@douyinfe/semi-icons';
+import { Button, Empty, Modal, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { type ReactNode, useState } from 'react';
 import type { LogDetail } from '../types/log.ts';
 import { formatDateTime, formatDuration } from '../utils/format.ts';
 
 const { Text } = Typography;
+
+type CopyTarget = 'headers' | 'request' | 'response';
 
 interface LogDetailModalProps {
   visible: boolean;
@@ -18,6 +21,52 @@ export default function LogDetailModal({
   data,
   onClose,
 }: LogDetailModalProps): ReactNode {
+  const [copyingTarget, setCopyingTarget] = useState<CopyTarget | null>(null);
+
+  const copyContent = async (target: CopyTarget, content: string) => {
+    setCopyingTarget(target);
+    try {
+      await navigator.clipboard.writeText(content);
+      Toast.success('已复制到剪贴板');
+    } catch {
+      Toast.error('复制失败，请手动复制');
+    } finally {
+      setCopyingTarget(null);
+    }
+  };
+
+  const renderContentBlock = (target: CopyTarget, title: string, content: string, maxHeight: number, marginTop = 0) => (
+    <div style={{ marginTop }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text strong>{title}:</Text>
+        <Button
+          icon={<IconCopy />}
+          size="small"
+          type="tertiary"
+          loading={copyingTarget === target}
+          disabled={copyingTarget !== null && copyingTarget !== target}
+          onClick={() => copyContent(target, content)}
+        >
+          复制
+        </Button>
+      </div>
+      <pre
+        style={{
+          background: 'var(--semi-color-fill-0)',
+          padding: 12,
+          borderRadius: 4,
+          fontSize: 12,
+          overflow: 'auto',
+          maxHeight,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-all',
+        }}
+      >
+        {content}
+      </pre>
+    </div>
+  );
+
   return (
     <Modal
       title="请求详情"
@@ -87,53 +136,26 @@ export default function LogDetailModal({
             )}
           </div>
 
-          <Text strong style={{ display: 'block', marginBottom: 4 }}>请求头:</Text>
-          <pre
-            style={{
-              background: 'var(--semi-color-fill-0)',
-              padding: 12,
-              borderRadius: 4,
-              fontSize: 12,
-              overflow: 'auto',
-              maxHeight: 200,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-            }}
-          >
-            {JSON.stringify(data.request_headers, null, 2) || '(空)'}
-          </pre>
-
-          <Text strong style={{ display: 'block', marginTop: 12, marginBottom: 4 }}>请求体:</Text>
-          <pre
-            style={{
-              background: 'var(--semi-color-fill-0)',
-              padding: 12,
-              borderRadius: 4,
-              fontSize: 12,
-              overflow: 'auto',
-              maxHeight: 300,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-            }}
-          >
-            {JSON.stringify(data.request_body, null, 2) || '(空)'}
-          </pre>
-
-          <Text strong style={{ display: 'block', marginTop: 12, marginBottom: 4 }}>响应体:</Text>
-          <pre
-            style={{
-              background: 'var(--semi-color-fill-0)',
-              padding: 12,
-              borderRadius: 4,
-              fontSize: 12,
-              overflow: 'auto',
-              maxHeight: 400,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-            }}
-          >
-            {data.response_body || '(空)'}
-          </pre>
+          {renderContentBlock(
+            'headers',
+            '请求头',
+            JSON.stringify(data.request_headers, null, 2) || '(空)',
+            200,
+          )}
+          {renderContentBlock(
+            'request',
+            '请求体',
+            JSON.stringify(data.request_body, null, 2) || '(空)',
+            300,
+            12,
+          )}
+          {renderContentBlock(
+            'response',
+            '响应体',
+            data.response_body || '(空)',
+            400,
+            12,
+          )}
         </div>
       ) : (
         <Empty description="暂无数据" />
