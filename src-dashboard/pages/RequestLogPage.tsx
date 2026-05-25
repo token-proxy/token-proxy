@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Table, Button, Tag, Typography, Empty,
   Select, Input, Tooltip,
@@ -48,9 +47,6 @@ export default function RequestLogPage(): ReactNode {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [filters, setFilters] = useState<LogFilters>({});
-
-  // ─── Navigation ───
-  const navigate = useNavigate();
 
   // ─── Filter handlers ───
 
@@ -264,9 +260,8 @@ export default function RequestLogPage(): ReactNode {
       render: (_: unknown, record: LogSummary) => (
         <Button
           size="small"
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate(`/logs/${record.id}`);
+          onClick={() => {
+            window.open(`/logs/${record.id}`, '_blank', 'noopener');
           }}
         >
           详情
