@@ -37,6 +37,16 @@ export default function AdminLayout(): ReactNode {
     return () => window.removeEventListener('storage', syncDisplayName);
   }, []);
 
+  useEffect(() => {
+    const currentPath = location.pathname.replace(/\/$/, '') || '/dashboard';
+    const matchingItem = [...navItems]
+      .sort((a, b) => b.itemKey.length - a.itemKey.length)
+      .find(item => currentPath === item.itemKey || currentPath.startsWith(item.itemKey + '/'));
+    if (matchingItem) {
+      setSelectedKeys([matchingItem.itemKey]);
+    }
+  }, [location.pathname]);
+
   const handleLogout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');

@@ -1,6 +1,7 @@
 import { Button, Popconfirm, Space, Table } from '@douyinfe/semi-ui';
 import type { ReactNode } from 'react';
 import StatusToggle from './StatusToggle.tsx';
+import CopyableIdText from './CopyableIdText.tsx';
 import type { AccessPoint } from '../types/accessPoint.ts';
 
 interface AccessPointTableProps {
@@ -25,8 +26,25 @@ export default function AccessPointTable({
   onToggleEnabled,
 }: AccessPointTableProps): ReactNode {
   const columns = [
+    {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 200,
+      render: (_: unknown, record: AccessPoint) => (
+        <CopyableIdText value={record.id} />
+      ),
+    },
     { title: '名称', dataIndex: 'name', key: 'name' },
-    { title: 'Short Code', dataIndex: 'short_code', key: 'short_code', width: 160 },
+    {
+      title: 'Short Code',
+      dataIndex: 'short_code',
+      key: 'short_code',
+      width: 160,
+      render: (_: unknown, record: AccessPoint) => (
+        <CopyableIdText value={record.short_code} />
+      ),
+    },
     {
       title: '映射规则数',
       key: 'mapping_count',
