@@ -189,6 +189,7 @@ async fn handle_non_streaming_proxy(
                 request_headers,
                 serde_json::from_str(&body).unwrap_or_default(),
                 String::from_utf8_lossy(&resp_body_clone).to_string(),
+                &ctx.access_point.api_type.to_string(),
             )
             .await
             .ok();
@@ -268,6 +269,7 @@ async fn handle_streaming_proxy(
             let ap_id = ctx.access_point.id;
             let provider_id = ctx.provider.id;
             let account_id = ctx.account.id;
+            let api_type = ctx.access_point.api_type.to_string();
             let sess = session_id;
             let model_orig = model_original;
             let model_mapped_val = Some(model_mapped);
@@ -298,6 +300,7 @@ async fn handle_streaming_proxy(
                         req_headers,
                         serde_json::from_str(&req_body).unwrap_or_default(),
                         buf,
+                        &api_type,
                     )
                     .await
                     .ok();

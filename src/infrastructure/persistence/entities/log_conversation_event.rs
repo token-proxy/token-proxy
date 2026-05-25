@@ -28,6 +28,12 @@ pub struct Model {
     pub display_payload: Option<Json>,
     pub confidence: i16,
     pub created_at: DateTimeWithTimeZone,
+    /// content block 子类型: text/thinking/redacted_thinking/tool_use/tool_result/server_tool_use
+    pub content_type: Option<String>,
+    /// redacted_thinking 的签名
+    pub signature: Option<String>,
+    /// tool_result 的完整内容文本
+    pub tool_result_content: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -67,6 +73,9 @@ impl TryFrom<Model> for LogConversationEvent {
             display_payload: model.display_payload,
             confidence: model.confidence,
             created_at: model.created_at.with_timezone(&Utc),
+            content_type: model.content_type,
+            signature: model.signature,
+            tool_result_content: model.tool_result_content,
         })
     }
 }
@@ -99,6 +108,9 @@ impl From<LogConversationEvent> for ActiveModel {
             display_payload: Set(event.display_payload),
             confidence: Set(event.confidence),
             created_at: Set(event.created_at.with_timezone(&offset)),
+            content_type: Set(event.content_type),
+            signature: Set(event.signature),
+            tool_result_content: Set(event.tool_result_content),
         }
     }
 }

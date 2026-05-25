@@ -8,6 +8,7 @@ import { IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import api from '../api.ts';
 import ClaudeSessionTimeline from '../components/ClaudeSessionTimeline.tsx';
+import CopyableIdText from '../components/CopyableIdText.tsx';
 import LogFilterBar from '../components/LogFilterBar.tsx';
 import RawContentModal from '../components/RawContentModal.tsx';
 import type {
@@ -17,9 +18,10 @@ import type {
   PaginatedResult,
   SessionListFilters,
   SessionSummary,
+  TokenUsage,
   UserItem,
 } from '../types/log.ts';
-import { formatDateTime, truncate, truncateMiddle } from '../utils/format.ts';
+import { formatDateTime, truncate } from '../utils/format.ts';
 import { buildQueryString, toIsoString } from '../utils/query.ts';
 
 const { Title, Text } = Typography;
@@ -44,6 +46,7 @@ export default function SessionLogPage(): ReactNode {
 
   // Detail mode state
   const [sessionEvents, setSessionEvents] = useState<ConversationEvent[]>([]);
+  const [sessionTokenUsage, setSessionTokenUsage] = useState<TokenUsage[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [rawModalVisible, setRawModalVisible] = useState(false);
   const [rawModalTitle, setRawModalTitle] = useState('');
@@ -121,14 +124,27 @@ export default function SessionLogPage(): ReactNode {
     }
   }, []);
 
+  const fetchSessionTokenUsage = useCallback(async (sid: string) => {
+    try {
+      const usage = await api.get<TokenUsage[]>(
+        `/api/logs/sessions/${encodeURIComponent(sid)}/token-usage`,
+      );
+      setSessionTokenUsage(usage);
+    } catch {
+      setSessionTokenUsage([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (sessionId) {
       loadSessionDetail(sessionId);
+      fetchSessionTokenUsage(sessionId);
     }
     return () => {
       setSessionEvents([]);
+      setSessionTokenUsage([]);
     };
-  }, [sessionId, loadSessionDetail]);
+  }, [sessionId, loadSessionDetail, fetchSessionTokenUsage]);
 
   // ─── Modal helpers ───
 
@@ -180,12 +196,23 @@ export default function SessionLogPage(): ReactNode {
     setPage(newPage);
   };
 
+  // ─── Token usage map ───
+
+  const tokenUsageMap = useMemo(() => {
+    const m: Record<string, TokenUsage> = {};
+    sessionTokenUsage.forEach((tu) => { m[tu.log_id] = tu; });
+    return m;
+  }, [sessionTokenUsage]);
+
   // ─── Detail View ───
 
   if (sessionId) {
     const sortedEvents = [...sessionEvents].sort((a, b) => {
       if (a.request_index !== b.request_index) return a.request_index - b.request_index;
-      return a.event_index - b.event_index;
+      if (a.event_index !== b.event_index) return a.event_index - b.event_index;
+      const timeCmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+      if (timeCmp !== 0) return timeCmp;
+      return a.id.localeCompare(b.id);
     });
 
     return (
@@ -198,7 +225,12 @@ export default function SessionLogPage(): ReactNode {
           <Button
             icon={<IconRefresh />}
             loading={detailLoading}
-            onClick={() => loadSessionDetail(sessionId)}
+            onClick={() => {
+              if (sessionId) {
+                loadSessionDetail(sessionId);
+                fetchSessionTokenUsage(sessionId);
+              }
+            }}
           >
             刷新
           </Button>
@@ -236,7 +268,7 @@ export default function SessionLogPage(): ReactNode {
         ) : sortedEvents.length === 0 ? (
           <Empty description="暂无对话数据" />
         ) : (
-          <ClaudeSessionTimeline events={sortedEvents} onOpenRaw={openRawModal} />
+          <ClaudeSessionTimeline events={sortedEvents} onOpenRaw={openRawModal} tokenUsageMap={tokenUsageMap} />
         )}
 
         <Title heading={6} style={{ marginBottom: 16 }}>事件摘要</Title>
@@ -252,22 +284,25 @@ export default function SessionLogPage(): ReactNode {
               title: '时间',
               dataIndex: 'timestamp',
               width: 180,
-              render: (t: string) => formatDateTime(t),
+              render: (t: string) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTime(t)}</span>,
             },
             {
               title: '来源',
               key: 'source',
               width: 120,
               render: (_: unknown, r: ConversationEvent) => (
-                <Tag color={r.source === 'subagent' ? 'green' : 'blue'}>
-                  {r.source === 'subagent' ? '子代理' : '主代理'}
-                </Tag>
+                <span style={{ whiteSpace: 'nowrap' }}>
+                  <Tag color={r.source === 'subagent' ? 'green' : 'blue'}>
+                    {r.source === 'subagent' ? '子代理' : '主代理'}
+                  </Tag>
+                </span>
               ),
             },
             {
               title: '类型',
               dataIndex: 'event_type',
               width: 160,
+              render: (t: string) => <span style={{ whiteSpace: 'nowrap' }}>{t}</span>,
             },
             {
               title: '摘要',
@@ -340,50 +375,90 @@ export default function SessionLogPage(): ReactNode {
             title: '会话 ID',
             dataIndex: 'session_id',
             key: 'session_id',
-            width: 180,
+            width: 280,
             render: (id: string) => (
-              <Tooltip content={id}>
-                <span style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                  {truncateMiddle(id)}
-                </span>
-              </Tooltip>
+              <CopyableIdText value={id} />
             ),
           },
           {
             title: '用户',
             key: 'user',
-            width: 120,
-            render: (_: unknown, r: SessionSummary) =>
-              r.user_id ? (userMap[r.user_id] || r.user_id) : '-',
+            width: 100,
+            render: (_: unknown, r: SessionSummary) => {
+              if (!r.user_id) return '-';
+              const name = userMap[r.user_id];
+              return name
+                ? <span style={{ whiteSpace: 'nowrap' }}>{name}</span>
+                : <CopyableIdText value={r.user_id} />;
+            },
           },
           {
-            title: '接入点',
+            title: <span>接<br />入点</span>,
             key: 'ap',
-            width: 120,
-            render: (_: unknown, r: SessionSummary) =>
-              r.access_point_id ? (apMap[r.access_point_id] || r.access_point_id) : '-',
+            width: 110,
+            render: (_: unknown, r: SessionSummary) => {
+              if (!r.access_point_id) return '-';
+              const name = apMap[r.access_point_id];
+              return name
+                ? <Text ellipsis style={{ maxWidth: 110 }}>{name}</Text>
+                : <CopyableIdText value={r.access_point_id} />;
+            },
           },
           {
             title: '开始时间',
             dataIndex: 'start_time',
             width: 180,
-            render: (t: string) => formatDateTime(t),
+            render: (t: string) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTime(t)}</span>,
           },
           {
-            title: '请求次数',
+            title: <span>请求次<br />数</span>,
             dataIndex: 'request_count',
-            width: 80,
+            width: 90,
+            render: (v: number) => (
+              <span style={{ whiteSpace: 'nowrap', display: 'block', maxWidth: 90 }}>{v}</span>
+            ),
+          },
+          {
+            title: 'Token',
+            key: 'token',
+            width: 140,
+            render: (_: unknown, record: SessionSummary) => {
+              const hasToken = record.total_input_tokens > 0 || record.total_output_tokens > 0;
+              if (!hasToken) return <span style={{ color: 'var(--semi-color-text-2)' }}>-</span>;
+              return (
+                <Tooltip
+                  content={
+                    <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                      <div>总输入: {record.total_input_tokens.toLocaleString()}</div>
+                      <div>总输出: {record.total_output_tokens.toLocaleString()}</div>
+                      <div>缓存创建: {record.total_cache_creation_input_tokens.toLocaleString()}</div>
+                      <div>缓存读取: {record.total_cache_read_input_tokens.toLocaleString()}</div>
+                      <div>思考: {record.total_thinking_tokens.toLocaleString()}</div>
+                      <div>总计: {record.total_tokens.toLocaleString()}</div>
+                    </div>
+                  }
+                >
+                  <span style={{ whiteSpace: 'nowrap', cursor: 'default' }}>
+                    &uarr;{record.total_input_tokens.toLocaleString()} / &darr;{record.total_output_tokens.toLocaleString()}
+                  </span>
+                </Tooltip>
+              );
+            },
           },
           {
             title: '首条摘要',
             dataIndex: 'first_message',
-            render: (msg?: string | null) => truncate(msg ?? '', 80),
+            render: (_: unknown, r: SessionSummary) => (
+              <Text ellipsis style={{ maxWidth: 360 }}>
+                {r.first_message || '-'}
+              </Text>
+            ),
           },
           {
             title: '操作',
             key: 'actions',
             width: 100,
-            render: (_: unknown, r: SessionSummary) => (
+              render: (_: unknown, r: SessionSummary) => (
               <Button
                 size="small"
                 onClick={(e) => {

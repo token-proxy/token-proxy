@@ -11,10 +11,10 @@ type CopyableIdTextProps = {
 export default function CopyableIdText({ value }: CopyableIdTextProps): ReactNode {
   return (
     <Text
-      className="monospace-text nowrap-text"
+      className="nowrap-text"
       copyable={{ content: value, render: renderCopyIcon }}
     >
-      {value}
+      <span className="monospace-text">{value}</span>
     </Text>
   );
 }

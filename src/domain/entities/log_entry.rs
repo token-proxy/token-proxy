@@ -34,6 +34,18 @@ pub struct LogEntry {
     pub has_tool_use: bool,
     pub has_error: bool,
     pub raw_content_available: bool,
+    /// 解析器版本号
+    pub parser_version: Option<String>,
+    /// 客户端名称（从 user-agent 解析）
+    pub client_name: Option<String>,
+    /// 客户端版本号
+    pub client_version: Option<String>,
+    /// 客户端发布渠道
+    pub client_channel: Option<String>,
+    /// 客户端平台
+    pub client_platform: Option<String>,
+    /// API 类型（Anthropic / OpenAI 等）
+    pub api_type: String,
 }
 
 /// 日志内容实体，记录请求和响应的完整数据
@@ -77,6 +89,12 @@ impl Default for LogEntry {
             has_tool_use: false,
             has_error: false,
             raw_content_available: true,
+            parser_version: None,
+            client_name: None,
+            client_version: None,
+            client_channel: None,
+            client_platform: None,
+            api_type: "anthropic".to_string(),
         }
     }
 }
@@ -106,6 +124,12 @@ pub struct LogConversationEvent {
     pub display_payload: Option<serde_json::Value>,
     pub confidence: i16,
     pub created_at: DateTime<Utc>,
+    /// content block 子类型: text/thinking/redacted_thinking/tool_use/tool_result/server_tool_use
+    pub content_type: Option<String>,
+    /// redacted_thinking 的签名
+    pub signature: Option<String>,
+    /// tool_result 的完整内容文本
+    pub tool_result_content: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,5 +154,9 @@ pub struct LogTokenUsage {
     pub thinking_tokens: i32,
     pub total_tokens: i32,
     pub raw_usage: Option<serde_json::Value>,
+    /// 服务端工具用量（JSONB: web_search_requests, web_fetch_requests）
+    pub server_tool_usage: Option<serde_json::Value>,
+    /// 缓存创建详情（JSONB: ephemeral_5m_input_tokens, ephemeral_1h_input_tokens）
+    pub cache_creation: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
 }

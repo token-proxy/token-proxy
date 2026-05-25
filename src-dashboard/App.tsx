@@ -7,6 +7,7 @@ import AccessPointManagement from './pages/AccessPointManagement.tsx';
 import UserManagement from './pages/UserManagement.tsx';
 import SessionLogPage from './pages/SessionLogPage.tsx';
 import RequestLogPage from './pages/RequestLogPage.tsx';
+import LogDetailPage from './pages/LogDetailPage.tsx';
 import SettingsPage from './pages/SettingsPage.tsx';
 import ProfilePage from './pages/ProfilePage.tsx';
 
@@ -23,6 +24,7 @@ function App() {
           <Route path="sessions" element={<SessionLogPage />} />
           <Route path="sessions/:sessionId" element={<SessionLogPage />} />
           <Route path="logs" element={<RequestLogPage />} />
+          <Route path="logs/:id" element={<LogDetailPage />} />
           <Route path="users" element={<UserManagement />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="settings/profile" element={<ProfilePage />} />
