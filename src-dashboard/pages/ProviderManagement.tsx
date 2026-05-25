@@ -451,6 +451,18 @@ export default function ProviderManagement(): ReactNode {
                 placeholder="输入模型名后回车，或点击自动发现"
                 allowDuplicates={false}
                 style={{ width: '100%' }}
+                renderTagItem={(value, _index, onClose) => (
+                  <Tag
+                    key={value as string}
+                    color="blue"
+                    size="small"
+                    closable
+                    onClose={onClose}
+                    style={{ marginRight: 4 }}
+                  >
+                    {value as string}
+                  </Tag>
+                )}
               />
               <Text type="tertiary" size="small" style={{ marginTop: 6, display: 'block' }}>
                 {accounts.length === 0
@@ -467,6 +479,23 @@ export default function ProviderManagement(): ReactNode {
                   optionList={providerModels.map((m) => ({ value: m, label: m }))}
                   onChange={(value) => setProviderDefaultModel(value as string | undefined)}
                   style={{ width: '100%' }}
+                  renderSelectedItem={(optionNode: { value?: string | number }) => (
+                    <Tag color="blue" size="small">{String(optionNode.value ?? '')}</Tag>
+                  )}
+                  renderOptionItem={(props) => (
+                    <div
+                      className={props.className}
+                      style={{
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        backgroundColor: props.selected ? 'var(--semi-color-fill-1)' : undefined,
+                      }}
+                      onClick={props.onClick}
+                      onMouseEnter={props.onMouseEnter}
+                    >
+                      <Tag color="blue" size="small">{props.value as string}</Tag>
+                    </div>
+                  )}
                 />
                 <Text type="tertiary" size="small" style={{ marginTop: 6, display: 'block' }}>
                   默认模型必须来自模型列表；从模型列表移除当前默认模型时会立即清空。
