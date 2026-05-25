@@ -393,7 +393,7 @@ export default function ProviderManagement(): ReactNode {
         title={editingProvider ? '编辑 Provider' : '创建 Provider'}
         visible={drawerVisible}
         onCancel={() => setDrawerVisible(false)}
-        width={760}
+        size="large"
         maskClosable
       >
         <div style={{ padding: '0 4px' }}>

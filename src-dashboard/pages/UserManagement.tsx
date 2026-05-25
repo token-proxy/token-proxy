@@ -200,7 +200,7 @@ export default function UserManagement(): ReactNode {
         title={editingUser ? '编辑用户' : '创建用户'}
         visible={sideSheetVisible}
         onCancel={() => setSideSheetVisible(false)}
-        width={560}
+        size="large"
         maskClosable
       >
         <Form
