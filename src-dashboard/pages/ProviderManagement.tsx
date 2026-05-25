@@ -395,24 +395,12 @@ export default function ProviderManagement(): ReactNode {
         onCancel={() => setDrawerVisible(false)}
         width={760}
         maskClosable
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={() => setDrawerVisible(false)}>取消</Button>
-            <Button
-              type="primary"
-              loading={saving}
-              onClick={() => formRef.current?.submitForm()}
-            >
-              {editingProvider ? '更新' : '创建'}
-            </Button>
-          </div>
-        }
       >
+        <div style={{ padding: '0 4px' }}>
         <Form
           onSubmit={handleSaveProvider}
           initValues={editingProvider || undefined}
           getFormApi={(api) => { formRef.current = api; }}
-          style={{ padding: '0 4px' }}
         >
           <Form.Input
             field="name"
@@ -523,7 +511,7 @@ export default function ProviderManagement(): ReactNode {
                         {editingAccount ? 'API Key (留空表示不修改)' : 'API Key'}
                       </div>
                       {/*
-                        故意不使用 type="password"，避免触发浏览器密码管理器的“保存账号密码”弹窗。
+                        故意不使用 type="password"，避免触发浏览器密码管理器的"保存账号密码"弹窗。
                         改为普通 text input + CSS 视觉遮罩（webkit-text-security）+ 自定义眼睛按钮。
                       */}
                       <Input
@@ -567,6 +555,17 @@ export default function ProviderManagement(): ReactNode {
 
           </>
         )}
+
+        <Button
+          type="primary"
+          loading={saving}
+          onClick={() => formRef.current?.submitForm()}
+          block
+          style={{ marginTop: 24 }}
+        >
+          {editingProvider ? '更新' : '创建'}
+        </Button>
+        </div>
       </SideSheet>
     </div>
   );
