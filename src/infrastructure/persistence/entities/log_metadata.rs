@@ -35,6 +35,18 @@ pub struct Model {
     pub has_tool_use: bool,
     pub has_error: bool,
     pub raw_content_available: bool,
+    /// 解析器版本号
+    pub parser_version: Option<String>,
+    /// 客户端名称（从 user-agent 解析）
+    pub client_name: Option<String>,
+    /// 客户端版本号
+    pub client_version: Option<String>,
+    /// 客户端发布渠道
+    pub client_channel: Option<String>,
+    /// 客户端平台
+    pub client_platform: Option<String>,
+    /// API 类型（Anthropic / OpenAI 等）
+    pub api_type: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -89,6 +101,12 @@ impl TryFrom<Model> for LogEntry {
             has_tool_use: model.has_tool_use,
             has_error: model.has_error,
             raw_content_available: model.raw_content_available,
+            parser_version: model.parser_version,
+            client_name: model.client_name,
+            client_version: model.client_version,
+            client_channel: model.client_channel,
+            client_platform: model.client_platform,
+            api_type: model.api_type,
         })
     }
 }
@@ -127,6 +145,12 @@ impl From<LogEntry> for ActiveModel {
             has_tool_use: Set(entry.has_tool_use),
             has_error: Set(entry.has_error),
             raw_content_available: Set(entry.raw_content_available),
+            parser_version: Set(entry.parser_version),
+            client_name: Set(entry.client_name),
+            client_version: Set(entry.client_version),
+            client_channel: Set(entry.client_channel),
+            client_platform: Set(entry.client_platform),
+            api_type: Set(entry.api_type),
         }
     }
 }

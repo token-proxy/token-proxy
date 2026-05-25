@@ -140,7 +140,41 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 7. log_metadata 分区表（主表 + 种子分区）
+        // 7. user_api_keys 表
+        manager
+            .create_table(
+                Table::create()
+                    .table(UserApiKeys::Table)
+                    .if_not_exists()
+                    .col(pk_uuid(UserApiKeys::Id).default(Expr::cust("gen_random_uuid()")))
+                    .col(uuid(UserApiKeys::UserId).not_null())
+                    .col(string_len(UserApiKeys::KeyHash, 64).unique_key().not_null())
+                    .col(string_len(UserApiKeys::KeyPrefix, 32).not_null())
+                    .col(string_len(UserApiKeys::Description, 255).not_null().default(""))
+                    .col(timestamp_with_time_zone_null(UserApiKeys::LastUsedAt))
+                    .col(string_len(UserApiKeys::Status, 20).not_null().default("enabled"))
+                    .col(timestamp_with_time_zone(UserApiKeys::CreatedAt).not_null().default(Expr::cust("NOW()")))
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(UserApiKeys::Table, UserApiKeys::UserId)
+                            .to(Users::Table, Users::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_user_api_keys_user_id")
+                    .table(UserApiKeys::Table)
+                    .col(UserApiKeys::UserId)
+                    .to_owned(),
+            )
+            .await?;
+
+        // 8. log_metadata 分区表（主表 + 种子分区）
         manager
             .get_connection()
             .execute_unprepared(
@@ -175,6 +209,12 @@ impl MigrationTrait for Migration {
                     has_tool_use               BOOLEAN NOT NULL DEFAULT FALSE,
                     has_error                  BOOLEAN NOT NULL DEFAULT FALSE,
                     raw_content_available      BOOLEAN NOT NULL DEFAULT TRUE,
+                    parser_version             VARCHAR(20),
+                    client_name                VARCHAR(100),
+                    client_version             VARCHAR(50),
+                    client_channel             VARCHAR(50),
+                    client_platform            VARCHAR(50),
+                    api_type                   VARCHAR(50) NOT NULL DEFAULT 'anthropic',
                     PRIMARY KEY (id, timestamp)
                 ) PARTITION BY RANGE (timestamp);
 
@@ -229,6 +269,9 @@ impl MigrationTrait for Migration {
                     hidden_content      JSONB,
                     display_payload     JSONB,
                     confidence          SMALLINT NOT NULL DEFAULT 100,
+                    content_type        VARCHAR(50),
+                    signature           TEXT,
+                    tool_result_content TEXT,
                     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 );
 
@@ -253,6 +296,8 @@ impl MigrationTrait for Migration {
                     thinking_tokens             INTEGER NOT NULL DEFAULT 0,
                     total_tokens                INTEGER NOT NULL DEFAULT 0,
                     raw_usage                   JSONB,
+                    server_tool_usage           JSONB,
+                    cache_creation              JSONB,
                     created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 );
                 "#,
@@ -601,4 +646,17 @@ enum AuditLogs {
     EntityId,
     Details,
     Timestamp,
+}
+
+#[derive(DeriveIden)]
+enum UserApiKeys {
+    Table,
+    Id,
+    UserId,
+    KeyHash,
+    KeyPrefix,
+    Description,
+    LastUsedAt,
+    Status,
+    CreatedAt,
 }

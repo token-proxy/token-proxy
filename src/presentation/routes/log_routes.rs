@@ -6,8 +6,8 @@ use axum::{
 use uuid::Uuid;
 
 use crate::application::dto::log_dto::{
-    ConversationEventResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse,
-    SessionSummaryResponse, TokenUsageResponse,
+    ConversationEventResponse, LogDetailFullResponse, LogDetailResponse, LogFilterParams,
+    LogSummaryResponse, SessionSummaryResponse, TokenUsageResponse,
 };
 use crate::application::AppState;
 use crate::shared::error::AppError;
@@ -23,13 +23,20 @@ use crate::shared::types::PaginatedResult;
 /// - `GET /api/logs`               → query_logs
 /// - `GET /api/logs/sessions`      → get_sessions
 /// - `GET /api/logs/sessions/{id}` → get_session_detail
-/// - `GET /api/logs/{id}`          → get_log_detail
+/// - `GET /api/logs/{id}/detail`   → get_log_detail_full (完整详情)
+/// - `GET /api/logs/{id}/raw`      → get_log_detail (原始内容)
+/// - `GET /api/logs/{id}`          → get_log_detail (兼容旧版)
+/// - `GET /api/logs/{id}/token-usage` → get_log_token_usage
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/logs", get(query_logs))
         .route("/api/logs/sessions", get(get_sessions))
-        .route("/api/logs/sessions/{id}/token-usage", get(get_session_token_usage))
+        .route(
+            "/api/logs/sessions/{id}/token-usage",
+            get(get_session_token_usage),
+        )
         .route("/api/logs/sessions/{id}", get(get_session_detail))
+        .route("/api/logs/{id}/detail", get(get_log_detail_full))
         .route("/api/logs/{id}/raw", get(get_log_detail))
         .route("/api/logs/{id}/token-usage", get(get_log_token_usage))
         .route("/api/logs/{id}", get(get_log_detail))
@@ -52,6 +59,19 @@ async fn get_log_detail(
     let detail = state
         .log_service
         .get_log_detail(id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("日志 {} 未找到", id)))?;
+    Ok(Json(detail))
+}
+
+/// GET /api/logs/{id}/detail
+async fn get_log_detail_full(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<LogDetailFullResponse>, AppError> {
+    let detail = state
+        .log_service
+        .get_log_detail_full(id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("日志 {} 未找到", id)))?;
     Ok(Json(detail))

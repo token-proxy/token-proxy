@@ -1,17 +1,16 @@
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Table, Button, Tag, Typography, Toast, Empty,
+  Table, Button, Tag, Typography, Empty,
   Select, Input, Tooltip,
 } from '@douyinfe/semi-ui';
 import { IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import api from '../api.ts';
 import CopyableIdText from '../components/CopyableIdText.tsx';
-import LogDetailModal from '../components/LogDetailModal.tsx';
 import LogFilterBar from '../components/LogFilterBar.tsx';
 import type {
   AccessPointItem,
-  LogDetail,
   LogFilters,
   LogSummary,
   PaginatedResult,
@@ -50,12 +49,10 @@ export default function RequestLogPage(): ReactNode {
   const [pageSize] = useState(20);
   const [filters, setFilters] = useState<LogFilters>({});
 
-  // Detail modal state
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailModalVisible, setDetailModalVisible] = useState(false);
-  const [detailData, setDetailData] = useState<LogDetail | null>(null);
+  // ─── Navigation ───
+  const navigate = useNavigate();
 
-  // ─── Load reference data ───
+  // ─── Filter handlers ───
 
   useEffect(() => {
     api.get<UserItem[]>('/api/users')
@@ -110,28 +107,6 @@ export default function RequestLogPage(): ReactNode {
     fetchLogs();
   }, [fetchLogs]);
 
-  // ─── Detail modal ───
-
-  const openDetail = async (id: string) => {
-    setDetailLoading(true);
-    setDetailModalVisible(true);
-    setDetailData(null);
-    try {
-      const data = await api.get<LogDetail>(`/api/logs/${id}/raw`);
-      setDetailData(data);
-    } catch (err) {
-      Toast.error(err instanceof Error ? err.message : '加载日志详情失败');
-      setDetailModalVisible(false);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
-
-  const closeDetail = () => {
-    setDetailModalVisible(false);
-    setDetailData(null);
-  };
-
   // ─── Filter handlers ───
 
   const handleDateChange: DatePickerProps['onChange'] = (value) => {
@@ -175,14 +150,12 @@ export default function RequestLogPage(): ReactNode {
       dataIndex: 'message_preview',
       width: 360,
       render: (_: unknown, r: LogSummary) => (
-        <Tooltip content={r.message_full || r.message_preview || '-'}>
-          <Text
-            ellipsis={{ showTooltip: false }}
-            style={{ maxWidth: 340, display: 'inline-block' }}
-          >
-            {r.message_preview || '-'}
-          </Text>
-        </Tooltip>
+        <Text
+          ellipsis
+          style={{ maxWidth: 360 }}
+        >
+          {r.message_preview || '-'}
+        </Text>
       ),
     },
     {
@@ -252,6 +225,33 @@ export default function RequestLogPage(): ReactNode {
       ),
     },
     {
+      title: 'Token',
+      key: 'token',
+      width: 140,
+      render: (_: unknown, record: LogSummary) => {
+        const hasToken = record.token_input_tokens != null || record.token_output_tokens != null;
+        if (!hasToken) return <span style={{ color: 'var(--semi-color-text-2)' }}>-</span>;
+        const input = record.token_input_tokens?.toLocaleString() || '0';
+        const output = record.token_output_tokens?.toLocaleString() || '0';
+        const total = record.token_total_tokens?.toLocaleString() || '0';
+        return (
+          <Tooltip
+            content={
+              <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                <div>输入 token：{input}</div>
+                <div>输出 token：{output}</div>
+                <div>总计：{total}</div>
+              </div>
+            }
+          >
+            <span style={{ whiteSpace: 'nowrap', cursor: 'default' }}>
+              ↑{input} / ↓{output}
+            </span>
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: '耗时',
       dataIndex: 'duration_ms',
       width: 80,
@@ -264,10 +264,9 @@ export default function RequestLogPage(): ReactNode {
       render: (_: unknown, record: LogSummary) => (
         <Button
           size="small"
-          loading={detailLoading}
           onClick={(e) => {
             e.stopPropagation();
-            openDetail(record.id);
+            navigate(`/logs/${record.id}`);
           }}
         >
           详情
@@ -351,12 +350,6 @@ export default function RequestLogPage(): ReactNode {
         }
       />
 
-      <LogDetailModal
-        visible={detailModalVisible}
-        loading={detailLoading}
-        data={detailData}
-        onClose={closeDetail}
-      />
     </div>
   );
 }

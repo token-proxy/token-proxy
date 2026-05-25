@@ -25,6 +25,10 @@ pub struct Model {
     pub thinking_tokens: i32,
     pub total_tokens: i32,
     pub raw_usage: Option<Json>,
+    /// 服务端工具用量（JSONB: web_search_requests, web_fetch_requests）
+    pub server_tool_usage: Option<Json>,
+    /// 缓存创建详情（JSONB: ephemeral_5m_input_tokens, ephemeral_1h_input_tokens）
+    pub cache_creation: Option<Json>,
     pub created_at: DateTimeWithTimeZone,
 }
 
@@ -62,6 +66,8 @@ impl TryFrom<Model> for LogTokenUsage {
             thinking_tokens: model.thinking_tokens,
             total_tokens: model.total_tokens,
             raw_usage: model.raw_usage,
+            server_tool_usage: model.server_tool_usage,
+            cache_creation: model.cache_creation,
             created_at: model.created_at.with_timezone(&Utc),
         })
     }
@@ -92,6 +98,8 @@ impl From<LogTokenUsage> for ActiveModel {
             thinking_tokens: Set(usage.thinking_tokens),
             total_tokens: Set(usage.total_tokens),
             raw_usage: Set(usage.raw_usage),
+            server_tool_usage: Set(usage.server_tool_usage),
+            cache_creation: Set(usage.cache_creation),
             created_at: Set(usage.created_at.with_timezone(&offset)),
         }
     }
