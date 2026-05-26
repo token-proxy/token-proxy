@@ -46,6 +46,11 @@ impl JwtService {
         self.access_expiry_secs as u64
     }
 
+    /// 获取刷新令牌过期时间（秒）
+    pub fn refresh_expiry_secs(&self) -> u64 {
+        self.refresh_expiry_secs as u64
+    }
+
     /// 创建访问令牌（短寿命）
     pub fn create_access_token(&self, user_id: Uuid, username: &str) -> Result<String, AppError> {
         let now = Utc::now().timestamp() as usize;

@@ -73,7 +73,8 @@ impl AuthService {
 
         // 计算 refresh token hash 并存储
         let token_hash = Self::hash_token(&refresh_token_str);
-        let expires_at = now + chrono::Duration::seconds(expires_in as i64);
+        let expires_at =
+            now + chrono::Duration::seconds(self.jwt_service.refresh_expiry_secs() as i64);
 
         let refresh_token_entity = RefreshToken::new(user.id, token_hash, expires_at);
         self.refresh_token_repo
@@ -141,7 +142,8 @@ impl AuthService {
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
         let new_token_hash = Self::hash_token(&refresh_token_str);
-        let expires_at = now + chrono::Duration::seconds(expires_in as i64);
+        let expires_at =
+            now + chrono::Duration::seconds(self.jwt_service.refresh_expiry_secs() as i64);
 
         let new_token_entity = RefreshToken::new(user.id, new_token_hash, expires_at);
         self.refresh_token_repo
