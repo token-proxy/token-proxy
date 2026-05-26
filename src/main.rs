@@ -181,6 +181,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let refresh_token_repo: Arc<dyn RefreshTokenRepository> =
         Arc::new(SeaOrmRefreshTokenRepository::new(db.clone()));
 
+    // 启动后台定时任务：清理过期的 refresh_token
+    let token_repo_cleanup = refresh_token_repo.clone();
+    let token_cleanup_interval = std::time::Duration::from_secs(config.partition_check_interval_secs);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(token_cleanup_interval);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // 首个 tick 立即触发, 跳过它避免启动瞬间执行
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            match token_repo_cleanup.delete_expired().await {
+                Ok(n) if n > 0 => {
+                    tracing::info!("清理过期 refresh_token: {} 条", n);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!("清理过期 refresh_token 失败: {}", e);
+                }
+            }
+        }
+    });
+
     let log_repo: Arc<dyn LogRepository> = Arc::new(SeaOrmLogRepository::new(db.clone()));
 
     let log_token_usage_repo: Arc<dyn LogTokenUsageRepository> =

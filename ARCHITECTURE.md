@@ -55,7 +55,7 @@ src/
 │   ├── error.rs            # AppError (9 种错误变体)
 │   └── types.rs            # PaginatedResult, PaginationParams, Timestamp
 ├── config.rs               # 环境变量配置加载
-├── main.rs                 # 启动入口 (依赖组装 + 路由构建 + 分区初始化 + 后台定时分区维护)
+├── main.rs                 # 启动入口 (依赖组装 + 路由构建 + 分区初始化 + 后台定时分区维护 + 过期令牌清理任务)
 └── lib.rs                  # Crate 根模块 (模块导出)
 ```
 
@@ -150,7 +150,7 @@ infrastructure/
 │   │   ├── audit_log.rs    # 映射 audit_logs 表
 │   │   └── user_api_key.rs # 映射 user_api_keys 表
 │   ├── partition_manager.rs # PartitionManager: 应用层分区自动管理
-│   └── repositories/       # Repository 实现 (7 个)
+│   └── repositories/       # Repository 实现 (7 个, 含 refresh token 过期清理 delete_expired)
 │       ├── provider_repository.rs        # SeaOrmProviderRepository
 │       ├── account_repository.rs         # SeaOrmAccountRepository
 │       ├── user_repository.rs            # SeaOrmUserRepository
@@ -161,7 +161,7 @@ infrastructure/
 ├── encryption/             # 加密实现
 │   └── aes256_gcm.rs       # Aes256GcmEncryptionService
 ├── auth/                   # 认证实现
-│   ├── jwt.rs              # JwtService (jsonwebtoken)
+│   ├── jwt.rs              # JwtService (jsonwebtoken, 含 refresh_expiry_secs 访问器供 AuthService 正确计算 refresh_token 过期时间)
 │   └── password.rs         # argon2 密码哈希
 └── http_client/            # HTTP 客户端
     └── proxy_client.rs     # ProxyClient (reqwest 连接池)
@@ -310,7 +310,7 @@ shared/
 
 ### API 通信层
 
-`api.ts` 封装了基于 fetch 的 HTTP 客户端，自动附加 JWT `Authorization` 头，401 响应时自动清除令牌并跳转登录页。提供 `get`、`post`、`put`、`delete` 四个方法。
+`api.ts` 封装了基于 fetch 的 HTTP 客户端，自动附加 JWT `Authorization` 头。采用「双层防御」策略处理令牌过期：请求前检查 Access Token 是否接近过期，必要时通过 Refresh Token 静默刷新；若刷新失败或 401 响应仍到达，则清除所有本地令牌并跳转登录页。模块级 `refreshing` Promise 实现并发刷新去重，避免 Refresh Token Rotation 模式下多请求互相吊销。提供 `get`、`post`、`put`、`delete` 四个方法。
 
 ### 主题系统
 
@@ -338,7 +338,7 @@ migration/
 | accounts | API 账号 | encrypted_key, key_tail (末 6 位), provider_id (FK) |
 | users | 管理员用户 | username, password_hash |
 | access_points | 接入点 | short_code (唯一), api_type, provider_id, account_id |
-| refresh_tokens | JWT 刷新令牌 | user_id (FK), token_hash, expires_at, revoked |
+| refresh_tokens | JWT 刷新令牌 | user_id (FK), token_hash, expires_at, revoked; 过期记录由 tokio 后台任务每小时物理清理 |
 | log_metadata | 代理日志元数据 (按月分区) | session_id, model_original, model_mapped, status_code, duration_ms |
 | log_contents | 代理日志内容 | log_id, request_headers, request_body, response_body |
 | audit_logs | 操作审计日志 | user_id, action, target_type, target_id, details |
@@ -391,6 +391,9 @@ POST /ap/{short_code}/v1/messages
 4. **聚合边界明确**: Provider (根+Account)、User (根+RefreshToken)、AccessPoint (根+跨聚合 UUID 引用)、LogEntry (根+LogContent)
 5. **错误隔离**: 数据库错误和加密错误详情不暴露给客户端，统一转换为 `500 Internal Server Error`
 6. **同源部署**: 前端构建产物嵌入 Rust 二进制，生产环境前后端同源，无需 CORS 配置
+7. **依赖最小化原则**: 优先复用现有基础设施（PostgreSQL、tokio）解决问题，引入新中间件需要明确的多个使用场景作为合理性论证
+8. **双层防御模式**: 前端请求前体检 + 401 兜底双层保障令牌有效性，适配浏览器后台冻结节流策略，不依赖定时器
+9. **依赖倒置在认证场景的体现**: RefreshTokenRepository trait 隔离存储实现，切换 Redis 等存储时无需修改 AuthService
 
 ## 安全设计
 
@@ -404,6 +407,8 @@ POST /ap/{short_code}/v1/messages
 | 错误隔离 | 加密/数据库错误不暴露原始详情 |
 | Header 构造 | 上游请求独立构建，入站 `authorization` 只用于用户 API key 认证，provider 认证由账号 API key 单独生成 |
 | 传输安全 | 建议部署时配置 HTTPS 反向代理 |
+| JWT 自动刷新 | 前端「双层防御」: 请求前体检 + 401 兜底，模块级 Promise 并发去重 |
+| 过期令牌清理 | tokio 后台任务每小时物理删除过期 refresh_token，不引入 Redis 或 pg_cron; 多副本部署时通过 advisory lock 防冲突 |
 
 ## 构建与部署
 
@@ -470,3 +475,4 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 2026-05-24 | 前端 Provider 表格 default_model 列使用 Tag 渲染; Provider 编辑面板 default_model Select 移至模型列表 TagInput 下方, TagInput 移除模型联动清空 default_model; ModelMappingEditor 源模型下拉展示匹配类型说明, 目标模型下拉仅含 Provider 已注册 models 且禁止创建; 保存时过滤 target_model 不在 Provider.models 的映射 (useAccessPoints hook 实现) |
 | 2026-05-24 | 同步架构文档与实际代码：`__unmatched__` 视为模式匹配, 自动生成的未匹配规则使用 prefix; Select 选项用 Semi Tag 前缀显示"精准匹配/模式匹配"; 目标模型 Select 包含 Provider.models + Provider.default_model; 保存过滤也允许 Provider.default_model |
 | 2026-05-24 | 服务端强化匹配类型: 新增 `normalize_match_type` 和 `is_prefix_source_model` 函数, 强制 `__unmatched__` 和 Claude 家族前缀 (claude-opus-/claude-sonnet-/claude-haiku-) 始终视为 `prefix` 匹配; AccessPointService 创建/更新时执行 match_type 标准化; 前端 ModelMappingEditor 对 apiType 做大小写兼容 |
+| 2026-05-26 | 认证体系优化: 前端 `api.ts` 采用「双层防御」策略（请求前体检 + 401 兜底），模块级 Promise 并发去重，解决浏览器冻结导致定时器失效问题；`JwtService` 新增 `refresh_expiry_secs` 访问器，修复 AuthService 两处误用 access 寿命写入 refresh_token expires_at 的 bug；新增 tokio 后台任务每小时物理清理过期 refresh_token，明确拒绝引入 Redis 或 pg_cron，遵循依赖最小化原则；新增架构原则 7-9（依赖最小化、双层防御、依赖倒置认证场景体现） |
