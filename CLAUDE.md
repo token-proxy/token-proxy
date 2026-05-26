@@ -69,6 +69,9 @@ src/
 
 - **接入 URL**: `/ap/<short_code>` -- 用户指定或自动生成 (默认 16 位随机短码)
 - **JWT**: Access Token 30min + Refresh Token 7day
+- **JWT 自动刷新**: 前端采用「请求前体检 + 401 兜底」双层防御。`ensureFreshToken` 在每次请求前检查 access_token 剩余有效期, 不足 `REFRESH_THRESHOLD_SEC = 300` 秒时主动调用 `/api/auth/refresh`; 401 响应触发单次重试兜底 (覆盖时钟漂移等边缘场景)。不使用 `setTimeout` 定时刷新 (浏览器后台 tab 冻结会导致定时器失效)
+- **refresh_token 并发安全**: 后端 Refresh Token Rotation 模式下, 前端用模块级 `refreshing: Promise<string> | null` 缓存确保所有并发请求 await 同一个 refresh, 避免多个并发 refresh 互相吊销
+- **过期 refresh_token 清理**: 后端 tokio 后台任务复用 `partition_check_interval_secs` 间隔定时调用 `delete_expired()`, 使用 `MissedTickBehavior::Skip` 跳过首个立即触发的 tick。不引入 Redis 也不使用 pg_cron, 保持单一 PG 依赖
 - **加密**: AES-256-GCM (ENCRYPTION_KEY 环境变量 64 hex chars = 32 字节)
 - **密码**: argon2id
 - **分区**: PartitionManager 应用层管理, 按月 `RANGE (timestamp)`, 依赖原生 PostgreSQL 分区, 支持多副本 advisory lock 防冲突
@@ -133,7 +136,8 @@ src/
 - 使用 `@douyinfe/semi-ui` 组件库
 - 路由: react-router-dom v7 (BrowserRouter + Routes + AdminLayout)
 - 路由结构: `/login`, `/dashboard`, `/providers`, `/access-points`, `/sessions`, `/logs`, `/users`, `/settings`, `/settings/profile`
-- 后端通信: `src-dashboard/api.ts` (axios/fetch 封装)
+- 后端通信: `src-dashboard/api.ts` (axios/fetch 封装, 含 ensureFreshToken 自动刷新、401 兜底重试、clearAuthAndRedirect 登出)
+- **JWT 自动刷新**: `api.ts` 使用 `getTokenExp(token)` 本地 base64url 解码 JWT payload 读取 exp 字段 (不引入 jwt-decode 依赖)。`ensureFreshToken` 请求前体检, `REFRESH_THRESHOLD_SEC=300`; 模块级 `refreshing` Promise 去重防止并发刷新互相吊销; `clearAuthAndRedirect` 清理全部 localStorage auth 字段并跳转 `/login`
 - **防重复点击**: 所有触发 API 调用或异步操作的按钮必须设置 `loading`/`disabled` 状态, 操作完成后才解除锁定。管理列表页使用 `operatingId` 实现行级按钮独立锁定
 - **Modal 表单提交**: 包含 `Form` 的 `Modal` 必须使用 `footer` 承载取消 / 确认按钮, 不要把操作按钮放在 `Form` 内容区; `footer` 中的确认按钮必须通过 `getFormApi` 保存的 `formApi.submitForm()` 触发表单提交, 并设置 `loading`/`disabled` 防重复触发
 - **改密自动登出**: 修改密码操作成功后, 前端必须清除所有 localStorage 令牌 (`access_token`, `refresh_token`, `username`, `display_name`) 并跳转 `/login`, 强制用户重新认证
@@ -191,4 +195,6 @@ src/
 | `src-dashboard/components/ClaudeSessionTimeline.tsx` | 会话事件流展示组件 (用户消息、thinking、tool_use、Agent 调用) |
 | `src-dashboard/hooks/useTheme.ts` | 主题 Hook + ThemeProvider |
 | `src-dashboard/hooks/useAccessPoints.ts` | 接入点管理 Hook (含 api_type 传递) |
-| `src-dashboard/types/accessPoint.ts` | 接入点类型定义 (含 api_type, ModelMapping) |
+| `src/application/services/auth_service.rs` | 认证服务 (login/refresh/logout, Refresh Token Rotation, expires_at 修复) |
+| `src/infrastructure/auth/jwt.rs` | JWT 服务 (access + refresh 双 token 签发、refresh_expiry_secs 访问器) |
+| `src-dashboard/api.ts` | 前端 API 封装 (fetch 封装、ensureFreshToken 自动刷新、401 兜底重试、并发去重) |
