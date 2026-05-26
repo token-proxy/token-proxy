@@ -16,12 +16,14 @@ import type {
   ConversationEvent,
   LogDetail,
   PaginatedResult,
+  SessionContentItem,
   SessionListFilters,
   SessionSummary,
   TokenUsage,
   UserItem,
 } from '../types/log.ts';
 import { formatDateTime, truncate } from '../utils/format.ts';
+import { buildConversationEvents } from '../utils/parseLogs.ts';
 import { buildQueryString, toIsoString } from '../utils/query.ts';
 
 const { Title, Text } = Typography;
@@ -112,9 +114,24 @@ export default function SessionLogPage(): ReactNode {
   const loadSessionDetail = useCallback(async (sid: string) => {
     setDetailLoading(true);
     try {
-      const events = await api.get<ConversationEvent[]>(
-        `/api/logs/sessions/${encodeURIComponent(sid)}`,
+      const contents = await api.get<SessionContentItem[]>(
+        `/api/logs/sessions/${encodeURIComponent(sid)}/contents`,
       );
+      // 客户端构建 ConversationEvent[]
+      const events: ConversationEvent[] = [];
+      for (const item of contents) {
+        events.push(...buildConversationEvents(
+          item.request_body,
+          item.response_body,
+          {
+            log_id: item.log_id,
+            timestamp: item.timestamp,
+            request_index: item.request_index,
+            conversation_source: item.conversation_source,
+            agent_id: item.agent_id ?? undefined,
+          },
+        ));
+      }
       setSessionEvents(events);
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '加载会话详情失败');
@@ -307,7 +324,7 @@ export default function SessionLogPage(): ReactNode {
             {
               title: '摘要',
               key: 'summary',
-              render: (_: unknown, r: ConversationEvent) => truncate(r.content_preview || r.title || r.content || '', 100),
+              render: (_: unknown, r: ConversationEvent) => truncate(r.title || r.content || '', 100),
             },
             {
               title: '操作',
@@ -444,15 +461,6 @@ export default function SessionLogPage(): ReactNode {
                 </Tooltip>
               );
             },
-          },
-          {
-            title: '首条摘要',
-            dataIndex: 'first_message',
-            render: (_: unknown, r: SessionSummary) => (
-              <Text ellipsis style={{ maxWidth: 360 }}>
-                {r.first_message || '-'}
-              </Text>
-            ),
           },
           {
             title: '操作',

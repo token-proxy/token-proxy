@@ -6,8 +6,8 @@ use axum::{
 use uuid::Uuid;
 
 use crate::application::dto::log_dto::{
-    ConversationEventResponse, LogDetailFullResponse, LogDetailResponse, LogFilterParams,
-    LogSummaryResponse, SessionSummaryResponse, TokenUsageResponse,
+    LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse,
+    SessionContentItemResponse, SessionSummaryResponse, TokenUsageResponse,
 };
 use crate::application::AppState;
 use crate::shared::error::AppError;
@@ -15,27 +15,26 @@ use crate::shared::types::PaginatedResult;
 
 /// 构建日志查询路由
 ///
-/// 注意路径注册顺序:
-/// 1. `/api/logs/sessions`        (静态路径)
-/// 2. `/api/logs/sessions/{id}`   (参数路径)
-/// 3. `/api/logs/{id}`            (参数路径, 在 sessions 之后注册)
-///
-/// - `GET /api/logs`               → query_logs
-/// - `GET /api/logs/sessions`      → get_sessions
-/// - `GET /api/logs/sessions/{id}` → get_session_detail
-/// - `GET /api/logs/{id}/detail`   → get_log_detail_full (完整详情)
-/// - `GET /api/logs/{id}/raw`      → get_log_detail (原始内容)
-/// - `GET /api/logs/{id}`          → get_log_detail (兼容旧版)
-/// - `GET /api/logs/{id}/token-usage` → get_log_token_usage
+/// - `GET /api/logs`                          → query_logs
+/// - `GET /api/logs/sessions`                 → get_sessions
+/// - `GET /api/logs/sessions/{id}/contents`   → get_session_contents
+/// - `GET /api/logs/sessions/{id}/token-usage`→ get_session_token_usage
+/// - `GET /api/logs/{id}/detail`              → get_log_detail_full
+/// - `GET /api/logs/{id}/raw`                 → get_log_detail
+/// - `GET /api/logs/{id}`                     → get_log_detail
+/// - `GET /api/logs/{id}/token-usage`         → get_log_token_usage
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/logs", get(query_logs))
         .route("/api/logs/sessions", get(get_sessions))
         .route(
+            "/api/logs/sessions/{id}/contents",
+            get(get_session_contents),
+        )
+        .route(
             "/api/logs/sessions/{id}/token-usage",
             get(get_session_token_usage),
         )
-        .route("/api/logs/sessions/{id}", get(get_session_detail))
         .route("/api/logs/{id}/detail", get(get_log_detail_full))
         .route("/api/logs/{id}/raw", get(get_log_detail))
         .route("/api/logs/{id}/token-usage", get(get_log_token_usage))
@@ -86,13 +85,13 @@ async fn get_sessions(
     Ok(Json(sessions))
 }
 
-/// GET /api/logs/sessions/{id}
-async fn get_session_detail(
+/// GET /api/logs/sessions/{id}/contents
+async fn get_session_contents(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<Json<Vec<ConversationEventResponse>>, AppError> {
-    let events = state.log_service.get_session_detail(&session_id).await?;
-    Ok(Json(events))
+) -> Result<Json<Vec<SessionContentItemResponse>>, AppError> {
+    let contents = state.log_service.get_session_contents(&session_id).await?;
+    Ok(Json(contents))
 }
 
 async fn get_log_token_usage(

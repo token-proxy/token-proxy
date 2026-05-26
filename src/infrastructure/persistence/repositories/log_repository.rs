@@ -212,11 +212,9 @@ impl LogRepository for SeaOrmLogRepository {
                 lm.request_index,
                 lm.client_session_id, lm.client_app, lm.client_user_agent,
                 lm.conversation_source,
-                lm.agent_id, lm.agent_type, lm.parent_agent_tool_use_id,
-                lm.request_kind, lm.primary_tool_name,
-                lm.message_preview, lm.message_full, lm.response_preview,
-                lm.has_thinking, lm.has_tool_use, lm.has_error, lm.raw_content_available,
-                lm.parser_version, lm.client_name, lm.client_version,
+                lm.agent_id,
+                lm.has_error, lm.raw_content_available,
+                lm.client_name, lm.client_version,
                 lm.client_channel, lm.client_platform, lm.api_type,
                 ltu.input_tokens, ltu.output_tokens, ltu.total_tokens
             FROM log_metadata lm
@@ -387,66 +385,36 @@ impl LogRepository for SeaOrmLogRepository {
                         agent_id: row
                             .try_get_by_index::<Option<String>>(17)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        agent_type: row
-                            .try_get_by_index::<Option<String>>(18)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
-                        parent_agent_tool_use_id: row
-                            .try_get_by_index::<Option<String>>(19)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
-                        request_kind: row
-                            .try_get_by_index::<Option<String>>(20)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
-                        primary_tool_name: row
-                            .try_get_by_index::<Option<String>>(21)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
-                        message_preview: row
-                            .try_get_by_index::<Option<String>>(22)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
-                        message_full: row
-                            .try_get_by_index::<Option<String>>(23)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
-                        response_preview: row
-                            .try_get_by_index::<Option<String>>(24)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
-                        has_thinking: row
-                            .try_get_by_index::<bool>(25)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
-                        has_tool_use: row
-                            .try_get_by_index::<bool>(26)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
                         has_error: row
-                            .try_get_by_index::<bool>(27)
+                            .try_get_by_index::<bool>(18)
                             .map_err(|e| AppError::Database(e.to_string()))?,
                         raw_content_available: row
-                            .try_get_by_index::<bool>(28)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
-                        parser_version: row
-                            .try_get_by_index::<Option<String>>(29)
+                            .try_get_by_index::<bool>(19)
                             .map_err(|e| AppError::Database(e.to_string()))?,
                         client_name: row
-                            .try_get_by_index::<Option<String>>(30)
+                            .try_get_by_index::<Option<String>>(20)
                             .map_err(|e| AppError::Database(e.to_string()))?,
                         client_version: row
-                            .try_get_by_index::<Option<String>>(31)
+                            .try_get_by_index::<Option<String>>(21)
                             .map_err(|e| AppError::Database(e.to_string()))?,
                         client_channel: row
-                            .try_get_by_index::<Option<String>>(32)
+                            .try_get_by_index::<Option<String>>(22)
                             .map_err(|e| AppError::Database(e.to_string()))?,
                         client_platform: row
-                            .try_get_by_index::<Option<String>>(33)
+                            .try_get_by_index::<Option<String>>(23)
                             .map_err(|e| AppError::Database(e.to_string()))?,
                         api_type: row
-                            .try_get_by_index::<String>(34)
+                            .try_get_by_index::<String>(24)
                             .map_err(|e| AppError::Database(e.to_string()))?,
                     },
                     input_tokens: row
-                        .try_get_by_index::<Option<i32>>(35)
+                        .try_get_by_index::<Option<i32>>(25)
                         .map_err(|e| AppError::Database(e.to_string()))?,
                     output_tokens: row
-                        .try_get_by_index::<Option<i32>>(36)
+                        .try_get_by_index::<Option<i32>>(26)
                         .map_err(|e| AppError::Database(e.to_string()))?,
                     total_tokens: row
-                        .try_get_by_index::<Option<i32>>(37)
+                        .try_get_by_index::<Option<i32>>(27)
                         .map_err(|e| AppError::Database(e.to_string()))?,
                 })
             })
@@ -661,11 +629,9 @@ impl LogRepository for SeaOrmLogRepository {
                 lm.request_index,
                 lm.client_session_id, lm.client_app, lm.client_user_agent,
                 lm.conversation_source,
-                lm.agent_id, lm.agent_type, lm.parent_agent_tool_use_id,
-                lm.request_kind, lm.primary_tool_name,
-                lm.message_preview, lm.message_full, lm.response_preview,
-                lm.has_thinking, lm.has_tool_use, lm.has_error, lm.raw_content_available,
-                lm.parser_version, lm.client_name, lm.client_version,
+                lm.agent_id,
+                lm.has_error, lm.raw_content_available,
+                lm.client_name, lm.client_version,
                 lm.client_channel, lm.client_platform, lm.api_type,
                 lc.request_headers, lc.request_body, lc.response_body,
                 ltu.id as usage_id, ltu.log_id as usage_log_id,
@@ -735,111 +701,91 @@ impl LogRepository for SeaOrmLogRepository {
                         .map_err(|e| AppError::Database(e.to_string()))?,
                     agent_id: row.try_get_by_index::<Option<String>>(17)
                         .map_err(|e| AppError::Database(e.to_string()))?,
-                    agent_type: row.try_get_by_index::<Option<String>>(18)
+                    has_error: row.try_get_by_index::<bool>(18)
                         .map_err(|e| AppError::Database(e.to_string()))?,
-                    parent_agent_tool_use_id: row.try_get_by_index::<Option<String>>(19)
+                    raw_content_available: row.try_get_by_index::<bool>(19)
                         .map_err(|e| AppError::Database(e.to_string()))?,
-                    request_kind: row.try_get_by_index::<Option<String>>(20)
+                    client_name: row.try_get_by_index::<Option<String>>(20)
                         .map_err(|e| AppError::Database(e.to_string()))?,
-                    primary_tool_name: row.try_get_by_index::<Option<String>>(21)
+                    client_version: row.try_get_by_index::<Option<String>>(21)
                         .map_err(|e| AppError::Database(e.to_string()))?,
-                    message_preview: row.try_get_by_index::<Option<String>>(22)
+                    client_channel: row.try_get_by_index::<Option<String>>(22)
                         .map_err(|e| AppError::Database(e.to_string()))?,
-                    message_full: row.try_get_by_index::<Option<String>>(23)
+                    client_platform: row.try_get_by_index::<Option<String>>(23)
                         .map_err(|e| AppError::Database(e.to_string()))?,
-                    response_preview: row.try_get_by_index::<Option<String>>(24)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
-                    has_thinking: row.try_get_by_index::<bool>(25)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
-                    has_tool_use: row.try_get_by_index::<bool>(26)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
-                    has_error: row.try_get_by_index::<bool>(27)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
-                    raw_content_available: row.try_get_by_index::<bool>(28)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
-                    parser_version: row.try_get_by_index::<Option<String>>(29)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
-                    client_name: row.try_get_by_index::<Option<String>>(30)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
-                    client_version: row.try_get_by_index::<Option<String>>(31)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
-                    client_channel: row.try_get_by_index::<Option<String>>(32)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
-                    client_platform: row.try_get_by_index::<Option<String>>(33)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
-                    api_type: row.try_get_by_index::<String>(34)
+                    api_type: row.try_get_by_index::<String>(24)
                         .map_err(|e| AppError::Database(e.to_string()))?,
                 };
 
                 let content = LogContent {
                     log_id: entry.id,
-                    request_headers: row.try_get_by_index::<Option<serde_json::Value>>(35)
+                    request_headers: row.try_get_by_index::<Option<serde_json::Value>>(25)
                         .map_err(|e| AppError::Database(e.to_string()))?
                         .unwrap_or(serde_json::Value::Null),
-                    request_body: row.try_get_by_index::<Option<serde_json::Value>>(36)
+                    request_body: row.try_get_by_index::<Option<serde_json::Value>>(26)
                         .map_err(|e| AppError::Database(e.to_string()))?
                         .unwrap_or(serde_json::Value::Null),
-                    response_body: row.try_get_by_index::<Option<String>>(37)
+                    response_body: row.try_get_by_index::<Option<String>>(27)
                         .map_err(|e| AppError::Database(e.to_string()))?
                         .unwrap_or_default(),
                 };
 
                 // 检查是否有 token 用量（ltu.id 不为 NULL）
-                let usage_id: Option<Uuid> = row.try_get_by_index::<Option<Uuid>>(38)
+                let usage_id: Option<Uuid> = row.try_get_by_index::<Option<Uuid>>(28)
                     .map_err(|e| AppError::Database(e.to_string()))?;
 
                 let usage = if let Some(uid) = usage_id {
                     let usage_ts_col: chrono::DateTime<FixedOffset> = row
-                        .try_get_by_index(50)
+                        .try_get_by_index(40)
                         .map_err(|e| AppError::Database(e.to_string()))?;
                     let usage_created_col: chrono::DateTime<FixedOffset> = row
-                        .try_get_by_index(60)
+                        .try_get_by_index(50)
                         .map_err(|e| AppError::Database(e.to_string()))?;
 
                     Some(LogTokenUsage {
                         id: uid,
-                        log_id: row.try_get_by_index::<Option<Uuid>>(39)
+                        log_id: row.try_get_by_index::<Option<Uuid>>(29)
                             .map_err(|e| AppError::Database(e.to_string()))?
                             .unwrap_or(entry.id),
-                        input_tokens: row.try_get_by_index::<i32>(40)
+                        input_tokens: row.try_get_by_index::<i32>(30)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        output_tokens: row.try_get_by_index::<i32>(41)
+                        output_tokens: row.try_get_by_index::<i32>(31)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        cache_creation_input_tokens: row.try_get_by_index::<i32>(42)
+                        cache_creation_input_tokens: row.try_get_by_index::<i32>(32)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        cache_read_input_tokens: row.try_get_by_index::<i32>(43)
+                        cache_read_input_tokens: row.try_get_by_index::<i32>(33)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        thinking_tokens: row.try_get_by_index::<i32>(44)
+                        thinking_tokens: row.try_get_by_index::<i32>(34)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        total_tokens: row.try_get_by_index::<i32>(45)
+                        total_tokens: row.try_get_by_index::<i32>(35)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        raw_usage: row.try_get_by_index::<Option<serde_json::Value>>(46)
+                        raw_usage: row.try_get_by_index::<Option<serde_json::Value>>(36)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(47)
+                        server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(37)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(48)
+                        cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(38)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        session_id: row.try_get_by_index::<Option<String>>(49)
+                        session_id: row.try_get_by_index::<Option<String>>(39)
                             .map_err(|e| AppError::Database(e.to_string()))?
                             .unwrap_or_default(),
                         timestamp: usage_ts_col.with_timezone(&Utc),
-                        user_id: row.try_get_by_index::<Option<Uuid>>(51)
+                        user_id: row.try_get_by_index::<Option<Uuid>>(41)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        access_point_id: row.try_get_by_index::<Option<Uuid>>(52)
+                        access_point_id: row.try_get_by_index::<Option<Uuid>>(42)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        provider_id: row.try_get_by_index::<Option<Uuid>>(53)
+                        provider_id: row.try_get_by_index::<Option<Uuid>>(43)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        account_id: row.try_get_by_index::<Option<Uuid>>(54)
+                        account_id: row.try_get_by_index::<Option<Uuid>>(44)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        model_original: row.try_get_by_index::<Option<String>>(55)
+                        model_original: row.try_get_by_index::<Option<String>>(45)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        model_mapped: row.try_get_by_index::<Option<String>>(56)
+                        model_mapped: row.try_get_by_index::<Option<String>>(46)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        conversation_source: row.try_get_by_index::<Option<String>>(57)
+                        conversation_source: row.try_get_by_index::<Option<String>>(47)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        agent_id: row.try_get_by_index::<Option<String>>(58)
+                        agent_id: row.try_get_by_index::<Option<String>>(48)
                             .map_err(|e| AppError::Database(e.to_string()))?,
-                        agent_type: row.try_get_by_index::<Option<String>>(59)
+                        agent_type: row.try_get_by_index::<Option<String>>(49)
                             .map_err(|e| AppError::Database(e.to_string()))?,
                         created_at: usage_created_col.with_timezone(&Utc),
                     })

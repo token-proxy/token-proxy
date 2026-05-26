@@ -142,19 +142,6 @@ export default function RequestLogPage(): ReactNode {
       render: (t: string) => formatDateTime(t),
     },
     {
-      title: '对话内容',
-      dataIndex: 'message_preview',
-      width: 360,
-      render: (_: unknown, r: LogSummary) => (
-        <Text
-          ellipsis
-          style={{ maxWidth: 360 }}
-        >
-          {r.message_preview || '-'}
-        </Text>
-      ),
-    },
-    {
       title: '来源',
       key: 'source',
       width: 140,
@@ -163,8 +150,6 @@ export default function RequestLogPage(): ReactNode {
           <Tag color={r.conversation_source === 'subagent' ? 'green' : 'blue'}>
             {r.conversation_source === 'subagent' ? '子代理' : '主代理'}
           </Tag>
-          {r.agent_type && <Tag>{r.agent_type}</Tag>}
-          {r.primary_tool_name && <Tag color="violet">{r.primary_tool_name}</Tag>}
         </div>
       ),
     },
