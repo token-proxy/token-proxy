@@ -31,17 +31,6 @@ pub struct LogSummaryResponse {
     pub duration_ms: Option<i32>,
     pub conversation_source: String,
     pub agent_id: Option<String>,
-    pub agent_type: Option<String>,
-    pub request_kind: Option<String>,
-    pub primary_tool_name: Option<String>,
-    pub message_preview: Option<String>,
-    pub message_full: Option<String>,
-    pub response_preview: Option<String>,
-    pub has_thinking: bool,
-    pub has_tool_use: bool,
-    pub raw_content_available: bool,
-    /// 解析器版本号
-    pub parser_version: Option<String>,
     /// 客户端名称
     pub client_name: Option<String>,
     /// 客户端版本号
@@ -79,7 +68,7 @@ pub struct LogDetailResponse {
     pub response_body: Option<String>,
 }
 
-/// 日志完整详情响应（包含客户端信息、token 用量等）
+/// 日志完整详情响应（含客户端信息、token 用量等）
 #[derive(Debug, Clone, Serialize)]
 pub struct LogDetailFullResponse {
     /// 基础信息
@@ -87,7 +76,9 @@ pub struct LogDetailFullResponse {
     pub timestamp: DateTime<Utc>,
     pub session_id: String,
     pub user_id: Option<Uuid>,
+    pub user_name: Option<String>,
     pub access_point_id: Option<Uuid>,
+    pub access_point_name: Option<String>,
     pub provider_id: Option<Uuid>,
     pub account_id: Option<Uuid>,
     pub model_original: String,
@@ -98,22 +89,16 @@ pub struct LogDetailFullResponse {
     pub request_index: i32,
     pub conversation_source: String,
     pub agent_id: Option<String>,
-    pub agent_type: Option<String>,
     /// 客户端信息
-    pub parser_version: Option<String>,
     pub client_name: Option<String>,
     pub client_version: Option<String>,
     pub client_channel: Option<String>,
     pub client_platform: Option<String>,
-    /// 请求内容
+    /// 请求内容（原始，前端解析）
     pub request_headers: serde_json::Value,
     pub request_body: serde_json::Value,
-    /// 最后一条 user message 的文本
-    pub request_message_text: Option<String>,
-    /// 响应内容
+    /// 响应内容（原始 SSE，前端解析）
     pub response_body: String,
-    pub response_assistant_text: Option<String>,
-    pub response_thinking_text: Option<String>,
     /// Token 用量
     pub token_input_tokens: Option<i32>,
     pub token_output_tokens: Option<i32>,
@@ -131,7 +116,6 @@ pub struct SessionSummaryResponse {
     pub access_point_id: Option<Uuid>,
     pub start_time: DateTime<Utc>,
     pub request_count: u64,
-    pub first_message: Option<String>,
     /// 总输入 token 数
     pub total_input_tokens: i64,
     /// 总输出 token 数
@@ -146,36 +130,18 @@ pub struct SessionSummaryResponse {
     pub total_tokens: i64,
 }
 
+/// 会话原始内容项（前端基于此构建事件流）
 #[derive(Debug, Clone, Serialize)]
-pub struct ConversationEventResponse {
-    pub id: Uuid,
+pub struct SessionContentItemResponse {
     pub log_id: Uuid,
-    pub session_id: String,
-    pub timestamp: DateTime<Utc>,
     pub request_index: i32,
-    pub event_index: i32,
-    pub parent_event_id: Option<Uuid>,
-    pub parent_tool_use_id: Option<String>,
-    pub source: String,
-    pub role: String,
-    pub event_type: String,
+    pub timestamp: DateTime<Utc>,
+    pub conversation_source: String,
     pub agent_id: Option<String>,
-    pub agent_type: Option<String>,
-    pub tool_use_id: Option<String>,
-    pub tool_name: Option<String>,
-    pub title: Option<String>,
-    pub content: Option<String>,
-    pub content_preview: Option<String>,
-    pub thinking_content: Option<String>,
-    pub hidden_content: Option<serde_json::Value>,
-    pub display_payload: Option<serde_json::Value>,
-    pub confidence: i16,
-    /// content block 子类型
-    pub content_type: Option<String>,
-    /// redacted_thinking 签名
-    pub signature: Option<String>,
-    /// tool_result 内容
-    pub tool_result_content: Option<String>,
+    pub request_headers: serde_json::Value,
+    pub request_body: serde_json::Value,
+    pub response_body: String,
+    pub token_usage: Option<TokenUsageResponse>,
 }
 
 #[derive(Debug, Clone, Serialize)]

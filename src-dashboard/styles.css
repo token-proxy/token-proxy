@@ -34,3 +34,97 @@ body {
 .copyable-id-icon-success {
   color: var(--semi-color-success);
 }
+
+/* CollapsibleCard 标题栏黏滞 */
+.collapsible-card-sticky .semi-card-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--semi-color-bg-2);
+}
+
+/* Markdown 渲染样式 */
+.markdown-render {
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.markdown-render p {
+  margin: 0 0 8px;
+}
+
+.markdown-render p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-render .markdown-code-block {
+  background: var(--semi-color-fill-0);
+  padding: 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  overflow: auto;
+  max-height: 400px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 8px 0;
+}
+
+.markdown-render code {
+  background: var(--semi-color-fill-0);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.markdown-render pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown-render ul, .markdown-render ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.markdown-render blockquote {
+  border-left: 3px solid var(--semi-color-border);
+  margin: 8px 0;
+  padding-left: 12px;
+  color: var(--semi-color-text-2);
+}
+
+.markdown-render table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+}
+
+.markdown-render th, .markdown-render td {
+  border: 1px solid var(--semi-color-border);
+  padding: 6px 12px;
+  text-align: left;
+}
+
+.markdown-render th {
+  background: var(--semi-color-fill-0);
+}
+
+.markdown-render h1, .markdown-render h2, .markdown-render h3,
+.markdown-render h4, .markdown-render h5, .markdown-render h6 {
+  margin: 12px 0 8px;
+  font-weight: 600;
+}
+
+/* CodeHighlight 换行：覆盖 prismjs 默认的 white-space: pre + overflow: auto */
+/* 特异度需高于 .semi-codeHighlight-defaultTheme pre[class*="language-"] (0,0,2,1) */
+.code-highlight-wrapper .semi-codeHighlight pre[class*="language-"] {
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  overflow: hidden;
+}
+
+.code-highlight-wrapper .semi-codeHighlight code[class*="language-"] {
+  white-space: pre-wrap !important;
+  word-break: break-word;
+}

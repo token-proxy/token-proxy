@@ -17,7 +17,6 @@ export interface SessionSummary {
   access_point_id?: string | null;
   start_time: string;
   request_count: number;
-  first_message?: string | null;
   // Token 汇总
   total_input_tokens: number;
   total_output_tokens: number;
@@ -39,25 +38,18 @@ export interface LogSummary {
   duration_ms?: number | null;
   conversation_source: string;
   agent_id?: string | null;
-  agent_type?: string | null;
-  request_kind?: string | null;
-  primary_tool_name?: string | null;
-  message_preview?: string | null;
-  message_full?: string | null;
-  response_preview?: string | null;
-  has_thinking: boolean;
-  has_tool_use: boolean;
   raw_content_available: boolean;
   // Token 摘要
   token_input_tokens?: number | null;
   token_output_tokens?: number | null;
   token_total_tokens?: number | null;
   // 客户端信息
-  parser_version?: string | null;
   client_name?: string | null;
   client_version?: string | null;
   client_channel?: string | null;
   client_platform?: string | null;
+  // API 类型
+  api_type?: string;
 }
 
 export interface LogDetail {
@@ -78,33 +70,25 @@ export interface LogDetail {
   response_body?: string | null;
 }
 
+/** 会话事件，由前端 parseLogs.ts 从原始请求/响应体构建 */
 export interface ConversationEvent {
   id: string;
   log_id: string;
-  session_id: string;
   timestamp: string;
   request_index: number;
   event_index: number;
-  parent_event_id?: string | null;
-  parent_tool_use_id?: string | null;
   source: string;
   role: string;
   event_type: string;
-  agent_id?: string | null;
-  agent_type?: string | null;
-  tool_use_id?: string | null;
-  tool_name?: string | null;
-  title?: string | null;
-  content?: string | null;
-  content_preview?: string | null;
-  thinking_content?: string | null;
-  hidden_content?: Record<string, unknown> | null;
-  display_payload?: Record<string, unknown> | null;
-  confidence: number;
-  // 新增字段
-  content_type?: string | null;
-  signature?: string | null;
-  tool_result_content?: string | null;
+  agent_id?: string;
+  agent_type?: string;
+  tool_use_id?: string;
+  tool_name?: string;
+  title?: string;
+  content?: string;
+  thinking_content?: string;
+  display_payload?: Record<string, unknown>;
+  tool_result_content?: string;
 }
 
 export interface TokenUsage {
@@ -119,7 +103,6 @@ export interface TokenUsage {
   thinking_tokens: number;
   total_tokens: number;
   raw_usage?: Record<string, unknown> | null;
-  // 新增字段
   server_tool_usage?: Record<string, unknown> | null;
   cache_creation?: Record<string, unknown> | null;
 }
@@ -130,7 +113,9 @@ export interface LogDetailFull {
   timestamp: string;
   session_id: string;
   user_id?: string | null;
+  user_name?: string | null;
   access_point_id?: string | null;
+  access_point_name?: string | null;
   provider_id?: string | null;
   account_id?: string | null;
   model_original: string;
@@ -141,21 +126,15 @@ export interface LogDetailFull {
   request_index: number;
   conversation_source: string;
   agent_id?: string | null;
-  agent_type?: string | null;
   // 客户端信息
-  parser_version?: string | null;
   client_name?: string | null;
   client_version?: string | null;
   client_channel?: string | null;
   client_platform?: string | null;
-  // 请求内容
-  request_headers: Record<string, unknown>;
-  request_body: Record<string, unknown>;
-  request_message_text?: string | null;
-  // 响应内容
+  // 请求 + 响应原始内容（前端自行解析）
+  request_headers: Record<string, unknown> | null;
+  request_body: Record<string, unknown> | null;
   response_body: string;
-  response_assistant_text?: string | null;
-  response_thinking_text?: string | null;
   // Token 用量
   token_input_tokens?: number | null;
   token_output_tokens?: number | null;
@@ -164,6 +143,19 @@ export interface LogDetailFull {
   token_thinking_tokens?: number | null;
   token_total_tokens?: number | null;
   token_raw_usage?: Record<string, unknown> | null;
+}
+
+/** 会话原始内容项（前端基于此构建事件流） */
+export interface SessionContentItem {
+  log_id: string;
+  request_index: number;
+  timestamp: string;
+  conversation_source: string;
+  agent_id?: string | null;
+  request_headers: Record<string, unknown>;
+  request_body: Record<string, unknown>;
+  response_body: string;
+  token_usage?: TokenUsage | null;
 }
 
 export interface PaginatedResult<T> {

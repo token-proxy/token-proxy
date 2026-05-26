@@ -7,7 +7,6 @@ use sea_orm::DatabaseConnection;
 
 use crate::config::Config;
 use crate::domain::repositories::audit_log_repository::AuditLogRepository;
-use crate::domain::repositories::log_conversation_event_repository::LogConversationEventRepository;
 use crate::domain::repositories::log_repository::LogRepository;
 use crate::domain::repositories::log_token_usage_repository::LogTokenUsageRepository;
 use crate::infrastructure::auth::jwt::JwtService;
@@ -36,7 +35,6 @@ pub struct AppState {
     pub proxy_service: Arc<ProxyService>,
     pub log_service: Arc<LogService>,
     pub log_repo: Arc<dyn LogRepository>,
-    pub log_conversation_event_repo: Arc<dyn LogConversationEventRepository>,
     pub log_token_usage_repo: Arc<dyn LogTokenUsageRepository>,
     pub audit_log_repo: Arc<dyn AuditLogRepository>,
     pub jwt_service: Arc<JwtService>,
