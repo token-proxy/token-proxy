@@ -11,9 +11,9 @@ interface CollapsibleCardProps {
   defaultCollapsed?: boolean;
   copyText?: string;
   children: ReactNode;
-  /** Card body style */
+  /** Card 内容区样式 */
   bodyStyle?: React.CSSProperties;
-  /** Card style */
+  /** Card 容器样式 */
   style?: React.CSSProperties;
 }
 

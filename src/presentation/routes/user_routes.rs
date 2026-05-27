@@ -26,12 +26,16 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// GET /api/users
+///
+/// 返回所有用户列表
 async fn list_users(State(state): State<AppState>) -> Result<Json<Vec<UserResponse>>, AppError> {
     let users = state.user_service.list_all().await?;
     Ok(Json(users))
 }
 
 /// POST /api/users
+///
+/// 创建新用户
 async fn create_user(
     State(state): State<AppState>,
     Json(req): Json<CreateUserRequest>,
@@ -41,6 +45,8 @@ async fn create_user(
 }
 
 /// GET /api/users/{id}
+///
+/// 获取指定用户详情
 async fn get_user(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -50,6 +56,8 @@ async fn get_user(
 }
 
 /// PUT /api/users/{id}
+///
+/// 更新指定用户
 async fn update_user(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -60,6 +68,8 @@ async fn update_user(
 }
 
 /// DELETE /api/users/{id}
+///
+/// 删除指定用户
 async fn delete_user(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,

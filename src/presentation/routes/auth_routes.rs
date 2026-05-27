@@ -19,6 +19,8 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// POST /api/auth/login
+///
+/// 用户登录，返回 JWT 令牌对
 async fn login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
@@ -28,6 +30,8 @@ async fn login(
 }
 
 /// POST /api/auth/refresh
+///
+/// 刷新访问令牌
 async fn refresh(
     State(state): State<AppState>,
     Json(req): Json<RefreshRequest>,

@@ -42,6 +42,8 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// GET /api/logs
+///
+/// 分页查询代理请求日志
 async fn query_logs(
     State(state): State<AppState>,
     Query(filters): Query<LogFilterParams>,
@@ -51,6 +53,8 @@ async fn query_logs(
 }
 
 /// GET /api/logs/{id}
+///
+/// 获取指定日志的原始内容
 async fn get_log_detail(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -64,6 +68,8 @@ async fn get_log_detail(
 }
 
 /// GET /api/logs/{id}/detail
+///
+/// 获取日志完整详情（含客户端信息和 token 用量）
 async fn get_log_detail_full(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -77,6 +83,8 @@ async fn get_log_detail_full(
 }
 
 /// GET /api/logs/sessions
+///
+/// 分页查询会话列表
 async fn get_sessions(
     State(state): State<AppState>,
     Query(filters): Query<LogFilterParams>,
@@ -86,6 +94,8 @@ async fn get_sessions(
 }
 
 /// GET /api/logs/sessions/{id}/contents
+///
+/// 获取会话的所有原始内容事件
 async fn get_session_contents(
     State(state): State<AppState>,
     Path(session_id): Path<String>,

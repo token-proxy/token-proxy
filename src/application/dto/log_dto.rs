@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// ─── Request / Query DTOs ───
+// ─── 请求 / 查询 DTO ───
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LogFilterParams {
@@ -16,7 +16,7 @@ pub struct LogFilterParams {
     pub page_size: Option<u64>,
 }
 
-// ─── Response DTOs ───
+// ─── 响应 DTO ───
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LogSummaryResponse {

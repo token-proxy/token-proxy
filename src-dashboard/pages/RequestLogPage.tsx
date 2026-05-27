@@ -31,14 +31,14 @@ const STATUS_OPTIONS = [
   { value: 503, label: '503' },
 ];
 
-// ─── Component ───
+// ─── 组件 ───
 
 export default function RequestLogPage(): ReactNode {
-  // Reference data
+  // 参考数据
   const [users, setUsers] = useState<UserItem[]>([]);
   const [accessPoints, setAccessPoints] = useState<AccessPointItem[]>([]);
 
-  // List state
+  // 列表状态
   const [logs, setLogs] = useState<LogSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
@@ -46,7 +46,7 @@ export default function RequestLogPage(): ReactNode {
   const [pageSize] = useState(20);
   const [filters, setFilters] = useState<LogFilters>({});
 
-  // ─── Filter handlers ───
+  // ─── 筛选处理 ───
 
   useEffect(() => {
     api.get<UserItem[]>('/api/users')
@@ -57,7 +57,7 @@ export default function RequestLogPage(): ReactNode {
       .catch(() => {});
   }, []);
 
-  // ─── Lookup maps ───
+  // ─── 查找映射 ───
 
   const userMap = useMemo(() => {
     const m: Record<string, string> = {};
@@ -71,7 +71,7 @@ export default function RequestLogPage(): ReactNode {
     return m;
   }, [accessPoints]);
 
-  // ─── Load logs ───
+  // ─── 加载日志 ───
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -101,7 +101,7 @@ export default function RequestLogPage(): ReactNode {
     fetchLogs();
   }, [fetchLogs]);
 
-  // ─── Filter handlers ───
+  // ─── 筛选处理 ───
 
   const handleDateChange: DatePickerProps['onChange'] = (value) => {
     if (Array.isArray(value) && value.length === 2) {

@@ -9,7 +9,7 @@ import api from '../api.ts';
 
 const { Title, Text } = Typography;
 
-/* ---- Types ---- */
+/* ---- 类型定义 ---- */
 
 interface UserProfile {
   id: string;
@@ -38,7 +38,7 @@ interface CreateApiKeyResponse {
   created_at: string;
 }
 
-/* ---- Helpers ---- */
+/* ---- 辅助函数 ---- */
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '-';
@@ -52,20 +52,20 @@ function formatDate(dateStr: string | null): string {
   });
 }
 
-/* ---- Component ---- */
+/* ---- 组件 ---- */
 
 export default function ProfilePage(): ReactNode {
   const navigate = useNavigate();
 
-  /* ---- Profile state ---- */
+  /* ---- Profile 状态 ---- */
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
 
-  /* ---- Password state ---- */
+  /* ---- 密码状态 ---- */
   const [passwordSaving, setPasswordSaving] = useState(false);
 
-  /* ---- API key state ---- */
+  /* ---- API key 状态 ---- */
   const [apiKeys, setApiKeys] = useState<UserApiKey[]>([]);
   const [apiKeysLoading, setApiKeysLoading] = useState(false);
   const [operatingIds, setOperatingIds] = useState<string[]>([]);
@@ -82,13 +82,13 @@ export default function ProfilePage(): ReactNode {
     setOperatingIds([...next]);
   };
 
-  /* ---- Create API key state ---- */
+  /* ---- 创建 API key 状态 ---- */
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreateApiKeyResponse | null>(null);
   const createFormRef = useRef<FormApi | null>(null);
 
-  /* ---- Load profile ---- */
+  /* ---- 加载 Profile ---- */
   const loadProfile = useCallback(async () => {
     setProfileLoading(true);
     try {
@@ -101,7 +101,7 @@ export default function ProfilePage(): ReactNode {
     }
   }, []);
 
-  /* ---- Load API keys ---- */
+  /* ---- 加载 API key ---- */
   const loadApiKeys = useCallback(async () => {
     setApiKeysLoading(true);
     try {
@@ -119,7 +119,7 @@ export default function ProfilePage(): ReactNode {
     loadApiKeys();
   }, [loadProfile, loadApiKeys]);
 
-  /* ---- Update profile ---- */
+  /* ---- 更新 Profile ---- */
   const handleSaveProfile = async (values: { display_name: string }) => {
     setProfileSaving(true);
     try {
@@ -135,7 +135,7 @@ export default function ProfilePage(): ReactNode {
     }
   };
 
-  /* ---- Change password ---- */
+  /* ---- 修改密码 ---- */
   const handleChangePassword = async (values: {
     old_password: string;
     new_password: string;
@@ -168,7 +168,7 @@ export default function ProfilePage(): ReactNode {
     }
   };
 
-  /* ---- Create API key ---- */
+  /* ---- 创建 API key ---- */
   const handleOpenCreateModal = () => {
     setCreateModalVisible(true);
   };
@@ -198,7 +198,7 @@ export default function ProfilePage(): ReactNode {
     loadApiKeys();
   };
 
-  /* ---- Revoke API key ---- */
+  /* ---- 吊销 API key ---- */
   const handleRevokeApiKey = async (id: string) => {
     if (operatingIdsRef.current.has(id)) return;
     setOperation(id, true);
@@ -213,7 +213,7 @@ export default function ProfilePage(): ReactNode {
     }
   };
 
-  /* ---- API key columns ---- */
+  /* ---- API key 列定义 ---- */
   const apiKeyColumns = [
     { title: '备注', dataIndex: 'description', key: 'description' },
     {

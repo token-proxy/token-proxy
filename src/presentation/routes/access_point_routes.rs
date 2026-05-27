@@ -29,6 +29,8 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// GET /api/access-points
+///
+/// 返回所有接入点列表
 async fn list_access_points(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<AccessPointResponse>>, AppError> {
@@ -37,6 +39,8 @@ async fn list_access_points(
 }
 
 /// POST /api/access-points
+///
+/// 创建新的接入点，需认证
 async fn create_access_point(
     State(state): State<AppState>,
     CurrentUser(created_by): CurrentUser,
@@ -47,6 +51,8 @@ async fn create_access_point(
 }
 
 /// GET /api/access-points/{id}
+///
+/// 根据 ID 获取单个接入点详情
 async fn get_access_point(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -56,6 +62,8 @@ async fn get_access_point(
 }
 
 /// PUT /api/access-points/{id}
+///
+/// 更新指定接入点
 async fn update_access_point(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -66,6 +74,8 @@ async fn update_access_point(
 }
 
 /// DELETE /api/access-points/{id}
+///
+/// 删除指定接入点
 async fn delete_access_point(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,

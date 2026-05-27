@@ -38,7 +38,7 @@ pub fn routes() -> Router<AppState> {
 
 /// GET /api/users/me
 ///
-/// 获取当前登录用户的 profile 信息。
+/// 获取当前用户 profile
 async fn get_my_profile(
     State(state): State<AppState>,
     CurrentUser(user_id): CurrentUser,
@@ -49,7 +49,7 @@ async fn get_my_profile(
 
 /// PUT /api/users/me/profile
 ///
-/// 更新当前用户的 display_name。
+/// 更新当前用户 display_name
 ///
 /// 请求体:
 /// ```json
@@ -66,7 +66,7 @@ async fn update_my_profile(
 
 /// PUT /api/users/me/change-password
 ///
-/// 修改当前用户密码。需验证旧密码，新密码长度不能少于 6 位。
+/// 修改当前用户密码
 ///
 /// 请求体:
 /// ```json
@@ -83,7 +83,7 @@ async fn change_my_password(
 
 /// GET /api/users/me/api-keys
 ///
-/// 获取当前用户的所有 API key（脱敏，不返回完整 key）。
+/// 获取当前用户的 API key 列表（脱敏）
 async fn list_my_api_keys(
     State(state): State<AppState>,
     CurrentUser(user_id): CurrentUser,
@@ -94,7 +94,7 @@ async fn list_my_api_keys(
 
 /// POST /api/users/me/api-keys
 ///
-/// 创建新的 API key。完整 key 仅在创建响应中返回一次。
+/// 创建新的 API key，完整 key 仅返回一次
 ///
 /// 请求体:
 /// ```json
@@ -114,7 +114,7 @@ async fn create_my_api_key(
 
 /// POST /api/users/me/api-keys/{id}/revoke
 ///
-/// 撤销指定 API key。校验 key 属于当前用户。
+/// 撤销指定 API key
 async fn revoke_my_api_key(
     State(state): State<AppState>,
     CurrentUser(user_id): CurrentUser,

@@ -24,17 +24,17 @@ import { buildQueryString, toIsoString } from '../utils/query.ts';
 
 const { Title } = Typography;
 
-// ─── Component ───
+// ─── 组件 ───
 
 export default function SessionLogPage(): ReactNode {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
 
-  // Reference data for lookup maps
+  // 参考数据，用于查找映射
   const [users, setUsers] = useState<UserItem[]>([]);
   const [accessPoints, setAccessPoints] = useState<AccessPointItem[]>([]);
 
-  // List mode state
+  // 列表模式状态
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [total, setTotal] = useState(0);
@@ -42,7 +42,7 @@ export default function SessionLogPage(): ReactNode {
   const [pageSize] = useState(20);
   const [filters, setFilters] = useState<SessionListFilters>({});
 
-  // Detail mode state
+  // 详情模式状态
   const [sessionEvents, setSessionEvents] = useState<ConversationEvent[]>([]);
   const [sessionTokenUsage, setSessionTokenUsage] = useState<TokenUsage[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -50,7 +50,7 @@ export default function SessionLogPage(): ReactNode {
   const [rawModalTitle, setRawModalTitle] = useState('');
   const [rawModalContent, setRawModalContent] = useState('');
 
-  // ─── Load reference data ───
+  // ─── 加载参考数据 ───
 
   useEffect(() => {
     api.get<UserItem[]>('/api/users')
@@ -61,7 +61,7 @@ export default function SessionLogPage(): ReactNode {
       .catch(() => {});
   }, []);
 
-  // ─── Lookup maps ───
+  // ─── 查找映射 ───
 
   const userMap = useMemo(() => {
     const m: Record<string, string> = {};
@@ -75,7 +75,7 @@ export default function SessionLogPage(): ReactNode {
     return m;
   }, [accessPoints]);
 
-  // ─── Load sessions (list mode) ───
+  // ─── 加载会话（列表模式） ───
 
   const fetchSessions = useCallback(async () => {
     setSessionsLoading(true);
@@ -105,7 +105,7 @@ export default function SessionLogPage(): ReactNode {
     }
   }, [sessionId, fetchSessions]);
 
-  // ─── Load session detail ───
+  // ─── 加载会话详情 ───
 
   const loadSessionDetail = useCallback(async (sid: string) => {
     setDetailLoading(true);
@@ -159,7 +159,7 @@ export default function SessionLogPage(): ReactNode {
     };
   }, [sessionId, loadSessionDetail, fetchSessionTokenUsage]);
 
-  // ─── Modal helpers ───
+  // ─── 弹窗辅助 ───
 
   const openRawModal = async (logId: string) => {
     setRawModalTitle('原始日志内容');
@@ -186,7 +186,7 @@ export default function SessionLogPage(): ReactNode {
     setRawModalVisible(false);
   };
 
-  // ─── Filter handlers ───
+  // ─── 筛选处理 ───
 
   const handleDateChange: DatePickerProps['onChange'] = (value) => {
     if (Array.isArray(value) && value.length === 2) {
@@ -209,7 +209,7 @@ export default function SessionLogPage(): ReactNode {
     setPage(newPage);
   };
 
-  // ─── Token usage map ───
+  // ─── Token 用量映射 ───
 
   const tokenUsageMap = useMemo(() => {
     const m: Record<string, TokenUsage> = {};
@@ -217,7 +217,7 @@ export default function SessionLogPage(): ReactNode {
     return m;
   }, [sessionTokenUsage]);
 
-  // ─── Detail View ───
+  // ─── 详情视图 ───
 
   if (sessionId) {
     const sortedEvents = [...sessionEvents].sort((a, b) => {
@@ -248,7 +248,7 @@ export default function SessionLogPage(): ReactNode {
     );
   }
 
-  // ─── List View ───
+  // ─── 列表视图 ───
 
   return (
     <div>

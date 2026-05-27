@@ -30,8 +30,7 @@ pub fn routes() -> Router<AppState> {
 
 /// POST /ap/{short_code}/v1/messages
 ///
-/// 核心代理转发入口。根据 short_code 解析代理上下文后，
-/// 根据请求类型（流式/非流式）分别处理转发逻辑。
+/// 核心代理转发入口
 async fn proxy_messages(
     State(state): State<AppState>,
     Path(short_code): Path<String>,

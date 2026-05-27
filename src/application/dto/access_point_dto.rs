@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// ─── Model Mapping DTO ───
+// ─── 模型映射 DTO ───
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelMappingDto {
@@ -12,7 +12,7 @@ pub struct ModelMappingDto {
     pub match_type: String,
 }
 
-// ─── Request DTOs ───
+// ─── 请求 DTO ───
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateAccessPointRequest {
@@ -33,7 +33,7 @@ pub struct UpdateAccessPointRequest {
     pub status: Option<String>,
 }
 
-// ─── Response DTOs ───
+// ─── 响应 DTO ───
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AccessPointResponse {
