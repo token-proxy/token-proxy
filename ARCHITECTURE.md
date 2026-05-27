@@ -6,7 +6,7 @@
 
 ```
 ├── src/                    # 后端 Rust 核心代码 (97 个 .rs 文件)
-├── src-dashboard/          # 前端管理面板 SPA (30 个 .ts/.tsx 源文件)
+├── src-dashboard/          # 前端管理面板 SPA (45 个 .ts/.tsx 源文件)
 ├── public/                 # 前端静态资源 (favicon, icons)
 ├── index.html              # 前端 HTML 入口 (Vite)
 ├── vite.config.ts          # Vite 构建配置
@@ -265,7 +265,23 @@ shared/
 │   │   ├── SessionInfoHeader.tsx    # 会话信息头部
 │   │   ├── LogDetailModal.tsx       # 日志详情弹窗
 │   │   ├── RawContentModal.tsx      # 原始内容查看弹窗
-│   │   └── ChatBubbleView.tsx       # 聊天气泡视图
+│   │   ├── ChatBubbleView.tsx       # 聊天气泡视图
+│   │   ├── RequestLogTable.tsx      # 请求日志表格 (列定义 + Table 渲染, 从 RequestLogPage 提取)
+│   │   ├── SessionListView.tsx      # 会话列表视图 (过滤栏 + 分页表格, 从 SessionLogPage 提取)
+│   │   ├── SessionDetailView.tsx    # 会话详情视图 (事件流 + 事件摘要表格 + 原始内容弹窗, 从 SessionLogPage 提取)
+│   │   ├── CopyableIdText.tsx       # 可复制 ID 文本组件 (等宽字体 + 点击复制)
+│   │   ├── BasicInfoCard.tsx        # 基础信息卡片
+│   │   ├── CodeHighlight.tsx        # 代码高亮组件
+│   │   ├── CollapsibleCard.tsx      # 可折叠卡片
+│   │   ├── MarkdownRender.tsx       # Markdown 渲染组件
+│   │   ├── RawResponseView.tsx      # 原始响应查看组件
+│   │   ├── RequestContentCard.tsx   # 请求内容卡片
+│   │   ├── RequestHeadersCard.tsx   # 请求头卡片
+│   │   ├── ResponseContentCard.tsx  # 响应内容卡片
+│   │   ├── TokenUsageCard.tsx       # Token 用量卡片
+│   │   ├── charts/                  # 图表组件子目录
+│   │   ├── log-viewer/              # 日志查看器组件子目录
+│   │   └── timeline/                # 时间线组件子目录
 │   ├── hooks/                      # 自定义 hooks
 │   │   ├── useTheme.ts             # 主题管理 (ThemeProvider + useTheme, 三种模式)
 │   │   └── useAccessPoints.ts      # 接入点数据管理 (Provider/Account 加载; 创建/编辑时过滤 target_model 不在 Provider.models + Provider.default_model + DEFAULT_MODEL 哨兵的映射; 删除/切换状态/复制 URL)
@@ -278,8 +294,9 @@ shared/
 │   │   ├── AccessPointManagement.tsx # CRUD /api/access-points (Provider 切换时, 创建态下若有 default_model 则自动生成 __unmatched__(prefix) → __default_model__ 哨兵映射; 保存委托 useAccessPoints hook 过滤无效映射)
 │   │   ├── UserManagement.tsx      # CRUD /api/users
 │   │   ├── ProfilePage.tsx         # 个人设置 (profile/密码/API key 管理)
-│   │   ├── SessionLogPage.tsx      # GET /api/logs/sessions
-│   │   ├── RequestLogPage.tsx      # GET /api/logs
+│   │   ├── SessionLogPage.tsx      # 会话日志路由壳 (根据 URL 中 sessionId 参数切换列表/详情视图: 无 sessionId 渲染 SessionListView, 有 sessionId 渲染 SessionDetailView)
+│   │   ├── RequestLogPage.tsx      # GET /api/logs (数据加载 + 过滤 + 委托 RequestLogTable 渲染表格)
+│   │   ├── LogDetailPage.tsx       # GET /api/logs/:id (单条日志详情, 含请求/响应内容展示)
 │   │   └── SettingsPage.tsx        # 设置页面
 │   ├── types/                      # TypeScript 类型定义
 │   └── utils/                      # 工具函数
@@ -303,6 +320,7 @@ shared/
   /sessions             → SessionLogPage
   /sessions/:sessionId  → SessionLogPage (单会话详情)
   /logs                 → RequestLogPage
+  /logs/:id             → LogDetailPage (单条日志详情)
   /users                → UserManagement
   /settings             → SettingsPage
 	  /settings/profile     → ProfilePage (个人设置)
@@ -458,7 +476,7 @@ docker compose up -d    # 启动 PostgreSQL + App
 |------|------|
 | Phase 1 MVP | 已完成 |
 | 后端 | 97 个 .rs 文件, cargo check 零错误零警告 |
-| 前端 | 30 个 .ts/.tsx 源文件, tsc --noEmit 零错误 |
+| 前端 | 45 个 .ts/.tsx 源文件, tsc --noEmit 零错误 |
 | Schema 迁移 | 3 个迁移文件 (初始表 + user_api_keys + provider_default_model) |
 | Docker 构建 | 多阶段构建就绪 |
 | 容器编排 | docker-compose.yml 就绪 |
@@ -476,3 +494,4 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 2026-05-24 | 同步架构文档与实际代码：`__unmatched__` 视为模式匹配, 自动生成的未匹配规则使用 prefix; Select 选项用 Semi Tag 前缀显示"精准匹配/模式匹配"; 目标模型 Select 包含 Provider.models + Provider.default_model; 保存过滤也允许 Provider.default_model |
 | 2026-05-24 | 服务端强化匹配类型: 新增 `normalize_match_type` 和 `is_prefix_source_model` 函数, 强制 `__unmatched__` 和 Claude 家族前缀 (claude-opus-/claude-sonnet-/claude-haiku-) 始终视为 `prefix` 匹配; AccessPointService 创建/更新时执行 match_type 标准化; 前端 ModelMappingEditor 对 apiType 做大小写兼容 |
 | 2026-05-26 | 认证体系优化: 前端 `api.ts` 采用「双层防御」策略（请求前体检 + 401 兜底），模块级 Promise 并发去重，解决浏览器冻结导致定时器失效问题；`JwtService` 新增 `refresh_expiry_secs` 访问器，修复 AuthService 两处误用 access 寿命写入 refresh_token expires_at 的 bug；新增 tokio 后台任务每小时物理清理过期 refresh_token，明确拒绝引入 Redis 或 pg_cron，遵循依赖最小化原则；新增架构原则 7-9（依赖最小化、双层防御、依赖倒置认证场景体现） |
+| 2026-05-27 | 前端组件架构拆分: 从 RequestLogPage 提取 `RequestLogTable` 组件 (表格列定义 + Table 渲染); 从 SessionLogPage 提取 `SessionListView` (会话列表视图) 和 `SessionDetailView` (会话详情视图); SessionLogPage 瘦身为路由壳, 根据 sessionId 参数切换列表/详情视图; 新增 `/logs/:id` 路由和 `LogDetailPage` 页面; 前端源文件数更新为 45 个 |

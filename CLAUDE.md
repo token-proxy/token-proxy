@@ -121,7 +121,7 @@ src/
 - 如: `服务监听地址: {}`, `接入点 '{}' 未找到`
 - 错误消息使用中文, 技术标识符/日志字段使用英文
 - 后端: 97 个 Rust 源文件, 遵循 Rust 2021 edition 惯例
-- 前端: 32 个 TypeScript 源文件, 遵循 TypeScript 6 严格模式
+- 前端: 45 个 TypeScript 源文件, 遵循 TypeScript 6 严格模式
 
 ### 后端 (Rust)
 
@@ -132,7 +132,7 @@ src/
 
 ### 前端 (React + Semi Design)
 
-- 页面组件集中在 `src-dashboard/pages/`
+- 页面组件集中在 `src-dashboard/pages/`, 负责数据加载和视图切换; 表格/详情等具体渲染逻辑提取到 `src-dashboard/components/` 中
 - 使用 `@douyinfe/semi-ui` 组件库
 - 路由: react-router-dom v7 (BrowserRouter + Routes + AdminLayout)
 - 路由结构: `/login`, `/dashboard`, `/providers`, `/access-points`, `/sessions`, `/logs`, `/users`, `/settings`, `/settings/profile`
@@ -144,7 +144,7 @@ src/
 - **主题切换**: 使用 `useTheme` hook + `ThemeProvider` (src-dashboard/hooks/useTheme.ts) 管理主题状态, 通过 localStorage key `theme_mode` 持久化, 支持 light / dark / system 三种模式; `ThemeToggle` 组件以 Dropdown 菜单形式展示在 AdminLayout 顶栏
 - **ModelMappingEditor**: 接入点表单中的模型映射编辑器, 仅保留一个"添加映射"按钮。源模型使用 Semi Select, 支持搜索和 allowCreate; 选项以 Semi Tag 前缀显示匹配类型 (`精准匹配`/`模式匹配`); 源模型选项包括: `__unmatched__`(模式匹配)、Claude Opus/Sonnet/Haiku 预设(模式匹配)、以及 Provider 的 models 列表(精准匹配)。`__unmatched__` 和 Claude 家族源模型保存为 `prefix` 匹配类型, 普通值/自定义输入值保存为 `exact` 匹配类型。目标模型使用 Semi Select, 选项包含 Provider.models 和 `__default_model__` 哨兵, 不允许 allowCreate; 选择 `__default_model__` 时 UI 显示为"默认模型 (实际模型)", 动态解析 Provider 当前 default_model 并展示; 当源模型为 `__unmatched__` 时, 目标模型自动填充为 `__default_model__`
 - **AccessPointDrawer 映射管理**: 接入点创建/编辑时选择 Provider 后, 会请求 `GET /api/providers/{id}` 刷新 Provider 的 models 和 default_model 列表; 创建态选择带默认模型的 Provider 时自动预填一条 `__unmatched__ -> __default_model__` 的映射规则。保存接入点时过滤映射, target_model 必须属于 Provider.models 或等于 `__default_model__` 哨兵
-- **日志前端展示**: 请求日志列表优先展示 `log_metadata.message_preview`, 内容超出时用 Semi Tooltip 展示 `message_full`; 会话详情页使用 `log_conversation_events` 渲染 `ClaudeSessionTimeline`, 默认不批量读取 `log_contents`; 点击“原始内容”时再请求 `/api/logs/{id}/raw`
+- **日志前端展示**: 请求日志列表使用 `RequestLogTable` 组件, 优先展示 `log_metadata.message_preview`, 内容超出时用 Semi Tooltip 展示 `message_full`; 会话日志页面 `SessionLogPage` 瘦身为路由壳, 负责数据加载和视图切换; 列表模式使用 `SessionListView` (筛选栏 + 表格), 详情模式使用 `SessionDetailView` (信息卡片 + `ClaudeSessionTimeline` 时间线 + 事件摘要表格 + `RawContentModal`); 默认不批量读取 `log_contents`, 点击”原始内容”时再请求 `/api/logs/{id}/raw`
 
 ## 注意事项
 
@@ -193,6 +193,9 @@ src/
 | `src-dashboard/components/AccessPointDrawer.tsx` | 接入点创建/编辑抽屉 (选择 Provider 后有 default_model 则自动预填 `__unmatched__ -> default_model` 映射; 保存时过滤 target_model 不在 Provider.models 的映射) |
 | `src-dashboard/components/ThemeToggle.tsx` | 主题切换组件 (light/dark/system) |
 | `src-dashboard/components/ClaudeSessionTimeline.tsx` | 会话事件流展示组件 (用户消息、thinking、tool_use、Agent 调用) |
+| `src-dashboard/components/RequestLogTable.tsx` | 请求日志表格 (列定义、分页、空态) |
+| `src-dashboard/components/SessionListView.tsx` | 会话列表视图 (筛选栏 + 表格) |
+| `src-dashboard/components/SessionDetailView.tsx` | 会话详情视图 (信息卡片 + 时间线 + 事件表格 + RawContentModal) |
 | `src-dashboard/hooks/useTheme.ts` | 主题 Hook + ThemeProvider |
 | `src-dashboard/hooks/useAccessPoints.ts` | 接入点管理 Hook (含 api_type 传递) |
 | `src/application/services/auth_service.rs` | 认证服务 (login/refresh/logout, Refresh Token Rotation, expires_at 修复) |
