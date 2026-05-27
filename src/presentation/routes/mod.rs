@@ -42,7 +42,7 @@ pub fn build(state: AppState) -> Router {
 
 /// GET /api/health
 ///
-/// 健康检查端点（公开路径）
+/// 健康检查端点（公开）
 async fn health_check() -> Json<serde_json::Value> {
     Json(serde_json::json!({"status": "ok"}))
 }

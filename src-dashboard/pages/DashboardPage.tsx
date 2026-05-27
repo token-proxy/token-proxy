@@ -8,7 +8,7 @@ import { formatNumber } from '../utils/format.ts';
 
 const { Title } = Typography;
 
-// --- Mock data for fallback when API is unavailable ---
+// --- API 不可用时的 Mock 兜底数据 ---
 
 const MOCK_OVERVIEW: OverviewData = {
   total_requests: 128456,
@@ -47,7 +47,7 @@ const MOCK_TOP_MODELS: TopModel[] = [
   { model: 'gemini-1.5-pro', count: 9800 },
 ];
 
-// --- Column definitions for top-N tables ---
+// --- Top-N 表格列定义 ---
 
 const ACCESS_POINT_COLUMNS = [
   {
@@ -82,7 +82,7 @@ const MODEL_COLUMNS = [
   },
 ];
 
-// --- Main page component ---
+// --- 主页面组件 ---
 
 export default function DashboardPage(): ReactNode {
   const [loading, setLoading] = useState(true);
@@ -108,7 +108,7 @@ export default function DashboardPage(): ReactNode {
         setTopAccessPoints(ap);
         setTopModels(md);
       } catch {
-        // Fallback to mock data when API is not yet available
+        // API 尚未就绪时回退到 Mock 数据
         if (cancelled) return;
         setOverview(MOCK_OVERVIEW);
         setTrends(MOCK_TRENDS);
@@ -129,7 +129,7 @@ export default function DashboardPage(): ReactNode {
         Dashboard
       </Title>
 
-      {/* ---- Stats cards row ---- */}
+      {/* ---- 统计卡片行 ---- */}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <StatCard
@@ -170,12 +170,12 @@ export default function DashboardPage(): ReactNode {
         </Col>
       </Row>
 
-      {/* ---- Trend chart ---- */}
+      {/* ---- 趋势图 ---- */}
       <div style={{ marginTop: 24 }}>
         <TrendChart data={trends} loading={loading} />
       </div>
 
-      {/* ---- Top-N tables ---- */}
+      {/* ---- Top-N 表格 ---- */}
       <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
         <Col xs={24} lg={12}>
           <Card

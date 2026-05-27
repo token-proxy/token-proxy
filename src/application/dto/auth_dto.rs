@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// ─── Request DTOs ───
+// ─── 请求 DTO ───
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LoginRequest {
@@ -14,7 +14,7 @@ pub struct RefreshRequest {
     pub refresh_token: String,
 }
 
-// ─── Response DTOs ───
+// ─── 响应 DTO ───
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LoginResponse {
@@ -26,7 +26,7 @@ pub struct LoginResponse {
     pub display_name: String,
 }
 
-// ─── JWT Claims ───
+// ─── JWT 声明 ───
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {

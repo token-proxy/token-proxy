@@ -75,7 +75,7 @@ export default function ClaudeSessionTimeline({
   onOpenRaw,
   tokenUsageMap,
 }: ClaudeSessionTimelineProps): ReactNode {
-  // Group events by request_index for token summary display
+  // 按 request_index 分组事件，用于 token 汇总展示
   const groups = useMemo(() => {
     const g: { requestIndex: number; events: ConversationEvent[] }[] = [];
     let current: { requestIndex: number; events: ConversationEvent[] } | null = null;
@@ -92,7 +92,7 @@ export default function ClaudeSessionTimeline({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
       {groups.map((group) => {
-        // Find token usage for the first event's log_id (all events in same request share log_id)
+        // 查找第一个事件的 token 用量（同一请求的所有事件共享 log_id）
         const firstEvent = group.events[0];
         const tokenUsage = tokenUsageMap?.[firstEvent.log_id];
 

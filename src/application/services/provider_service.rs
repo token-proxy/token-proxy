@@ -432,9 +432,9 @@ impl ProviderService {
             .await
             .map_err(|e| AppError::Upstream(format!("解析模型列表响应失败: {}", e)))?;
 
-        // OpenAI: { "data": [{ "id": "gpt-4", ... }, ...] }
-        // Anthropic: { "data": [{ "id": "claude-...", "type": "model" }, ...], "has_more": ... }
-        // 部分代理: { "models": [...] } 或顶层数组
+        // OpenAI 格式: { "data": [{ "id": "gpt-4", ... }, ...] }
+        // Anthropic 格式: { "data": [{ "id": "claude-...", "type": "model" }, ...], "has_more": ... }
+        // 部分代理格式: { "models": [...] } 或顶层数组
         let models = extract_model_ids(&body);
 
         if models.is_empty() {

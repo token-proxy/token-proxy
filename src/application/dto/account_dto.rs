@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// ─── Request DTOs ───
+// ─── 请求 DTO ───
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateAccountRequest {
@@ -16,7 +16,7 @@ pub struct UpdateAccountRequest {
     pub api_key: Option<String>,
 }
 
-// ─── Response DTOs ───
+// ─── 响应 DTO ───
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AccountResponse {

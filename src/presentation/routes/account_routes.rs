@@ -41,6 +41,8 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// GET /api/providers/{provider_id}/accounts
+///
+/// 返回指定提供商下的所有账号
 async fn list_accounts(
     State(state): State<AppState>,
     Path(provider_id): Path<Uuid>,
@@ -50,6 +52,8 @@ async fn list_accounts(
 }
 
 /// POST /api/providers/{provider_id}/accounts
+///
+/// 为指定提供商创建新账号
 async fn create_account(
     State(state): State<AppState>,
     Path(provider_id): Path<Uuid>,
@@ -60,6 +64,8 @@ async fn create_account(
 }
 
 /// GET /api/providers/{provider_id}/accounts/{id}
+///
+/// 获取指定账号详情
 async fn get_account(
     State(state): State<AppState>,
     Path((_provider_id, id)): Path<(Uuid, Uuid)>,
@@ -69,6 +75,8 @@ async fn get_account(
 }
 
 /// PUT /api/providers/{provider_id}/accounts/{id}
+///
+/// 更新指定账号
 async fn update_account(
     State(state): State<AppState>,
     Path((_provider_id, id)): Path<(Uuid, Uuid)>,
@@ -79,6 +87,8 @@ async fn update_account(
 }
 
 /// DELETE /api/providers/{provider_id}/accounts/{id}
+///
+/// 删除指定账号
 async fn delete_account(
     State(state): State<AppState>,
     Path((_provider_id, id)): Path<(Uuid, Uuid)>,

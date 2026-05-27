@@ -30,6 +30,8 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// GET /api/providers
+///
+/// 返回所有提供商列表
 async fn list_providers(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ProviderResponse>>, AppError> {
@@ -38,6 +40,8 @@ async fn list_providers(
 }
 
 /// POST /api/providers
+///
+/// 创建新的提供商
 async fn create_provider(
     State(state): State<AppState>,
     Json(req): Json<CreateProviderRequest>,
@@ -47,6 +51,8 @@ async fn create_provider(
 }
 
 /// GET /api/providers/{id}
+///
+/// 获取指定提供商详情
 async fn get_provider(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -56,6 +62,8 @@ async fn get_provider(
 }
 
 /// PUT /api/providers/{id}
+///
+/// 更新指定提供商
 async fn update_provider(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -66,6 +74,8 @@ async fn update_provider(
 }
 
 /// DELETE /api/providers/{id}
+///
+/// 删除指定提供商
 async fn delete_provider(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -76,7 +86,7 @@ async fn delete_provider(
 
 /// POST /api/providers/{id}/discover-models
 ///
-/// 调用上游 `/v1/models` 端点自动获取模型列表，合并去重后更新 Provider
+/// 从上游自动发现模型列表
 async fn discover_models(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,

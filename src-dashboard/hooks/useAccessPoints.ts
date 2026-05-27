@@ -49,7 +49,7 @@ export default function useAccessPoints() {
       const data = await api.get<ProviderOption[]>('/api/providers');
       setProviders(data);
     } catch {
-      // providers may not be available yet
+      // providers 数据可能尚未就绪
     }
   }, []);
 
