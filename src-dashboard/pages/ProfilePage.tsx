@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Card, Tabs, TabPane, Form, Button, Input, Toast,
+  Card, Tabs, TabPane, Form, Button, Input, Space, Toast,
   Typography, Table, Tag, Popconfirm, Modal,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
@@ -87,6 +87,12 @@ export default function ProfilePage(): ReactNode {
   const [createSaving, setCreateSaving] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreateApiKeyResponse | null>(null);
   const createFormRef = useRef<FormApi | null>(null);
+
+  /* ---- 编辑 API key 备注状态 ---- */
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingKey, setEditingKey] = useState<UserApiKey | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const editFormRef = useRef<FormApi | null>(null);
 
   /* ---- 加载 Profile ---- */
   const loadProfile = useCallback(async () => {
@@ -213,6 +219,34 @@ export default function ProfilePage(): ReactNode {
     }
   };
 
+  /* ---- 编辑 API key 备注 ---- */
+  const handleOpenEditModal = (key: UserApiKey) => {
+    setEditingKey(key);
+    setEditModalVisible(true);
+  };
+
+  const handleEditApiKey = async (values: { description: string }) => {
+    if (!editingKey) return;
+    if (!values.description.trim()) {
+      Toast.error('备注不能为空');
+      return;
+    }
+    setEditSaving(true);
+    try {
+      await api.put(`/api/users/me/api-keys/${editingKey.id}`, {
+        description: values.description.trim(),
+      });
+      Toast.success('备注已更新');
+      setEditModalVisible(false);
+      setEditingKey(null);
+      loadApiKeys();
+    } catch (err) {
+      Toast.error(err instanceof Error ? err.message : '更新失败');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   /* ---- API key 列定义 ---- */
   const apiKeyColumns = [
     { title: '备注', dataIndex: 'description', key: 'description' },
@@ -250,27 +284,35 @@ export default function ProfilePage(): ReactNode {
     {
       title: '操作',
       key: 'actions',
-      width: 120,
+      width: 160,
       render: (_: unknown, record: UserApiKey) => {
-        if (record.status !== 'active') {
+        if (record.status !== 'enabled') {
           return <Text type="secondary">-</Text>;
         }
         return (
-          <Popconfirm
-            title="确认吊销此 API Key?"
-            content="吊销后使用此 Key 的请求将无法通过认证"
-            onConfirm={() => handleRevokeApiKey(record.id)}
-            position="bottomRight"
-          >
+          <Space>
             <Button
               size="small"
-              type="danger"
-              disabled={operatingIds.includes(record.id)}
-              loading={operatingIds.includes(record.id)}
+              onClick={() => handleOpenEditModal(record)}
             >
-              吊销
+              编辑
             </Button>
-          </Popconfirm>
+            <Popconfirm
+              title="确认吊销此 API Key?"
+              content="吊销后使用此 Key 的请求将无法通过认证"
+              onConfirm={() => handleRevokeApiKey(record.id)}
+              position="bottomRight"
+            >
+              <Button
+                size="small"
+                type="danger"
+                disabled={operatingIds.includes(record.id)}
+                loading={operatingIds.includes(record.id)}
+              >
+                吊销
+              </Button>
+            </Popconfirm>
+          </Space>
         );
       },
     },
@@ -371,7 +413,7 @@ export default function ProfilePage(): ReactNode {
 
               <Table
                 columns={apiKeyColumns}
-                dataSource={apiKeys}
+                dataSource={apiKeys.filter((k) => k.status === 'enabled')}
                 loading={apiKeysLoading}
                 rowKey="id"
                 scroll={{ x: 'max-content' }}
@@ -403,6 +445,41 @@ export default function ProfilePage(): ReactNode {
                 <Form
                   onSubmit={handleCreateApiKey}
                   getFormApi={(api) => { createFormRef.current = api; }}
+                >
+                  <Form.Input
+                    field="description"
+                    label="备注"
+                    placeholder="请输入备注信息"
+                    rules={[{ required: true, message: '请输入备注' }]}
+                  />
+                </Form>
+              </Modal>
+
+              <Modal
+                title="修改备注"
+                visible={editModalVisible}
+                onCancel={() => { setEditModalVisible(false); setEditingKey(null); }}
+                footer={
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <Button disabled={editSaving} onClick={() => setEditModalVisible(false)}>
+                      取消
+                    </Button>
+                    <Button
+                      type="primary"
+                      loading={editSaving}
+                      onClick={() => editFormRef.current?.submitForm()}
+                    >
+                      保存
+                    </Button>
+                  </div>
+                }
+                width={480}
+                maskClosable
+              >
+                <Form
+                  onSubmit={handleEditApiKey}
+                  getFormApi={(api) => { editFormRef.current = api; }}
+                  initValues={editingKey ? { description: editingKey.description } : undefined}
                 >
                   <Form.Input
                     field="description"

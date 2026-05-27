@@ -6,8 +6,8 @@ use axum::{
 use uuid::Uuid;
 
 use crate::application::dto::user_dto::{
-    ChangePasswordRequest, CreateApiKeyRequest, CreateApiKeyResponse, UpdateProfileRequest,
-    UserApiKeyResponse, UserResponse,
+    ChangePasswordRequest, CreateApiKeyRequest, CreateApiKeyResponse, UpdateApiKeyRequest,
+    UpdateProfileRequest, UserApiKeyResponse, UserResponse,
 };
 use crate::application::AppState;
 use crate::presentation::middleware::jwt_auth::CurrentUser;
@@ -22,6 +22,7 @@ use crate::shared::error::AppError;
 /// - `PUT    /api/users/me/change-password`           -> change_my_password
 /// - `GET    /api/users/me/api-keys`                  -> list_my_api_keys
 /// - `POST   /api/users/me/api-keys`                  -> create_my_api_key
+/// - `PUT    /api/users/me/api-keys/{id}`              -> update_my_api_key
 /// - `POST   /api/users/me/api-keys/{id}/revoke`      -> revoke_my_api_key
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -30,6 +31,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/users/me/change-password", put(change_my_password))
         .route("/api/users/me/api-keys", get(list_my_api_keys))
         .route("/api/users/me/api-keys", post(create_my_api_key))
+        .route("/api/users/me/api-keys/{id}", put(update_my_api_key))
         .route(
             "/api/users/me/api-keys/{id}/revoke",
             post(revoke_my_api_key),
@@ -122,4 +124,20 @@ async fn revoke_my_api_key(
 ) -> Result<Json<serde_json::Value>, AppError> {
     state.user_api_key_service.revoke(user_id, key_id).await?;
     Ok(Json(serde_json::json!({"message": "API key 已撤销"})))
+}
+
+/// PUT /api/users/me/api-keys/{id}
+///
+/// 更新指定 API key 的备注
+async fn update_my_api_key(
+    State(state): State<AppState>,
+    CurrentUser(user_id): CurrentUser,
+    Path(key_id): Path<Uuid>,
+    Json(req): Json<UpdateApiKeyRequest>,
+) -> Result<Json<UserApiKeyResponse>, AppError> {
+    let key = state
+        .user_api_key_service
+        .update_description(user_id, key_id, req.description)
+        .await?;
+    Ok(Json(key))
 }

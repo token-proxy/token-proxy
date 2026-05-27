@@ -37,6 +37,12 @@ pub struct CreateApiKeyRequest {
     pub description: String,
 }
 
+/// 更新 API key 备注请求
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateApiKeyRequest {
+    pub description: String,
+}
+
 // ─── 响应 DTO ───
 
 #[derive(Debug, Clone, Serialize)]
