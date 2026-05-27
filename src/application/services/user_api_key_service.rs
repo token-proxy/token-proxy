@@ -141,17 +141,38 @@ impl UserApiKeyService {
             return Err(AppError::NotFound("API key 未找到".to_string()));
         }
 
+        self.revoke_key_and_audit(key_id, &key, Some(user_id)).await
+    }
+
+    /// 管理员吊销任意用户的 API key（跳过所有权校验）
+    pub async fn admin_revoke(&self, key_id: Uuid) -> Result<(), AppError> {
+        let key = self
+            .api_key_repo
+            .find_by_id(key_id)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .ok_or_else(|| AppError::NotFound("API key 未找到".to_string()))?;
+
+        self.revoke_key_and_audit(key_id, &key, None).await
+    }
+
+    /// 执行吊销操作并写入审计日志
+    async fn revoke_key_and_audit(
+        &self,
+        key_id: Uuid,
+        key: &UserApiKey,
+        operator_user_id: Option<Uuid>,
+    ) -> Result<(), AppError> {
         self.api_key_repo
             .revoke(key_id)
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
 
-        // 记录审计日志
         let details = serde_json::json!({
             "key_prefix": key.key_prefix,
         });
         let audit = AuditLog::new(
-            Some(user_id),
+            operator_user_id,
             "revoke_api_key",
             "user_api_key",
             Some(key_id),
@@ -163,6 +184,41 @@ impl UserApiKeyService {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(())
+    }
+
+    /// 更新 API key 备注（校验 key 属于当前用户）
+    pub async fn update_description(
+        &self,
+        user_id: Uuid,
+        key_id: Uuid,
+        description: String,
+    ) -> Result<UserApiKeyResponse, AppError> {
+        let trimmed = description.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(AppError::Validation("描述不能为空".to_string()));
+        }
+
+        let key = self
+            .api_key_repo
+            .find_by_id(key_id)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .ok_or_else(|| AppError::NotFound("API key 未找到".to_string()))?;
+
+        if key.user_id != user_id {
+            return Err(AppError::NotFound("API key 未找到".to_string()));
+        }
+
+        let mut updated = key;
+        updated.description = trimmed;
+
+        let saved = self
+            .api_key_repo
+            .save(&updated)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(Self::to_response(&saved))
     }
 
     /// 验证 API key 并返回对应的 user_id

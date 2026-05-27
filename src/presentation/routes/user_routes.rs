@@ -5,17 +5,21 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::application::dto::user_dto::{CreateUserRequest, UpdateUserRequest, UserResponse};
+use crate::application::dto::user_dto::{
+    CreateUserRequest, UpdateUserRequest, UserApiKeyResponse, UserResponse,
+};
 use crate::application::AppState;
 use crate::shared::error::AppError;
 
 /// 构建用户管理路由
 ///
-/// - `GET    /api/users`       → list_users
-/// - `POST   /api/users`       → create_user
-/// - `GET    /api/users/{id}`  → get_user
-/// - `PUT    /api/users/{id}`  → update_user
-/// - `DELETE /api/users/{id}`  → delete_user
+/// - `GET    /api/users`                              → list_users
+/// - `POST   /api/users`                              → create_user
+/// - `GET    /api/users/{id}`                         → get_user
+/// - `PUT    /api/users/{id}`                         → update_user
+/// - `DELETE /api/users/{id}`                         → delete_user
+/// - `GET    /api/users/{user_id}/api-keys`            → list_user_api_keys
+/// - `POST   /api/users/{user_id}/api-keys/{id}/revoke` → revoke_user_api_key
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/users", get(list_users))
@@ -23,6 +27,11 @@ pub fn routes() -> Router<AppState> {
         .route("/api/users/{id}", get(get_user))
         .route("/api/users/{id}", put(update_user))
         .route("/api/users/{id}", delete(delete_user))
+        .route("/api/users/{user_id}/api-keys", get(list_user_api_keys))
+        .route(
+            "/api/users/{user_id}/api-keys/{id}/revoke",
+            post(revoke_user_api_key),
+        )
 }
 
 /// GET /api/users
@@ -76,4 +85,29 @@ async fn delete_user(
 ) -> Result<Json<serde_json::Value>, AppError> {
     state.user_service.delete(id).await?;
     Ok(Json(serde_json::json!({"message": "用户已删除"})))
+}
+
+/// GET /api/users/{user_id}/api-keys
+///
+/// 管理员查看指定用户的 API key 列表（脱敏）
+async fn list_user_api_keys(
+    State(state): State<AppState>,
+    Path(user_id): Path<Uuid>,
+) -> Result<Json<Vec<UserApiKeyResponse>>, AppError> {
+    let keys = state.user_api_key_service.list_by_user(user_id).await?;
+    Ok(Json(keys))
+}
+
+/// POST /api/users/{user_id}/api-keys/{id}/revoke
+///
+/// 管理员吊销指定用户的 API key
+async fn revoke_user_api_key(
+    State(state): State<AppState>,
+    Path((_user_id, key_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    state
+        .user_api_key_service
+        .admin_revoke(key_id)
+        .await?;
+    Ok(Json(serde_json::json!({"message": "API key 已撤销"})))
 }
