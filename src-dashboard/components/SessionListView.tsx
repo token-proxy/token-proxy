@@ -109,7 +109,7 @@ export default function SessionListView({
           {
             title: '请求次数',
             dataIndex: 'request_count',
-            width: 80,
+            width: 100,
             render: (v: number) => (
               <span style={{ whiteSpace: 'nowrap', display: 'block', maxWidth: 90 }}>{v}</span>
             ),
