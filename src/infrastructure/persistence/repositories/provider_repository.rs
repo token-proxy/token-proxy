@@ -5,7 +5,8 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOr
 
 use crate::domain::entities::provider::Provider;
 use crate::domain::repositories::provider_repository::ProviderRepository;
-use crate::infrastructure::persistence::entities::provider::{ActiveModel, Column, Entity};
+use crate::domain::entities::provider::{ActiveModel, Column, Entity};
+use crate::domain::value_objects::status::Status;
 use crate::shared::error::AppError;
 use uuid::Uuid;
 
@@ -22,85 +23,44 @@ impl SeaOrmProviderRepository {
 #[async_trait]
 impl ProviderRepository for SeaOrmProviderRepository {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Provider>, AppError> {
-        let db = &*self.db;
-        let model = Entity::find_by_id(id)
-            .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        match model {
-            Some(m) => Ok(Some(m.try_into()?)),
-            None => Ok(None),
-        }
+        Ok(Entity::find_by_id(id).one(&*self.db).await?)
     }
 
     async fn find_enabled(&self) -> Result<Vec<Provider>, AppError> {
-        let db = &*self.db;
-        let models = Entity::find()
-            .filter(Column::Status.eq("enabled"))
-            .order_by_asc(super::super::entities::provider::Column::Name)
-            .all(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        models
-            .into_iter()
-            .map(|m| m.try_into())
-            .collect::<Result<Vec<Provider>, AppError>>()
+        Ok(Entity::find()
+            .filter(Column::Status.eq(Status::Enabled))
+            .order_by_asc(Column::Name)
+            .all(&*self.db)
+            .await?)
     }
 
     async fn find_all(&self) -> Result<Vec<Provider>, AppError> {
-        let db = &*self.db;
-        let models = Entity::find()
-            .order_by_asc(super::super::entities::provider::Column::Name)
-            .all(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        models
-            .into_iter()
-            .map(|m| m.try_into())
-            .collect::<Result<Vec<Provider>, AppError>>()
+        Ok(Entity::find()
+            .order_by_asc(Column::Name)
+            .all(&*self.db)
+            .await?)
     }
 
     async fn save(&self, provider: &Provider) -> Result<Provider, AppError> {
         let db = &*self.db;
-        let exists = Entity::find_by_id(provider.id)
-            .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .is_some();
+        let exists = Entity::find_by_id(provider.id).one(db).await?.is_some();
 
         let active_model: ActiveModel = provider.clone().into();
 
         if exists {
-            Entity::update(active_model)
-                .exec(db)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?;
+            Entity::update(active_model).exec(db).await?;
         } else {
-            Entity::insert(active_model)
-                .exec(db)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?;
+            Entity::insert(active_model).exec(db).await?;
         }
 
-        // 重新查询以返回完整的最新数据
         Entity::find_by_id(provider.id)
             .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .map(|m| m.try_into())
-            .ok_or_else(|| AppError::Internal("保存后无法查询到 Provider".to_string()))?
+            .await?
+            .ok_or_else(|| AppError::Internal("保存后无法查询到 Provider".to_string()))
     }
 
     async fn delete(&self, id: Uuid) -> Result<(), AppError> {
-        let db = &*self.db;
-        Entity::delete_by_id(id)
-            .exec(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
+        Entity::delete_by_id(id).exec(&*self.db).await?;
         Ok(())
     }
 }

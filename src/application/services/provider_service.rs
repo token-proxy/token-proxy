@@ -54,8 +54,8 @@ impl ProviderService {
             models: provider.models.clone(),
             default_model: provider.default_model.clone(),
             status: provider.status.to_string(),
-            created_at: provider.created_at,
-            updated_at: provider.updated_at,
+            created_at: provider.created_at.with_timezone(&chrono::Utc),
+            updated_at: provider.updated_at.with_timezone(&chrono::Utc),
             account_count,
         }
     }
@@ -84,8 +84,7 @@ impl ProviderService {
         let saved = self
             .provider_repo
             .save(&provider)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         // 记录审计日志
         self.log_audit(
@@ -114,8 +113,7 @@ impl ProviderService {
         let mut provider = self
             .provider_repo
             .find_by_id(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", id)))?;
 
         let old_status = provider.status.to_string();
@@ -150,13 +148,12 @@ impl ProviderService {
                 .map_err(|e: AppError| AppError::Validation(e.to_string()))?;
             provider.status = status;
         }
-        provider.updated_at = chrono::Utc::now();
+        provider.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
         let saved = self
             .provider_repo
             .save(&provider)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         let account_count = self
             .account_repo
@@ -197,8 +194,7 @@ impl ProviderService {
         let provider = self
             .provider_repo
             .find_by_id(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", id)))?;
 
         let account_count = self
@@ -215,8 +211,7 @@ impl ProviderService {
         let providers = self
             .provider_repo
             .find_all()
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         let mut results = Vec::with_capacity(providers.len());
         for provider in &providers {
@@ -236,8 +231,7 @@ impl ProviderService {
         let accounts = self
             .account_repo
             .find_by_provider_id(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         if !accounts.is_empty() {
             return Err(AppError::Conflict(format!(
@@ -250,14 +244,12 @@ impl ProviderService {
         let provider = self
             .provider_repo
             .find_by_id(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", id)))?;
 
         self.provider_repo
             .delete(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         // 记录审计日志
         self.log_audit(
@@ -303,8 +295,7 @@ impl ProviderService {
         let mut provider = self
             .provider_repo
             .find_by_id(provider_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", provider_id)))?;
 
         // 2. 尝试自动发现 — 失败时直接抛出错误而非静默返回空
@@ -328,13 +319,12 @@ impl ProviderService {
         provider.models.extend(new_models);
         provider.models.sort();
         provider.models.dedup();
-        provider.updated_at = chrono::Utc::now();
+        provider.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
         let saved = self
             .provider_repo
             .save(&provider)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(saved.models)
     }
@@ -345,8 +335,7 @@ impl ProviderService {
         let accounts = self
             .account_repo
             .find_enabled_by_provider_id(provider.id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         if accounts.is_empty() {
             tracing::warn!("[discover] provider {} 没有已启用的 Account", provider.id);
@@ -366,8 +355,7 @@ impl ProviderService {
         let encrypted_key = self
             .account_repo
             .get_encrypted_api_key(account.id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         if encrypted_key.is_empty() {
             tracing::error!(

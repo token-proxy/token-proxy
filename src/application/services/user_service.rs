@@ -35,8 +35,8 @@ impl UserService {
             username: user.username.clone(),
             display_name: user.display_name.clone(),
             status: user.status.to_string(),
-            created_at: user.created_at,
-            updated_at: user.updated_at,
+            created_at: user.created_at.with_timezone(&chrono::Utc),
+            updated_at: user.updated_at.with_timezone(&chrono::Utc),
         }
     }
 
@@ -53,8 +53,7 @@ impl UserService {
         let exists = self
             .user_repo
             .exists_by_username(&trimmed_username)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         if exists {
             return Err(AppError::Conflict(format!(
@@ -72,8 +71,7 @@ impl UserService {
         let saved = self
             .user_repo
             .save(&user)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -82,8 +80,7 @@ impl UserService {
         let mut user = self
             .user_repo
             .find_by_id(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("用户 {} 未找到", id)))?;
 
         if let Some(display_name) = req.display_name {
@@ -109,13 +106,12 @@ impl UserService {
             user.status = status;
         }
 
-        user.updated_at = chrono::Utc::now();
+        user.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
         let saved = self
             .user_repo
             .save(&user)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -124,8 +120,7 @@ impl UserService {
         let user = self
             .user_repo
             .find_by_id(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("用户 {} 未找到", id)))?;
 
         Ok(Self::to_response(&user))
@@ -135,8 +130,7 @@ impl UserService {
         let users = self
             .user_repo
             .find_all()
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(users.iter().map(Self::to_response).collect())
     }
@@ -144,8 +138,7 @@ impl UserService {
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         self.user_repo
             .delete(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -164,18 +157,16 @@ impl UserService {
         let mut user = self
             .user_repo
             .find_by_id(user_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("用户 {} 未找到", user_id)))?;
 
         user.display_name = trimmed;
-        user.updated_at = chrono::Utc::now();
+        user.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
         let saved = self
             .user_repo
             .save(&user)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -189,8 +180,7 @@ impl UserService {
         let user = self
             .user_repo
             .find_by_id(user_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("用户 {} 未找到", user_id)))?;
 
         // 验证旧密码
@@ -211,12 +201,11 @@ impl UserService {
 
         let mut mutable_user = user;
         mutable_user.password_hash = new_hash;
-        mutable_user.updated_at = chrono::Utc::now();
+        mutable_user.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
         self.user_repo
             .save(&mutable_user)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         // 记录审计日志
         let audit = AuditLog::new(
@@ -228,8 +217,7 @@ impl UserService {
         );
         self.audit_log_repo
             .save(&audit)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(())
     }

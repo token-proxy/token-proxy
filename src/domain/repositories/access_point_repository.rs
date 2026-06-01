@@ -1,4 +1,6 @@
 use crate::domain::entities::access_point::AccessPoint;
+use crate::domain::entities::account::Account;
+use crate::domain::entities::provider::Provider;
 use crate::shared::error::AppError;
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -10,6 +12,12 @@ pub trait AccessPointRepository: Send + Sync {
 
     /// 根据短码查找接入点
     async fn find_by_short_code(&self, short_code: &str) -> Result<Option<AccessPoint>, AppError>;
+
+    /// 根据短码查找接入点，并同时加载关联的 Provider 和 Account（一次 JOIN 查询）
+    async fn find_with_relations(
+        &self,
+        short_code: &str,
+    ) -> Result<Option<(AccessPoint, Provider, Account)>, AppError>;
 
     /// 查找所有接入点
     async fn find_all(&self) -> Result<Vec<AccessPoint>, AppError>;

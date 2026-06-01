@@ -1,5 +1,6 @@
 use crate::shared::error::AppError;
 use rand::Rng;
+use sea_orm::DeriveValueType;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -8,7 +9,7 @@ const MAX_LENGTH: usize = 16;
 const GENERATED_LENGTH: usize = 16;
 const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, DeriveValueType)]
 pub struct ShortCode(String);
 
 impl ShortCode {

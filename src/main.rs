@@ -245,7 +245,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let proxy_service = Arc::new(ProxyService::new(
         access_point_repo.clone(),
-        provider_repo.clone(),
         account_repo.clone(),
         encryption_service.clone(),
         user_api_key_repo.clone(),

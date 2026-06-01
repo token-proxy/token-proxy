@@ -29,12 +29,12 @@
 
 ## 后端架构详解 (src/)
 
-后端按照**领域驱动设计 (DDD) 四层架构**组织，遵循依赖反转原则，domain 层零外部框架依赖。
+后端按照**领域驱动设计 (DDD) 四层架构**组织，遵循依赖反转原则。
 
 ```
 src/
-├── domain/                 # 领域层 (零外部框架依赖)
-│   ├── entities/           # 7 个业务实体 (LogEntry 含内容、事件、token 用量实体)
+├── domain/                 # 领域层
+│   ├── entities/           # 11 个 SeaORM 实体 (领域实体即 ORM 实体)
 │   ├── value_objects/      # 6 个值对象 (新增 MatchType)
 │   ├── repositories/       # Repository trait (含日志内容、事件和 token 用量)
 │   └── services/           # 2 个领域服务
@@ -43,7 +43,7 @@ src/
 │   ├── services/           # 8 个应用服务
 │   └── mod.rs              # AppState 全局共享状态
 ├── infrastructure/         # 基础设施层
-│   ├── persistence/        # SeaORM 实体 + Repository 实现 + 分区管理
+│   ├── persistence/        # Repository 实现 + 分区管理
 │   ├── parsers/            # Claude Code 请求头、SSE、消息摘要和 token usage 解析
 │   ├── encryption/         # AES-256-GCM 加密服务
 │   ├── auth/               # JWT 认证 + argon2 密码哈希
@@ -61,18 +61,22 @@ src/
 
 ### 领域层 (domain/)
 
-领域层是整个架构的核心，**不依赖任何外部框架**（axum、SeaORM、reqwest），只使用 Rust 标准库 + serde + uuid + chrono + async-trait。
+领域层是整个架构的核心，**使用 SeaORM 宏实现实体定义**（DeriveEntityModel、DeriveActiveEnum、DeriveValueType、FromJsonQueryResult），依赖 sea-orm、serde、uuid、chrono、async-trait。
 
 ```
 domain/
-├── entities/               # 纯业务 struct, 包含领域校验逻辑
-│   ├── provider.rs         # LLM 提供商 (含 default_model 默认模型)
-│   ├── account.rs          # API 账号 (跨聚合引用 Provider)
+├── entities/               # SeaORM Model + 行为方法
+│   ├── provider.rs         # LLM 提供商 (含 default_model)
+│   ├── account.rs          # API 账号 (含 api_key_encrypted: Vec<u8>)
 │   ├── user.rs             # 管理员用户
-│   ├── access_point.rs     # 接入点 (跨聚合引用 Provider + Account)
-│   ├── refresh_token.rs    # JWT 刷新令牌
+│   ├── access_point.rs     # 接入点 (resolve_model, new 等方法)
+│   ├── refresh_token.rs    # JWT 刷新令牌 (is_expired, is_valid)
 │   ├── user_api_key.rs     # 用户 API key (SHA-256 哈希存储)
-│   └── log_entry.rs        # 日志条目 + 日志内容
+│   ├── audit_log.rs        # 操作审计日志
+│   ├── log_metadata.rs     # LogEntry SeaORM Model (new_proxy_entry)
+│   ├── log_content.rs      # LogContent SeaORM Model (字段使用 Option<Json>)
+│   ├── log_token_usage.rs  # LogTokenUsage SeaORM Model
+│   └── log_entry.rs        # re-export (LogEntry/LogContent/LogTokenUsage 别名)
 ├── value_objects/          # 不可变值对象
 │   ├── short_code.rs       # 接入点短码 (生成/校验)
 │   ├── api_key.rs          # API Key (掩码展示)
@@ -92,7 +96,7 @@ domain/
     └── model_mapping_service.rs # 统一匹配逻辑: find_matching_mapping (精确 > 前缀 > __unmatched__ 兜底) + resolve_final_model (映射结果 → 若为 __default_model__ 哨兵则解析为 Provider.default_model → 原始模型); 匹配过程使用 normalize_match_type 强制 Claude 家族源模型以 prefix 方式匹配, 消除客户端错误指定 exact 导致的不一致
 ```
 
-**领域实体 ≠ ORM 实体**：domain/entities 是纯业务 Rust struct，infrastructure/persistence/entities 是 SeaORM `DeriveEntityModel`，repository 实现中完成手工映射。
+**领域实体即 ORM 实体**：domain/entities 直接使用 SeaORM `DeriveEntityModel` 宏定义实体，消除了基础设施层的重复实体和 200+ 行 TryFrom/From 手工映射代码。领域实体附加的行为方法（new、resolve_model、is_expired 等）直接定义在 Model 上。
 
 **聚合边界**：
 
@@ -137,18 +141,6 @@ application/
 ```
 infrastructure/
 ├── persistence/            # SeaORM 数据持久化
-│   ├── entities/           # ORM 实体 (8 个)
-│   │   ├── provider.rs     # 映射 providers 表
-│   │   ├── account.rs      # 映射 accounts 表
-│   │   ├── user.rs         # 映射 users 表
-│   │   ├── access_point.rs # 映射 access_points 表
-│   │   ├── refresh_token.rs # 映射 refresh_tokens 表
-│   │   ├── log_metadata.rs # 映射 log_metadata 表 (按月分区, 含可展示摘要)
-│   │   ├── log_content.rs  # 映射 log_contents 表 (原始请求 / 响应)
-│   │   ├── log_conversation_event.rs # 映射 log_conversation_events 表
-│   │   ├── log_token_usage.rs # 映射 log_token_usage 表
-│   │   ├── audit_log.rs    # 映射 audit_logs 表
-│   │   └── user_api_key.rs # 映射 user_api_keys 表
 │   ├── partition_manager.rs # PartitionManager: 应用层分区自动管理
 │   └── repositories/       # Repository 实现 (7 个, 含 refresh token 过期清理 delete_expired)
 │       ├── provider_repository.rs        # SeaOrmProviderRepository
@@ -403,9 +395,9 @@ POST /ap/{short_code}/v1/messages
 
 ## 核心架构原则
 
-1. **Domain 层零外部依赖**: 只使用 Rust 标准库 + serde + uuid + chrono + async-trait，不依赖 axum、SeaORM、reqwest 等框架
+1. **Domain 层使用 SeaORM 宏定义实体**: 领域实体通过 DeriveEntityModel、DeriveActiveEnum、DeriveValueType、FromJsonQueryResult 等 SeaORM 宏定义，与基础设施层共用类型系统。消除 200+ 行 TryFrom/From 手动映射代码，但 domain 代码理论上可调用 SeaORM query API，需通过 code review 约束
 2. **依赖反转**: Repository trait 在 domain 定义，infrastructure 实现；Application 引用 trait 而非具体实现；`main.rs` 完成依赖组装
-3. **领域实体 ≠ ORM 实体**: domain/entities 是纯业务 struct，infrastructure/persistence/entities 是 SeaORM DeriveEntityModel，repository 中手工映射
+3. **领域实体即 ORM 实体**: domain/entities 直接使用 SeaORM DeriveEntityModel 宏，既是领域模型也是数据库映射。行为方法（new、resolve_model、is_expired 等）直接附加在 Model 上
 4. **聚合边界明确**: Provider (根+Account)、User (根+RefreshToken)、AccessPoint (根+跨聚合 UUID 引用)、LogEntry (根+LogContent)
 5. **错误隔离**: 数据库错误和加密错误详情不暴露给客户端，统一转换为 `500 Internal Server Error`
 6. **同源部署**: 前端构建产物嵌入 Rust 二进制，生产环境前后端同源，无需 CORS 配置
@@ -493,5 +485,6 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 2026-05-24 | 前端 Provider 表格 default_model 列使用 Tag 渲染; Provider 编辑面板 default_model Select 移至模型列表 TagInput 下方, TagInput 移除模型联动清空 default_model; ModelMappingEditor 源模型下拉展示匹配类型说明, 目标模型下拉仅含 Provider 已注册 models 且禁止创建; 保存时过滤 target_model 不在 Provider.models 的映射 (useAccessPoints hook 实现) |
 | 2026-05-24 | 同步架构文档与实际代码：`__unmatched__` 视为模式匹配, 自动生成的未匹配规则使用 prefix; Select 选项用 Semi Tag 前缀显示"精准匹配/模式匹配"; 目标模型 Select 包含 Provider.models + Provider.default_model; 保存过滤也允许 Provider.default_model |
 | 2026-05-24 | 服务端强化匹配类型: 新增 `normalize_match_type` 和 `is_prefix_source_model` 函数, 强制 `__unmatched__` 和 Claude 家族前缀 (claude-opus-/claude-sonnet-/claude-haiku-) 始终视为 `prefix` 匹配; AccessPointService 创建/更新时执行 match_type 标准化; 前端 ModelMappingEditor 对 apiType 做大小写兼容 |
-| 2026-05-26 | 认证体系优化: 前端 `api.ts` 采用「双层防御」策略（请求前体检 + 401 兜底），模块级 Promise 并发去重，解决浏览器冻结导致定时器失效问题；`JwtService` 新增 `refresh_expiry_secs` 访问器，修复 AuthService 两处误用 access 寿命写入 refresh_token expires_at 的 bug；新增 tokio 后台任务每小时物理清理过期 refresh_token，明确拒绝引入 Redis 或 pg_cron，遵循依赖最小化原则；新增架构原则 7-9（依赖最小化、双层防御、依赖倒置认证场景体现） |
+| 2026-05-29 | 实体合并改造: 将 SeaORM DeriveEntityModel 从 `infrastructure/persistence/entities/` 迁移到 `domain/entities/`，删除基础设施层 entities 目录。domain 层引入 SeaORM 宏依赖，消除 200+ 行 TryFrom/From 手工映射代码。领域实体即 ORM 实体，不再区分 |
 | 2026-05-27 | 前端组件架构拆分: 从 RequestLogPage 提取 `RequestLogTable` 组件 (表格列定义 + Table 渲染); 从 SessionLogPage 提取 `SessionListView` (会话列表视图) 和 `SessionDetailView` (会话详情视图); SessionLogPage 瘦身为路由壳, 根据 sessionId 参数切换列表/详情视图; 新增 `/logs/:id` 路由和 `LogDetailPage` 页面; 前端源文件数更新为 45 个 |
+| 2026-05-26 | 认证体系优化: 前端 `api.ts` 采用「双层防御」策略（请求前体检 + 401 兜底），模块级 Promise 并发去重，解决浏览器冻结导致定时器失效问题；`JwtService` 新增 `refresh_expiry_secs` 访问器，修复 AuthService 两处误用 access 寿命写入 refresh_token expires_at 的 bug；新增 tokio 后台任务每小时物理清理过期 refresh_token，明确拒绝引入 Redis 或 pg_cron，遵循依赖最小化原则；新增架构原则 7-9（依赖最小化、双层防御、依赖倒置认证场景体现） |

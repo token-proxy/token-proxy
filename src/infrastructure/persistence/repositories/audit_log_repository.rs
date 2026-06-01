@@ -5,11 +5,10 @@ use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder, Set};
 
 use crate::domain::entities::audit_log::AuditLog;
 use crate::domain::repositories::audit_log_repository::AuditLogRepository;
-use crate::infrastructure::persistence::entities::audit_log::{ActiveModel, Entity};
+use crate::domain::entities::audit_log::{ActiveModel, Column, Entity};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
-/// SeaORM 实现的审计日志仓储
 pub struct SeaOrmAuditLogRepository {
     db: Arc<DatabaseConnection>,
 }
@@ -23,11 +22,6 @@ impl SeaOrmAuditLogRepository {
 #[async_trait]
 impl AuditLogRepository for SeaOrmAuditLogRepository {
     async fn save(&self, log: &AuditLog) -> Result<(), AppError> {
-        let db = &*self.db;
-
-        use chrono::FixedOffset;
-        let offset = FixedOffset::east_opt(0).expect("UTC offset");
-
         let active_model = ActiveModel {
             id: Set(log.id),
             user_id: Set(log.user_id),
@@ -35,14 +29,10 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
             entity_type: Set(log.entity_type.clone()),
             entity_id: Set(log.entity_id),
             details: Set(log.details.clone()),
-            timestamp: Set(log.timestamp.with_timezone(&offset)),
+            timestamp: Set(log.timestamp),
         };
 
-        Entity::insert(active_model)
-            .exec(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
+        Entity::insert(active_model).exec(&*self.db).await?;
         Ok(())
     }
 
@@ -52,31 +42,13 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
         page_size: u64,
     ) -> Result<PaginatedResult<AuditLog>, AppError> {
         let db = &*self.db;
-
         let paginator = Entity::find()
-            .order_by_desc(super::super::entities::audit_log::Column::Timestamp)
+            .order_by_desc(Column::Timestamp)
             .paginate(db, page_size);
 
-        let items = paginator
-            .fetch_page(page.max(1) - 1)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let items = paginator.fetch_page(page.max(1) - 1).await?;
+        let total = paginator.num_items().await?;
 
-        let total = paginator
-            .num_items()
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let domain_items = items
-            .into_iter()
-            .map(|m| m.try_into())
-            .collect::<Result<Vec<AuditLog>, AppError>>()?;
-
-        Ok(PaginatedResult {
-            items: domain_items,
-            total,
-            page,
-            page_size,
-        })
+        Ok(PaginatedResult { items, total, page, page_size })
     }
 }

@@ -1,3 +1,4 @@
+use sea_orm::FromJsonQueryResult;
 use serde::{Deserialize, Serialize};
 
 /// 未匹配的模型哨兵常量：当没有精确/前缀匹配时，使用此规则
@@ -110,7 +111,7 @@ impl ModelMapping {
 }
 
 /// 模型映射集合，包装 Vec<ModelMapping> 并提供批量应用方法
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, FromJsonQueryResult)]
 pub struct ModelMappingCollection(pub Vec<ModelMapping>);
 
 impl ModelMappingCollection {
@@ -166,6 +167,11 @@ impl ModelMappingCollection {
         &self.0
     }
 
+    /// 返回映射列表的迭代器
+    pub fn iter(&self) -> impl Iterator<Item = &ModelMapping> {
+        self.0.iter()
+    }
+
     /// 判断集合是否为空
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -175,11 +181,40 @@ impl ModelMappingCollection {
     pub fn len(&self) -> usize {
         self.0.len()
     }
+
+    /// 确定最终使用的模型名称
+    ///
+    /// 优先级：
+    /// 1. 映射后的模型名（如果匹配到映射规则且不是哨兵值）
+    /// 2. `__default_model__` 哨兵 → 使用 Provider 的默认模型
+    /// 3. Provider 的默认模型（如果配置了）
+    /// 4. 原始请求的模型名（兜底）
+    pub fn resolve_final_model(
+        mapped_model: Option<&str>,
+        default_model: Option<&str>,
+        original_model: &str,
+    ) -> String {
+        match mapped_model {
+            Some(DEFAULT_MODEL_SENTINEL) => default_model
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| original_model.to_string()),
+            Some(model) => model.to_string(),
+            None => default_model
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| original_model.to_string()),
+        }
+    }
 }
 
 impl From<Vec<ModelMapping>> for ModelMappingCollection {
     fn from(mappings: Vec<ModelMapping>) -> Self {
         ModelMappingCollection(mappings)
+    }
+}
+
+impl FromIterator<ModelMapping> for ModelMappingCollection {
+    fn from_iter<T: IntoIterator<Item = ModelMapping>>(iter: T) -> Self {
+        ModelMappingCollection(iter.into_iter().collect())
     }
 }
 
@@ -350,6 +385,39 @@ mod tests {
         assert!(collection.is_empty());
         assert_eq!(collection.len(), 0);
         assert!(collection.find_mapping("any").is_none());
+    }
+
+    #[test]
+    fn test_resolve_final_model_mapped_wins() {
+        let result = ModelMappingCollection::resolve_final_model(
+            Some("mapped-model"),
+            Some("default"),
+            "original",
+        );
+        assert_eq!(result, "mapped-model");
+    }
+
+    #[test]
+    fn test_resolve_final_model_default_sentinel() {
+        let result = ModelMappingCollection::resolve_final_model(
+            Some(DEFAULT_MODEL_SENTINEL),
+            Some("default-model"),
+            "original",
+        );
+        assert_eq!(result, "default-model");
+    }
+
+    #[test]
+    fn test_resolve_final_model_default_fallback() {
+        let result =
+            ModelMappingCollection::resolve_final_model(None, Some("default-model"), "original");
+        assert_eq!(result, "default-model");
+    }
+
+    #[test]
+    fn test_resolve_final_model_original_fallback() {
+        let result = ModelMappingCollection::resolve_final_model(None, None, "original-model");
+        assert_eq!(result, "original-model");
     }
 
     #[test]

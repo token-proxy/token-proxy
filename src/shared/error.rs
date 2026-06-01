@@ -1,6 +1,7 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use sea_orm::DbErr;
 use serde::Serialize;
 use tracing::error;
 
@@ -32,6 +33,12 @@ pub enum AppError {
 
     #[error("内部错误: {0}")]
     Internal(String),
+}
+
+impl From<DbErr> for AppError {
+    fn from(e: DbErr) -> Self {
+        AppError::Database(e.to_string())
+    }
 }
 
 #[derive(Serialize)]
