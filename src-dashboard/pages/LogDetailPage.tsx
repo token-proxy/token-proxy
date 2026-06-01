@@ -34,7 +34,7 @@ export default function LogDetailPage(): ReactNode {
     setLoading(true);
     setError(null);
     try {
-      const result = await api.get<LogDetailFull>(`/api/logs/${id}/detail`);
+      const result = await api.get<LogDetailFull>(`/api/logs/${id}`);
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载日志详情失败');

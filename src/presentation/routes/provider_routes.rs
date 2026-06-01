@@ -18,7 +18,7 @@ use crate::shared::error::AppError;
 /// - `GET    /api/providers/{id}`          → get_provider
 /// - `PUT    /api/providers/{id}`          → update_provider
 /// - `DELETE /api/providers/{id}`          → delete_provider
-/// - `POST   /api/providers/{id}/discover-models` → discover_models
+/// - `POST   /api/providers/{id}/models:discover` → discover_models
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/providers", get(list_providers))
@@ -26,7 +26,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/providers/{id}", get(get_provider))
         .route("/api/providers/{id}", put(update_provider))
         .route("/api/providers/{id}", delete(delete_provider))
-        .route("/api/providers/{id}/discover-models", post(discover_models))
+        .route("/api/providers/{id}/models:discover", post(discover_models))
 }
 
 /// GET /api/providers
@@ -84,9 +84,9 @@ async fn delete_provider(
     Ok(Json(serde_json::json!({"message": "提供商已删除"})))
 }
 
-/// POST /api/providers/{id}/discover-models
+/// POST /api/providers/{id}/models:discover
 ///
-/// 从上游自动发现模型列表
+/// 从上游自动发现模型列表（自定义方法）
 async fn discover_models(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,

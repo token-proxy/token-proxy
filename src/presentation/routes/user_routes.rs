@@ -13,13 +13,13 @@ use crate::shared::error::AppError;
 
 /// 构建用户管理路由
 ///
-/// - `GET    /api/users`                              → list_users
-/// - `POST   /api/users`                              → create_user
-/// - `GET    /api/users/{id}`                         → get_user
-/// - `PUT    /api/users/{id}`                         → update_user
-/// - `DELETE /api/users/{id}`                         → delete_user
-/// - `GET    /api/users/{user_id}/api-keys`            → list_user_api_keys
-/// - `POST   /api/users/{user_id}/api-keys/{id}/revoke` → revoke_user_api_key
+/// - `GET    /api/users`                               → list_users
+/// - `POST   /api/users`                               → create_user
+/// - `GET    /api/users/{id}`                          → get_user
+/// - `PUT    /api/users/{id}`                          → update_user
+/// - `DELETE /api/users/{id}`                          → delete_user
+/// - `GET    /api/users/{user_id}/api-keys`             → list_user_api_keys
+/// - `DELETE /api/users/{user_id}/api-keys/{id}`       → revoke_user_api_key
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/users", get(list_users))
@@ -29,8 +29,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/users/{id}", delete(delete_user))
         .route("/api/users/{user_id}/api-keys", get(list_user_api_keys))
         .route(
-            "/api/users/{user_id}/api-keys/{id}/revoke",
-            post(revoke_user_api_key),
+            "/api/users/{user_id}/api-keys/{id}",
+            delete(revoke_user_api_key),
         )
 }
 
@@ -98,7 +98,7 @@ async fn list_user_api_keys(
     Ok(Json(keys))
 }
 
-/// POST /api/users/{user_id}/api-keys/{id}/revoke
+/// DELETE /api/users/{user_id}/api-keys/{id}
 ///
 /// 管理员吊销指定用户的 API key
 async fn revoke_user_api_key(

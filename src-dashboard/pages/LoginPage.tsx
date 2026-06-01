@@ -23,7 +23,7 @@ export default function LoginPage(): ReactNode {
     if (submitting) return;
     setSubmitting(true);
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/tokens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(values),

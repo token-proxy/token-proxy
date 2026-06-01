@@ -157,7 +157,7 @@ export default function ProfilePage(): ReactNode {
     }
     setPasswordSaving(true);
     try {
-      await api.put('/api/users/me/change-password', {
+      await api.put('/api/users/me/password', {
         old_password: values.old_password,
         new_password: values.new_password,
       });
@@ -209,7 +209,7 @@ export default function ProfilePage(): ReactNode {
     if (operatingIdsRef.current.has(id)) return;
     setOperation(id, true);
     try {
-      await api.post(`/api/users/me/api-keys/${id}/revoke`, {});
+      await api.delete(`/api/users/me/api-keys/${id}`);
       Toast.success('API Key 已吊销');
       loadApiKeys();
     } catch (err) {

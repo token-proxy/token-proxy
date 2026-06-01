@@ -19,9 +19,8 @@ use crate::shared::types::PaginatedResult;
 /// - `GET /api/logs/sessions`                 → get_sessions
 /// - `GET /api/logs/sessions/{id}/contents`   → get_session_contents
 /// - `GET /api/logs/sessions/{id}/token-usage`→ get_session_token_usage
-/// - `GET /api/logs/{id}/detail`              → get_log_detail_full
+/// - `GET /api/logs/{id}`                     → get_log_detail_full
 /// - `GET /api/logs/{id}/raw`                 → get_log_detail
-/// - `GET /api/logs/{id}`                     → get_log_detail
 /// - `GET /api/logs/{id}/token-usage`         → get_log_token_usage
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -35,10 +34,9 @@ pub fn routes() -> Router<AppState> {
             "/api/logs/sessions/{id}/token-usage",
             get(get_session_token_usage),
         )
-        .route("/api/logs/{id}/detail", get(get_log_detail_full))
+        .route("/api/logs/{id}", get(get_log_detail_full))
         .route("/api/logs/{id}/raw", get(get_log_detail))
         .route("/api/logs/{id}/token-usage", get(get_log_token_usage))
-        .route("/api/logs/{id}", get(get_log_detail))
 }
 
 /// GET /api/logs
@@ -54,21 +52,6 @@ async fn query_logs(
 
 /// GET /api/logs/{id}
 ///
-/// 获取指定日志的原始内容
-async fn get_log_detail(
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> Result<Json<LogDetailResponse>, AppError> {
-    let detail = state
-        .log_service
-        .get_log_detail(id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("日志 {} 未找到", id)))?;
-    Ok(Json(detail))
-}
-
-/// GET /api/logs/{id}/detail
-///
 /// 获取日志完整详情（含客户端信息和 token 用量）
 async fn get_log_detail_full(
     State(state): State<AppState>,
@@ -77,6 +60,21 @@ async fn get_log_detail_full(
     let detail = state
         .log_service
         .get_log_detail_full(id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("日志 {} 未找到", id)))?;
+    Ok(Json(detail))
+}
+
+/// GET /api/logs/{id}/raw
+///
+/// 获取指定日志的原始内容
+async fn get_log_detail(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<LogDetailResponse>, AppError> {
+    let detail = state
+        .log_service
+        .get_log_detail(id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("日志 {} 未找到", id)))?;
     Ok(Json(detail))

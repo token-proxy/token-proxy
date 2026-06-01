@@ -32,7 +32,7 @@ async function doRefresh(): Promise<string> {
     throw new Error('缺少 refresh_token');
   }
 
-  const res = await fetch('/api/auth/refresh', {
+  const res = await fetch('/api/tokens:refresh', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh_token: refreshToken }),

@@ -8,15 +8,12 @@ use axum::{
 use crate::application::AppState;
 use crate::shared::error::AppError;
 
-/// 公开路径（无需认证）
-const PUBLIC_PATHS: &[&str] = &["/api/auth/login", "/api/auth/refresh", "/api/health"];
-
-/// `/ap/*` 代理转发路径也是公开的
+/// 公开路径（无需认证，精确匹配）
 fn is_public_path(path: &str) -> bool {
     if path.starts_with("/ap/") {
         return true;
     }
-    PUBLIC_PATHS.iter().any(|p| path.starts_with(p))
+    matches!(path, "/api/health" | "/api/tokens" | "/api/tokens:refresh")
 }
 
 /// JWT 认证中间件
