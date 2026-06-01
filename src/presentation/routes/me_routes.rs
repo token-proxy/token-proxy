@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State},
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use uuid::Uuid;
@@ -17,25 +17,22 @@ use crate::shared::error::AppError;
 ///
 /// 所有路由均需经过 JWT 认证，使用 `CurrentUser` extractor 获取当前用户 ID。
 ///
-/// - `GET    /api/users/me`                           -> get_my_profile
-/// - `PUT    /api/users/me/profile`                   -> update_my_profile
-/// - `PUT    /api/users/me/change-password`           -> change_my_password
-/// - `GET    /api/users/me/api-keys`                  -> list_my_api_keys
-/// - `POST   /api/users/me/api-keys`                  -> create_my_api_key
-/// - `PUT    /api/users/me/api-keys/{id}`              -> update_my_api_key
-/// - `POST   /api/users/me/api-keys/{id}/revoke`      -> revoke_my_api_key
+/// - `GET    /api/users/me`                  -> get_my_profile
+/// - `PUT    /api/users/me/profile`          -> update_my_profile
+/// - `PUT    /api/users/me/password`         -> change_my_password
+/// - `GET    /api/users/me/api-keys`         -> list_my_api_keys
+/// - `POST   /api/users/me/api-keys`         -> create_my_api_key
+/// - `PUT    /api/users/me/api-keys/{id}`     -> update_my_api_key
+/// - `DELETE /api/users/me/api-keys/{id}`     -> revoke_my_api_key
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/users/me", get(get_my_profile))
         .route("/api/users/me/profile", put(update_my_profile))
-        .route("/api/users/me/change-password", put(change_my_password))
+        .route("/api/users/me/password", put(change_my_password))
         .route("/api/users/me/api-keys", get(list_my_api_keys))
         .route("/api/users/me/api-keys", post(create_my_api_key))
         .route("/api/users/me/api-keys/{id}", put(update_my_api_key))
-        .route(
-            "/api/users/me/api-keys/{id}/revoke",
-            post(revoke_my_api_key),
-        )
+        .route("/api/users/me/api-keys/{id}", delete(revoke_my_api_key))
 }
 
 /// GET /api/users/me
@@ -66,7 +63,7 @@ async fn update_my_profile(
     Ok(Json(user))
 }
 
-/// PUT /api/users/me/change-password
+/// PUT /api/users/me/password
 ///
 /// 修改当前用户密码
 ///
@@ -114,7 +111,7 @@ async fn create_my_api_key(
     Ok(Json(key))
 }
 
-/// POST /api/users/me/api-keys/{id}/revoke
+/// DELETE /api/users/me/api-keys/{id}
 ///
 /// 撤销指定 API key
 async fn revoke_my_api_key(

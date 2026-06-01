@@ -185,7 +185,7 @@ export default function ProviderManagement(): ReactNode {
     setDiscovering(true);
     try {
       const resp = await api.post<{ models: string[] }>(
-        `/api/providers/${editingProvider.id}/discover-models`,
+        `/api/providers/${editingProvider.id}/models:discover`,
         {},
       );
       const models = resp.models ?? [];

@@ -1,4 +1,4 @@
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{extract::State, routing::{delete, post}, Json, Router};
 use serde_json::Value;
 
 use crate::application::dto::auth_dto::{LoginRequest, LoginResponse, RefreshRequest};
@@ -6,21 +6,21 @@ use crate::application::AppState;
 use crate::presentation::middleware::jwt_auth::CurrentUser;
 use crate::shared::error::AppError;
 
-/// 构建认证路由
+/// 构建 Token 资源路由
 ///
-/// - `POST /api/auth/login`   — 登录（公开）
-/// - `POST /api/auth/refresh` — 刷新 token（公开）
-/// - `POST /api/auth/logout`  — 登出（需认证）
+/// - `POST   /api/tokens`          — 创建 Token（登录, 公开）
+/// - `POST   /api/tokens:refresh`  — 刷新 Token（公开, 自定义方法）
+/// - `DELETE /api/tokens/current`  — 删除当前 Token（登出, 需认证）
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/auth/login", post(login))
-        .route("/api/auth/refresh", post(refresh))
-        .route("/api/auth/logout", post(logout))
+        .route("/api/tokens", post(login))
+        .route("/api/tokens:refresh", post(refresh))
+        .route("/api/tokens/current", delete(logout))
 }
 
-/// POST /api/auth/login
+/// POST /api/tokens
 ///
-/// 用户登录，返回 JWT 令牌对
+/// 用户登录，创建 JWT 令牌对
 async fn login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
@@ -29,9 +29,9 @@ async fn login(
     Ok(Json(resp))
 }
 
-/// POST /api/auth/refresh
+/// POST /api/tokens:refresh
 ///
-/// 刷新访问令牌
+/// 刷新访问令牌（自定义方法）
 async fn refresh(
     State(state): State<AppState>,
     Json(req): Json<RefreshRequest>,
@@ -40,7 +40,9 @@ async fn refresh(
     Ok(Json(resp))
 }
 
-/// POST /api/auth/logout（需要认证）
+/// DELETE /api/tokens/current（需要认证）
+///
+/// 登出，删除当前用户的 refresh token
 async fn logout(
     State(state): State<AppState>,
     CurrentUser(user_id): CurrentUser,
