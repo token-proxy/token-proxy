@@ -51,7 +51,7 @@ impl ProviderService {
             name: provider.name.clone(),
             openai_base_url: provider.openai_base_url.clone(),
             anthropic_base_url: provider.anthropic_base_url.clone(),
-            models: provider.models.clone(),
+            models: provider.models.clone().into(),
             default_model: provider.default_model.clone(),
             status: provider.status.to_string(),
             created_at: provider.created_at.with_timezone(&chrono::Utc),
@@ -132,7 +132,7 @@ impl ProviderService {
             provider.anthropic_base_url = Some(url).filter(|u| !u.trim().is_empty());
         }
         if let Some(models) = req.models {
-            provider.models = models;
+            provider.models = models.into();
         }
         if let Some(default_model) = req.default_model {
             let trimmed = default_model.trim().to_string();
@@ -326,7 +326,7 @@ impl ProviderService {
             .save(&provider)
             .await?;
 
-        Ok(saved.models)
+        Ok(saved.models.into())
     }
 
     /// 尝试调用上游 API 发现模型
