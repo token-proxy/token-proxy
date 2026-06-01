@@ -2,6 +2,7 @@ use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::entity::prelude::*;
 use uuid::Uuid;
 
+use crate::domain::value_objects::model_list::ModelList;
 use crate::domain::value_objects::status::Status;
 use crate::shared::error::AppError;
 
@@ -14,8 +15,7 @@ pub struct Model {
     pub name: String,
     pub openai_base_url: Option<String>,
     pub anthropic_base_url: Option<String>,
-    #[sea_orm(column_type = "JsonBinary")]
-    pub models: Vec<String>,
+    pub models: ModelList,
     pub default_model: Option<String>,
     pub status: Status,
     pub created_at: DateTimeWithTimeZone,
@@ -74,7 +74,7 @@ impl Model {
             anthropic_base_url: anthropic_base_url
                 .map(|u| u.trim().to_string())
                 .filter(|u| !u.is_empty()),
-            models: Vec::new(),
+            models: ModelList::default(),
             default_model: default_model
                 .map(|m| m.trim().to_string())
                 .filter(|m| !m.is_empty()),
