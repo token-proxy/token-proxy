@@ -11,7 +11,7 @@ use token_proxy::application::services::account_service::AccountService;
 use token_proxy::application::services::auth_service::AuthService;
 use token_proxy::application::services::log_service::LogService;
 use token_proxy::application::services::provider_service::ProviderService;
-use token_proxy::application::services::proxy_service::ProxyService;
+use token_proxy::application::services::proxy_pipeline::ProxyPipeline;
 use token_proxy::application::services::user_api_key_service::UserApiKeyService;
 use token_proxy::application::services::user_service::UserService;
 use token_proxy::application::AppState;
@@ -243,18 +243,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         jwt_service.clone(),
     ));
 
-    let proxy_service = Arc::new(ProxyService::new(
-        access_point_repo.clone(),
-        account_repo.clone(),
-        encryption_service.clone(),
-        user_api_key_repo.clone(),
-    ));
-
     let log_service = Arc::new(LogService::new(
         log_repo.clone(),
         log_token_usage_repo.clone(),
         user_repo.clone(),
         access_point_repo.clone(),
+    ));
+
+    let proxy_pipeline = Arc::new(ProxyPipeline::new(
+        access_point_repo.clone(),
+        encryption_service.clone(),
+        proxy_client.clone(),
+        log_service.clone(),
     ));
 
     let user_api_key_service = Arc::new(UserApiKeyService::new(
@@ -305,7 +305,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         user_api_key_service,
         access_point_service,
         auth_service,
-        proxy_service,
+        proxy_pipeline,
         log_service,
         log_repo,
         log_token_usage_repo,

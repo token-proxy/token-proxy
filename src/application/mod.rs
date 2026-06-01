@@ -17,7 +17,7 @@ use services::account_service::AccountService;
 use services::auth_service::AuthService;
 use services::log_service::LogService;
 use services::provider_service::ProviderService;
-use services::proxy_service::ProxyService;
+use services::proxy_pipeline::ProxyPipeline;
 use services::user_api_key_service::UserApiKeyService;
 use services::user_service::UserService;
 
@@ -32,7 +32,7 @@ pub struct AppState {
     pub user_api_key_service: Arc<UserApiKeyService>,
     pub access_point_service: Arc<AccessPointService>,
     pub auth_service: Arc<AuthService>,
-    pub proxy_service: Arc<ProxyService>,
+    pub proxy_pipeline: Arc<ProxyPipeline>,
     pub log_service: Arc<LogService>,
     pub log_repo: Arc<dyn LogRepository>,
     pub log_token_usage_repo: Arc<dyn LogTokenUsageRepository>,

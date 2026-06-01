@@ -8,45 +8,27 @@ use axum::{
 use crate::application::AppState;
 use crate::shared::error::AppError;
 
-/// 公开路径（无需认证，精确匹配）
-fn is_public_path(path: &str) -> bool {
-    if path.starts_with("/ap/") {
-        return true;
-    }
-    matches!(path, "/api/health" | "/api/tokens" | "/api/tokens:refresh")
-}
-
 /// JWT 认证中间件
 ///
-/// 对所有请求进行拦截检查:
-/// - 公开路径直接放行
-/// - 非公开路径需要有效的 Bearer token
+/// 对所有路由进行 JWT Bearer token 认证。
+/// 公开路由和代理路由已通过路由分组排除，因此此中间件只做一件事：验证 JWT。
 pub async fn auth_middleware(
     State(state): State<AppState>,
     mut req: Request,
     next: Next,
 ) -> Result<Response, AppError> {
-    // 1. 检查是否为公开路径
-    if is_public_path(req.uri().path()) {
-        return Ok(next.run(req).await);
-    }
-
-    // 2. 提取 Authorization header
     let auth_header = req
         .headers()
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::Unauthorized("缺少认证令牌".to_string()))?;
 
-    // 3. 验证 Bearer token 格式
     let token = auth_header
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized("无效的认证头格式".to_string()))?;
 
-    // 4. 验证 JWT
     let claims = state.auth_service.validate_access_token(token).await?;
 
-    // 5. 将用户信息注入 request extensions
     req.extensions_mut().insert(claims);
 
     Ok(next.run(req).await)

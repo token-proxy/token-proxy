@@ -215,7 +215,7 @@ impl UserApiKeyService {
     /// 验证 API key 并返回对应的 user_id
     ///
     /// 用于代理认证场景。通过比较 SHA-256 哈希查找匹配的 key，
-    /// 验证其状态为启用后返回所属用户 ID。
+    /// 验证其状态为启用后返回所属用户 ID，并更新 last_used_at。
     pub async fn validate_api_key(&self, key: &str) -> Result<Uuid, AppError> {
         let key_hash = Self::hash_key(key);
 
@@ -228,6 +228,12 @@ impl UserApiKeyService {
         if !api_key.status.is_enabled() {
             return Err(AppError::Unauthorized("API key 已被禁用".to_string()));
         }
+
+        // 更新最后使用时间（忽略失败，不阻塞请求）
+        self.api_key_repo
+            .update_last_used(api_key.id)
+            .await
+            .ok();
 
         Ok(api_key.user_id)
     }

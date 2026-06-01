@@ -6,16 +6,21 @@ use crate::application::AppState;
 use crate::presentation::middleware::jwt_auth::CurrentUser;
 use crate::shared::error::AppError;
 
-/// 构建 Token 资源路由
+/// 公开认证路由（无需 JWT）
 ///
-/// - `POST   /api/tokens`          — 创建 Token（登录, 公开）
-/// - `POST   /api/tokens:refresh`  — 刷新 Token（公开, 自定义方法）
-/// - `DELETE /api/tokens/current`  — 删除当前 Token（登出, 需认证）
-pub fn routes() -> Router<AppState> {
+/// - `POST /api/tokens`          — 登录
+/// - `POST /api/tokens:refresh`  — 刷新 token
+pub fn public_routes() -> Router<AppState> {
     Router::new()
         .route("/api/tokens", post(login))
         .route("/api/tokens:refresh", post(refresh))
-        .route("/api/tokens/current", delete(logout))
+}
+
+/// 需 JWT 认证的认证路由
+///
+/// - `DELETE /api/tokens/current` — 登出
+pub fn protected_routes() -> Router<AppState> {
+    Router::new().route("/api/tokens/current", delete(logout))
 }
 
 /// POST /api/tokens
