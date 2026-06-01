@@ -5,7 +5,8 @@ use sea_orm::{ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFi
 
 use crate::domain::entities::account::Account;
 use crate::domain::repositories::account_repository::AccountRepository;
-use crate::infrastructure::persistence::entities::account::{ActiveModel, Column, Entity};
+use crate::domain::entities::account::{ActiveModel, Column, Entity};
+use crate::domain::value_objects::status::Status;
 use crate::shared::error::AppError;
 use uuid::Uuid;
 
@@ -22,92 +23,57 @@ impl SeaOrmAccountRepository {
 #[async_trait]
 impl AccountRepository for SeaOrmAccountRepository {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Account>, AppError> {
-        let db = &*self.db;
-        let model = Entity::find_by_id(id)
-            .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        match model {
-            Some(m) => Ok(Some(m.try_into()?)),
-            None => Ok(None),
-        }
+        Ok(Entity::find_by_id(id).one(&*self.db).await?)
     }
 
     async fn find_by_provider_id(&self, provider_id: Uuid) -> Result<Vec<Account>, AppError> {
-        let db = &*self.db;
-        let models = Entity::find()
+        Ok(Entity::find()
             .filter(Column::ProviderId.eq(provider_id))
-            .all(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        models
-            .into_iter()
-            .map(|m| m.try_into())
-            .collect::<Result<Vec<Account>, AppError>>()
+            .all(&*self.db)
+            .await?)
     }
 
     async fn find_enabled_by_provider_id(
         &self,
         provider_id: Uuid,
     ) -> Result<Vec<Account>, AppError> {
-        let db = &*self.db;
-        let models = Entity::find()
+        Ok(Entity::find()
             .filter(Column::ProviderId.eq(provider_id))
-            .filter(Column::Status.eq("enabled"))
-            .all(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        models
-            .into_iter()
-            .map(|m| m.try_into())
-            .collect::<Result<Vec<Account>, AppError>>()
+            .filter(Column::Status.eq(Status::Enabled))
+            .all(&*self.db)
+            .await?)
     }
 
     async fn get_encrypted_api_key(&self, account_id: Uuid) -> Result<Vec<u8>, AppError> {
         let db = &*self.db;
         let model = Entity::find_by_id(account_id)
             .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("账号 {} 未找到", account_id)))?;
 
         Ok(model.api_key_encrypted)
     }
 
     async fn find_all(&self) -> Result<Vec<Account>, AppError> {
-        let db = &*self.db;
-        let models = Entity::find()
-            .all(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        models
-            .into_iter()
-            .map(|m| m.try_into())
-            .collect::<Result<Vec<Account>, AppError>>()
+        Ok(Entity::find().all(&*self.db).await?)
     }
 
     async fn save(&self, account: &Account) -> Result<Account, AppError> {
         let db = &*self.db;
         let exists = Entity::find_by_id(account.id)
             .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .is_some();
 
         // Account 的 ActiveModel 需要 api_key_encrypted, 但领域实体不包含此字段。
         // 更新时保持原加密数据不变; 新建时使用空 Vec（应由应用层补充处理）。
         use chrono::FixedOffset;
-        let offset = FixedOffset::east_opt(0).expect("UTC offset");
+        let _offset = FixedOffset::east_opt(0).expect("UTC offset");
 
         let active_model = if exists {
             let existing = Entity::find_by_id(account.id)
                 .one(db)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?
+                .await?
                 .ok_or_else(|| AppError::NotFound("Account 不存在".to_string()))?;
 
             ActiveModel {
@@ -116,9 +82,9 @@ impl AccountRepository for SeaOrmAccountRepository {
                 name: Set(account.name.clone()),
                 api_key_encrypted: Set(existing.api_key_encrypted),
                 api_key_suffix: Set(account.api_key_suffix.clone()),
-                status: Set(account.status.to_string()),
-                created_at: Set(account.created_at.with_timezone(&offset)),
-                updated_at: Set(account.updated_at.with_timezone(&offset)),
+                status: Set(account.status.clone()),
+                created_at: Set(account.created_at),
+                updated_at: Set(account.updated_at),
             }
         } else {
             ActiveModel {
@@ -127,38 +93,33 @@ impl AccountRepository for SeaOrmAccountRepository {
                 name: Set(account.name.clone()),
                 api_key_encrypted: Set(Vec::new()),
                 api_key_suffix: Set(account.api_key_suffix.clone()),
-                status: Set(account.status.to_string()),
-                created_at: Set(account.created_at.with_timezone(&offset)),
-                updated_at: Set(account.updated_at.with_timezone(&offset)),
+                status: Set(account.status.clone()),
+                created_at: Set(account.created_at),
+                updated_at: Set(account.updated_at),
             }
         };
 
         if exists {
             Entity::update(active_model)
                 .exec(db)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                .await?;
         } else {
             Entity::insert(active_model)
                 .exec(db)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                .await?;
         }
 
         Entity::find_by_id(account.id)
             .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .map(|m| m.try_into())
-            .ok_or_else(|| AppError::Internal("保存后无法查询到 Account".to_string()))?
+            .await?
+            .ok_or_else(|| AppError::Internal("保存后无法查询到 Account".to_string()))
     }
 
     async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         let db = &*self.db;
         Entity::delete_by_id(id)
             .exec(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -170,7 +131,7 @@ impl AccountRepository for SeaOrmAccountRepository {
     ) -> Result<Account, AppError> {
         let db = &*self.db;
         use chrono::FixedOffset;
-        let offset = FixedOffset::east_opt(0).expect("UTC offset");
+        let _offset = FixedOffset::east_opt(0).expect("UTC offset");
 
         let active_model = ActiveModel {
             id: Set(account.id),
@@ -178,22 +139,19 @@ impl AccountRepository for SeaOrmAccountRepository {
             name: Set(account.name.clone()),
             api_key_encrypted: Set(encrypted_api_key.to_vec()),
             api_key_suffix: Set(account.api_key_suffix.clone()),
-            status: Set(account.status.to_string()),
-            created_at: Set(account.created_at.with_timezone(&offset)),
-            updated_at: Set(account.updated_at.with_timezone(&offset)),
+            status: Set(account.status.clone()),
+            created_at: Set(account.created_at),
+            updated_at: Set(account.updated_at),
         };
 
         Entity::insert(active_model)
             .exec(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Entity::find_by_id(account.id)
             .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .map(|m| m.try_into())
-            .ok_or_else(|| AppError::Internal("保存后无法查询到 Account".to_string()))?
+            .await?
+            .ok_or_else(|| AppError::Internal("保存后无法查询到 Account".to_string()))
     }
 
     async fn update_encrypted_api_key(
@@ -204,17 +162,15 @@ impl AccountRepository for SeaOrmAccountRepository {
         let db = &*self.db;
         let existing = Entity::find_by_id(account_id)
             .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("账号 {} 未找到", account_id)))?;
 
-        use chrono::{FixedOffset, Utc};
-        let offset = FixedOffset::east_opt(0).expect("UTC offset");
+        use chrono::Utc;
 
         let active_model = ActiveModel {
             id: Set(existing.id),
             api_key_encrypted: Set(encrypted_api_key.to_vec()),
-            updated_at: Set(Utc::now().with_timezone(&offset)),
+            updated_at: Set(Utc::now().fixed_offset()),
             // 其他字段保持不变
             provider_id: ActiveValue::NotSet,
             name: ActiveValue::NotSet,
@@ -225,8 +181,7 @@ impl AccountRepository for SeaOrmAccountRepository {
 
         Entity::update(active_model)
             .exec(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(())
     }

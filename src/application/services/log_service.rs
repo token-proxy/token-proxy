@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::Utc;
+
 use uuid::Uuid;
 
 use crate::application::dto::log_dto::{
@@ -43,7 +43,7 @@ impl LogService {
             id: usage.id,
             log_id: usage.log_id,
             session_id: usage.session_id.clone(),
-            timestamp: usage.timestamp,
+            timestamp: usage.timestamp.to_utc(),
             input_tokens: usage.input_tokens,
             output_tokens: usage.output_tokens,
             cache_creation_input_tokens: usage.cache_creation_input_tokens,
@@ -61,8 +61,7 @@ impl LogService {
         let saved = self
             .log_repo
             .save(entry)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
         Ok(saved.id)
     }
 
@@ -71,7 +70,7 @@ impl LogService {
         self.log_repo
             .save_content(content)
             .await
-            .map_err(|e| AppError::Database(e.to_string()))
+            
     }
 
     /// 记录代理日志的核心入口
@@ -113,9 +112,9 @@ impl LogService {
         // 保存原始内容
         let content = LogContent {
             log_id: saved.id,
-            request_headers,
-            request_body,
-            response_body: response_body.clone(),
+            request_headers: Some(request_headers),
+            request_body: Some(request_body),
+            response_body: Some(response_body.clone()),
         };
         self.log_repo.save_content(&content).await?;
 
@@ -145,7 +144,7 @@ impl LogService {
                     raw_usage: Some(usage_data.raw_usage),
                     server_tool_usage: None,
                     cache_creation: None,
-                    created_at: Utc::now(),
+                    created_at: chrono::Utc::now().fixed_offset(),
                 })
                 .await?;
         }
@@ -184,15 +183,14 @@ impl LogService {
         let result = self
             .log_repo
             .find_all_paginated_with_token_summary(page, page_size, &log_query)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         let items: Vec<LogSummaryResponse> = result
             .items
             .iter()
             .map(|item| LogSummaryResponse {
                 id: item.entry.id,
-                timestamp: item.entry.timestamp,
+                timestamp: item.entry.timestamp.to_utc(),
                 session_id: item.entry.session_id.clone(),
                 user_id: item.entry.user_id,
                 access_point_id: item.entry.access_point_id,
@@ -226,20 +224,18 @@ impl LogService {
         let entry = self
             .log_repo
             .find_by_id(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         let content = self
             .log_repo
             .find_content_by_log_id(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         match entry {
             Some(entry) => {
                 let detail = LogDetailResponse {
                     id: entry.id,
-                    timestamp: entry.timestamp,
+                    timestamp: entry.timestamp.with_timezone(&chrono::Utc),
                     session_id: entry.session_id,
                     user_id: entry.user_id,
                     access_point_id: entry.access_point_id,
@@ -250,9 +246,9 @@ impl LogService {
                     status_code: entry.status_code,
                     duration_ms: entry.duration_ms,
                     error_message: entry.error_message,
-                    request_headers: content.as_ref().map(|c| c.request_headers.clone()),
-                    request_body: content.as_ref().map(|c| c.request_body.clone()),
-                    response_body: content.map(|c| c.response_body),
+                    request_headers: content.as_ref().and_then(|c| c.request_headers.clone()),
+                    request_body: content.as_ref().and_then(|c| c.request_body.clone()),
+                    response_body: content.as_ref().and_then(|c| c.response_body.clone()),
                 };
                 Ok(Some(detail))
             }
@@ -271,8 +267,7 @@ impl LogService {
         let result = self
             .log_repo
             .find_log_detail_full(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         match result {
             Some((entry, content, usage)) => {
@@ -300,7 +295,7 @@ impl LogService {
 
                 let detail = LogDetailFullResponse {
                     id: entry.id,
-                    timestamp: entry.timestamp,
+                    timestamp: entry.timestamp.with_timezone(&chrono::Utc),
                     session_id: entry.session_id,
                     user_id: entry.user_id,
                     user_name,
@@ -320,9 +315,9 @@ impl LogService {
                     client_version: entry.client_version,
                     client_channel: entry.client_channel,
                     client_platform: entry.client_platform,
-                    request_headers: content.request_headers,
-                    request_body: content.request_body,
-                    response_body: content.response_body,
+                    request_headers: content.request_headers.unwrap_or(serde_json::Value::Null),
+                    request_body: content.request_body.unwrap_or(serde_json::Value::Null),
+                    response_body: content.response_body.unwrap_or_default(),
                     token_input_tokens: usage.as_ref().map(|u| u.input_tokens),
                     token_output_tokens: usage.as_ref().map(|u| u.output_tokens),
                     token_cache_creation_input_tokens: usage
@@ -357,12 +352,12 @@ impl LogService {
                 items.push(SessionContentItemResponse {
                     log_id: entry.id,
                     request_index: entry.request_index,
-                    timestamp: entry.timestamp,
+                    timestamp: entry.timestamp.with_timezone(&chrono::Utc),
                     conversation_source: entry.conversation_source.clone(),
                     agent_id: entry.agent_id.clone(),
-                    request_headers: c.request_headers,
-                    request_body: c.request_body,
-                    response_body: c.response_body,
+                    request_headers: c.request_headers.unwrap_or(serde_json::Value::Null),
+                    request_body: c.request_body.unwrap_or(serde_json::Value::Null),
+                    response_body: c.response_body.unwrap_or_default(),
                     token_usage: usage.as_ref().map(Self::to_token_usage_response),
                 });
             }
@@ -391,8 +386,7 @@ impl LogService {
         let result = self
             .log_repo
             .find_sessions_paginated(page, page_size, &session_query)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         let items: Vec<SessionSummaryResponse> = result
             .items

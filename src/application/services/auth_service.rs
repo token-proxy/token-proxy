@@ -40,8 +40,7 @@ impl AuthService {
         let user = self
             .user_repo
             .find_by_username(&req.username)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::Unauthorized("用户名或密码错误".to_string()))?;
 
         if !user.status.is_enabled() {
@@ -79,8 +78,7 @@ impl AuthService {
         let refresh_token_entity = RefreshToken::new(user.id, token_hash, expires_at);
         self.refresh_token_repo
             .save(&refresh_token_entity)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(LoginResponse {
             access_token,
@@ -98,8 +96,7 @@ impl AuthService {
         let stored_token = self
             .refresh_token_repo
             .find_by_token_hash(&token_hash)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::Unauthorized("无效的 refresh token".to_string()))?;
 
         if !stored_token.is_valid() {
@@ -111,15 +108,13 @@ impl AuthService {
         // 原子吊销旧 token
         self.refresh_token_repo
             .revoke(stored_token.id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         // 获取用户信息
         let user = self
             .user_repo
             .find_by_id(stored_token.user_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::Unauthorized("用户不存在".to_string()))?;
 
         if !user.status.is_enabled() {
@@ -148,8 +143,7 @@ impl AuthService {
         let new_token_entity = RefreshToken::new(user.id, new_token_hash, expires_at);
         self.refresh_token_repo
             .save(&new_token_entity)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(LoginResponse {
             access_token,
@@ -164,8 +158,7 @@ impl AuthService {
     pub async fn logout(&self, user_id: Uuid) -> Result<(), AppError> {
         self.refresh_token_repo
             .revoke_all_for_user(user_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(())
     }

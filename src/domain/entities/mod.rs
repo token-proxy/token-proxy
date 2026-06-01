@@ -1,7 +1,10 @@
 pub mod access_point;
 pub mod account;
 pub mod audit_log;
+pub mod log_content;
 pub mod log_entry;
+pub mod log_metadata;
+pub mod log_token_usage;
 pub mod provider;
 pub mod refresh_token;
 pub mod user;

@@ -15,7 +15,7 @@
 ```
 src/
 ├── domain/              # 领域层 (零外部框架依赖)
-│   ├── entities/        # Provider, Account, User, AccessPoint, RefreshToken, LogEntry, UserApiKey
+│   ├── entities/        # 11 个 SeaORM Model 实体 (唯一实体定义, 字段直接使用领域类型自动转换)
 │   ├── value_objects/   # ShortCode, ApiKey, ModelMapping, Status, AccessPointType
 │   ├── repositories/    # Repository traits (接口定义)
 │   └── services/        # EncryptionService trait, ModelMappingService
@@ -24,7 +24,7 @@ src/
 │   ├── services/        # 8 个应用服务 (依赖注入 domain traits)
 │   └── AppState         # 全局共享状态
 ├── infrastructure/      # 基础设施层
-│   ├── persistence/     # SeaORM 实体 (10 个) + Repository 实现 (8 个) + PartitionManager
+│   ├── persistence/     # Repository 实现 (8 个) + PartitionManager
 │   ├── encryption/      # AES-256-GCM 加密
 │   ├── auth/            # JWT (jsonwebtoken) + argon2 密码哈希
 │   └── http_client/     # reqwest 代理转发客户端
@@ -45,6 +45,7 @@ src/
 - 部署: Dockerfile (多阶段: Node 22 构建前端 -> Rust 1.89 构建后端 -> Alpine 3.21 运行时)
 - docker-compose.yml (pgvector/pgvector:pg17 + app)
 - 特性亮点: Provider.default_model (从 models 列表选择)、模型映射 MatchType (exact/prefix)、统一模型匹配优先级、AccessPoint.api_type、DEFAULT_MODEL_SENTINEL 哨兵值
+- 实体合并: 所有 SeaORM Model 实体定义统一在 `domain/entities/` 中, 不再存在独立的 `infrastructure/persistence/entities/` 目录。实体字段直接使用领域类型 (Status/ShortCode/AccessPointType/ModelMappingCollection) 通过 DeriveActiveEnum/DeriveValueType/FromJsonQueryResult 自动转换。log_entry.rs 退化为 re-export 文件
 
 ## 数据库 Schema (11 个核心表)
 
@@ -120,7 +121,7 @@ src/
 - **汉字与数字/字母/英文符号之间必须保留一个空格**
 - 如: `服务监听地址: {}`, `接入点 '{}' 未找到`
 - 错误消息使用中文, 技术标识符/日志字段使用英文
-- 后端: 97 个 Rust 源文件, 遵循 Rust 2021 edition 惯例
+- 后端: 94 个 Rust 源文件, 遵循 Rust 2021 edition 惯例
 - 前端: 45 个 TypeScript 源文件, 遵循 TypeScript 6 严格模式
 
 ### 后端 (Rust)
@@ -146,6 +147,37 @@ src/
 - **AccessPointDrawer 映射管理**: 接入点创建/编辑时选择 Provider 后, 会请求 `GET /api/providers/{id}` 刷新 Provider 的 models 和 default_model 列表; 创建态选择带默认模型的 Provider 时自动预填一条 `__unmatched__ -> __default_model__` 的映射规则。保存接入点时过滤映射, target_model 必须属于 Provider.models 或等于 `__default_model__` 哨兵
 - **日志前端展示**: 请求日志列表使用 `RequestLogTable` 组件, 优先展示 `log_metadata.message_preview`, 内容超出时用 Semi Tooltip 展示 `message_full`; 会话日志页面 `SessionLogPage` 瘦身为路由壳, 负责数据加载和视图切换; 列表模式使用 `SessionListView` (筛选栏 + 表格), 详情模式使用 `SessionDetailView` (信息卡片 + `ClaudeSessionTimeline` 时间线 + 事件摘要表格 + `RawContentModal`); 默认不批量读取 `log_contents`, 点击”原始内容”时再请求 `/api/logs/{id}/raw`
 
+## 设计原则
+
+以下原则来自实际重构中的错误，与具体业务逻辑无关，适用于任何涉及职责分配的场景。
+
+### 参数所有权测试
+
+判断一个方法是否放在正确的对象上，看它的**所有参数是否都属于该对象的概念范围**。如果方法签名的某个参数不是该类型的字段、也不属于该类型所代表的领域概念，那这个方法大概率放错了位置 — 它应该属于更上层的聚合根。
+
+- 方法 `find_rule(request)` — `request` 是外部输入，不是集合自身的概念。但查找规则的**逻辑**（匹配方式、优先级）完全由集合内部的规则项定义，且 `request` 作为查询条件只是提供一个匹配目标，不携带外部上下文。这种情况参数所有权不构成问题。
+- 方法 `resolve(request, default)` — `default` 既不是该类型的字段，也不属于该类型代表的概念。它来自另一个聚合的字段。方法需要这个参数意味着它的职责范围已经超出了该类型。
+
+简单判断：**如果一个参数放进构造函数里会觉得别扭，那它就不该出现在该类型的方法签名里。**
+
+### 聚合根作为行为入口
+
+聚合根对外提供行为，内部的值对象负责执行底层操作。调用方不应该穿透聚合根去访问内部值对象的方法来获取决策结果：
+
+```
+// 错误：调用方穿透了两层
+aggr.inner_collection.resolve(x, y)
+
+// 正确：调用方只对聚合根发问
+aggr.resolve(x, y)
+```
+
+聚合根的方法内部可以委托给值对象（`self.inner_collection.find(x)`），但值对象的方法只应返回自己的数据结构，不接收自己领域之外的数据作为输入参数。
+
+### “行为靠近数据”的边界
+
+“把行为移到数据旁边”是一条好原则，但它有边界 — 只适用于**数据是自己、参数也只涉及自己**的场景。一旦方法签名引入了不属于该类型的概念，就说明行为不属于这里，应该移到能容纳所有参数的最小子系统中（通常就是上一层的聚合根）。
+
 ## 注意事项
 
 - `.rs` 空文件留作占位用, 不应删除
@@ -157,6 +189,7 @@ src/
 - 日志默认展示不得依赖 `log_contents`; `log_metadata` 和 `log_conversation_events` 必须足够支撑请求日志列表和会话详情页, `log_contents` 仅用于原始明细弹窗
 - `__unmatched__` 哨兵是模型映射中的特殊 source_model, 使用 `prefix` 匹配类型, 用于为所有未精确/前缀匹配的请求模型指定目标模型, 每个接入点最多一个。接入点创建时, Drawer 自动预填一条 `__unmatched__ -> __default_model__` 映射。保存接入点时过滤映射, target_model 必须属于 Provider.models 或等于 `__default_model__` 哨兵
 - `api_type` 枚举的实际范围在 `AccessPointType` 值对象中定义, 新增类型需要同步修改 Rust 枚举 + 数据库列约束 + 前端 Select 选项
+- `domain/entities/` 是唯一的实体定义目录, 包含 11 个 SeaORM Model 文件 (access_point/account/provider/user/refresh_token/user_api_key/audit_log/log_metadata/log_content/log_token_usage) 和 1 个 re-export 文件 (log_entry)。仓库层统一从 `crate::domain::entities` 导入, 不再从 `infrastructure/persistence/entities` 导入
 
 ## 核心文件路径
 

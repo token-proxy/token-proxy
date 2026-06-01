@@ -10,7 +10,9 @@ use crate::domain::repositories::access_point_repository::AccessPointRepository;
 use crate::domain::repositories::account_repository::AccountRepository;
 use crate::domain::repositories::provider_repository::ProviderRepository;
 use crate::domain::value_objects::access_point_type::AccessPointType;
-use crate::domain::value_objects::model_mapping::{normalize_match_type, MatchType, ModelMapping};
+use crate::domain::value_objects::model_mapping::{
+    normalize_match_type, MatchType, ModelMapping,
+};
 use crate::domain::value_objects::short_code::ShortCode;
 use crate::domain::value_objects::status::Status;
 use crate::shared::error::AppError;
@@ -55,8 +57,8 @@ impl AccessPointService {
             model_mappings: mappings,
             access_url: format!("/ap/{}", ap.short_code),
             status: ap.status.to_string(),
-            created_at: ap.created_at,
-            updated_at: ap.updated_at,
+            created_at: ap.created_at_utc(),
+            updated_at: ap.updated_at_utc(),
         }
     }
 
@@ -71,8 +73,7 @@ impl AccessPointService {
             let existing = self
                 .access_point_repo
                 .find_by_short_code(code.as_str())
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                .await?;
             if existing.is_some() {
                 return Err(AppError::Conflict(format!("短码 '{}' 已被使用", code)));
             }
@@ -84,8 +85,7 @@ impl AccessPointService {
                 let existing = self
                     .access_point_repo
                     .find_by_short_code(code.as_str())
-                    .await
-                    .map_err(|e| AppError::Database(e.to_string()))?;
+                    .await?;
                 if existing.is_none() {
                     break code;
                 }
@@ -96,8 +96,7 @@ impl AccessPointService {
         let provider = self
             .provider_repo
             .find_by_id(req.provider_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", req.provider_id)))?;
 
         if !provider.status.is_enabled() {
@@ -108,8 +107,7 @@ impl AccessPointService {
         let account = self
             .account_repo
             .find_by_id(req.account_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("账号 {} 未找到", req.account_id)))?;
 
         if !account.status.is_enabled() {
@@ -150,8 +148,7 @@ impl AccessPointService {
         let saved = self
             .access_point_repo
             .save(&access_point)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -164,8 +161,7 @@ impl AccessPointService {
         let mut ap = self
             .access_point_repo
             .find_by_id(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("接入点 {} 未找到", id)))?;
 
         if let Some(name) = req.name {
@@ -180,8 +176,7 @@ impl AccessPointService {
             let provider = self
                 .provider_repo
                 .find_by_id(provider_id)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?
+                .await?
                 .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", provider_id)))?;
             if !provider.status.is_enabled() {
                 return Err(AppError::Conflict("关联的提供商已被禁用".to_string()));
@@ -193,8 +188,7 @@ impl AccessPointService {
             let account = self
                 .account_repo
                 .find_by_id(account_id)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?
+                .await?
                 .ok_or_else(|| AppError::NotFound(format!("账号 {} 未找到", account_id)))?;
             if !account.status.is_enabled() {
                 return Err(AppError::Conflict("关联的账号已被禁用".to_string()));
@@ -224,13 +218,12 @@ impl AccessPointService {
             ap.status = status;
         }
 
-        ap.updated_at = chrono::Utc::now();
+        ap.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
         let saved = self
             .access_point_repo
             .save(&ap)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -239,8 +232,7 @@ impl AccessPointService {
         let ap = self
             .access_point_repo
             .find_by_id(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("接入点 {} 未找到", id)))?;
 
         Ok(Self::to_response(&ap))
@@ -253,8 +245,7 @@ impl AccessPointService {
         let ap = self
             .access_point_repo
             .find_by_short_code(short_code)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("接入点 {} 未找到", short_code)))?;
 
         Ok(Self::to_response(&ap))
@@ -264,8 +255,7 @@ impl AccessPointService {
         let points = self
             .access_point_repo
             .find_all()
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(points.iter().map(Self::to_response).collect())
     }
@@ -273,8 +263,7 @@ impl AccessPointService {
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         self.access_point_repo
             .delete(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(())
     }

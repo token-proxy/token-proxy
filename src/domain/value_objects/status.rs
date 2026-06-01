@@ -1,11 +1,17 @@
 use crate::shared::error::AppError;
+use sea_orm::prelude::StringLen;
+use sea_orm::DeriveActiveEnum;
+use sea_orm::EnumIter;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
 pub enum Status {
+    #[sea_orm(string_value = "enabled")]
     Enabled,
+    #[sea_orm(string_value = "disabled")]
     Disabled,
 }
 

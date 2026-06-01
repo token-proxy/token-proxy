@@ -17,7 +17,6 @@ use uuid::Uuid;
 use crate::application::services::proxy_service::ProxyContext;
 use crate::application::AppState;
 use crate::domain::entities::log_entry::LogEntry;
-use crate::domain::services::model_mapping_service::{find_matching_mapping, resolve_final_model};
 use crate::domain::value_objects::model_mapping::ModelMapping;
 use crate::shared::error::AppError;
 
@@ -56,30 +55,13 @@ async fn proxy_messages(
     // 4. 应用统一模型匹配逻辑
     //    优先级：精确匹配 > 前缀匹配 > __unmatched__ 规则 > Provider.default_model > 原始模型
     let requested_model = model_original.as_deref().unwrap_or("");
-    let mapped_model = if !requested_model.is_empty() {
-        find_matching_mapping(&ctx.access_point.model_mappings, requested_model)
-            .map(|m| m.target_model.clone())
-    } else {
-        None
-    };
-    let final_model = resolve_final_model(
-        mapped_model.clone(),
-        ctx.provider.default_model.as_deref(),
+    let final_model = ctx.access_point.resolve_model(
         requested_model,
+        ctx.provider.default_model.as_deref(),
     );
 
     // 5. 根据映射结果替换请求体中的 model 字段
-    let modified_body = if mapped_model.is_some() {
-        // 找到匹配映射，应用最终解析后的模型到请求体
-        let mapping = ModelMapping {
-            source_model: requested_model.to_string(),
-            target_model: final_model.clone(),
-            match_type: Default::default(),
-        };
-        let (new_body, _delta) = mapping.apply_to_body(&body);
-        new_body
-    } else if !requested_model.is_empty() && final_model != requested_model {
-        // 使用 Provider.default_model 兜底，替换请求体
+    let modified_body = if !requested_model.is_empty() && final_model != requested_model {
         let mapping = ModelMapping {
             source_model: requested_model.to_string(),
             target_model: final_model.clone(),
@@ -166,9 +148,9 @@ async fn handle_non_streaming_proxy(
     let resp_body_clone = resp_body.clone();
 
     tokio::spawn(async move {
+        let log_entry = LogEntry::new_proxy_entry();
         let log_entry = LogEntry {
             id: Uuid::new_v4(),
-            timestamp: chrono::Utc::now(),
             session_id,
             user_id: Some(user_id),
             access_point_id: Some(ctx.access_point.id),
@@ -179,7 +161,7 @@ async fn handle_non_streaming_proxy(
             status_code: Some(status.as_u16() as i16),
             duration_ms: Some(duration.as_millis() as i32),
             error_message: None,
-            ..Default::default()
+            ..log_entry
         };
 
         log_service
@@ -275,9 +257,9 @@ async fn handle_streaming_proxy(
             let uid = user_id;
 
             tokio::spawn(async move {
+                let log_entry = LogEntry::new_proxy_entry();
                 let log_entry = LogEntry {
                     id: Uuid::new_v4(),
-                    timestamp: chrono::Utc::now(),
                     session_id: sess,
                     user_id: Some(uid),
                     access_point_id: Some(ap_id),
@@ -288,7 +270,7 @@ async fn handle_streaming_proxy(
                     status_code: Some(200),
                     duration_ms: Some(elapsed.as_millis() as i32),
                     error_message: None,
-                    ..Default::default()
+                    ..log_entry
                 };
 
                 log_svc

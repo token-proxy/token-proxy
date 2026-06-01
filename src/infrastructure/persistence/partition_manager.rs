@@ -52,7 +52,7 @@ impl PartitionManager {
         "#;
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, []);
         let rows = db
-            .query_all(stmt)
+            .query_all_raw(stmt)
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
 
@@ -99,7 +99,7 @@ impl PartitionManager {
                     if let (Ok(y), Ok(m)) = (y_str.parse::<i32>(), m_str.parse::<u32>()) {
                         if (y, m) < (start_year, start_month) {
                             let sql = format!("DROP TABLE IF EXISTS {name}");
-                            db.execute(Statement::from_sql_and_values(
+                            db.execute_raw(Statement::from_sql_and_values(
                                 DbBackend::Postgres,
                                 &sql,
                                 [],
@@ -126,7 +126,7 @@ impl PartitionManager {
                     "CREATE TABLE IF NOT EXISTS {name} PARTITION OF log_metadata \
                      FOR VALUES FROM ('{date_str}') TO ('{next_date_str}')"
                 );
-                db.execute(Statement::from_sql_and_values(
+                db.execute_raw(Statement::from_sql_and_values(
                     DbBackend::Postgres,
                     &sql,
                     [],
@@ -157,7 +157,7 @@ impl PartitionManager {
         let sql = "SELECT CASE WHEN pg_try_advisory_xact_lock(123456789) THEN 1 ELSE 0 END";
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, []);
         let rows = db
-            .query_all(stmt)
+            .query_all_raw(stmt)
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
 

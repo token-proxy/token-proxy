@@ -9,7 +9,6 @@ use crate::domain::entities::account::Account;
 use crate::domain::entities::provider::Provider;
 use crate::domain::repositories::access_point_repository::AccessPointRepository;
 use crate::domain::repositories::account_repository::AccountRepository;
-use crate::domain::repositories::provider_repository::ProviderRepository;
 use crate::domain::repositories::user_api_key_repository::UserApiKeyRepository;
 use crate::domain::services::encryption_service::EncryptionService;
 use crate::shared::error::AppError;
@@ -25,7 +24,6 @@ pub struct ProxyContext {
 
 pub struct ProxyService {
     access_point_repo: Arc<dyn AccessPointRepository>,
-    provider_repo: Arc<dyn ProviderRepository>,
     account_repo: Arc<dyn AccountRepository>,
     encryption_service: Arc<dyn EncryptionService>,
     user_api_key_repo: Arc<dyn UserApiKeyRepository>,
@@ -34,14 +32,12 @@ pub struct ProxyService {
 impl ProxyService {
     pub fn new(
         access_point_repo: Arc<dyn AccessPointRepository>,
-        provider_repo: Arc<dyn ProviderRepository>,
         account_repo: Arc<dyn AccountRepository>,
         encryption_service: Arc<dyn EncryptionService>,
         user_api_key_repo: Arc<dyn UserApiKeyRepository>,
     ) -> Self {
         ProxyService {
             access_point_repo,
-            provider_repo,
             account_repo,
             encryption_service,
             user_api_key_repo,
@@ -50,18 +46,13 @@ impl ProxyService {
 
     /// 根据短码解析代理上下文
     ///
-    /// 依次查找并校验:
-    /// 1. AccessPoint: 按 short_code 查找，校验 status 为 Enabled
-    /// 2. Provider: 按 access_point.provider_id 查找，校验 status 为 Enabled
-    /// 3. Account: 按 access_point.account_id 查找，校验 status 为 Enabled，解密 api_key
-    /// 4. 返回 ProxyContext
+    /// 使用 AccessPointRepository.find_with_relations() 一次性加载
+    /// AccessPoint + Provider + Account（通过 ORM 关联加载）。
     pub async fn resolve_context(&self, short_code: &str) -> Result<ProxyContext, AppError> {
-        // 1. 查找 AccessPoint
-        let access_point = self
+        let (access_point, provider, account) = self
             .access_point_repo
-            .find_by_short_code(short_code)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .find_with_relations(short_code)
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("接入点 '{}' 未找到", short_code)))?;
 
         if !access_point.status.is_enabled() {
@@ -71,32 +62,12 @@ impl ProxyService {
             )));
         }
 
-        // 2. 查找 Provider
-        let provider = self
-            .provider_repo
-            .find_by_id(access_point.provider_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .ok_or_else(|| {
-                AppError::NotFound(format!("接入点 '{}' 关联的提供商未找到", short_code))
-            })?;
-
         if !provider.status.is_enabled() {
             return Err(AppError::Forbidden(format!(
                 "接入点 '{}' 关联的提供商已被禁用",
                 short_code
             )));
         }
-
-        // 3. 查找 Account 并解密 API Key
-        let account = self
-            .account_repo
-            .find_by_id(access_point.account_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .ok_or_else(|| {
-                AppError::NotFound(format!("接入点 '{}' 关联的账号未找到", short_code))
-            })?;
 
         if !account.status.is_enabled() {
             return Err(AppError::Forbidden(format!(
@@ -105,7 +76,7 @@ impl ProxyService {
             )));
         }
 
-        // 4. 解密 API Key
+        // 解密 API Key
         let decrypted_api_key = self.decrypt_account_key(account.id).await?;
 
         Ok(ProxyContext {
@@ -121,8 +92,7 @@ impl ProxyService {
         let encrypted_key = self
             .account_repo
             .get_encrypted_api_key(account_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         if encrypted_key.is_empty() {
             return Err(AppError::NotFound(
@@ -173,8 +143,7 @@ impl ProxyService {
         let api_key = self
             .user_api_key_repo
             .find_by_key_hash(&key_hash)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::Unauthorized("API key 无效或已被撤销".to_string()))?;
 
         // 5. 检查状态

@@ -42,8 +42,8 @@ impl UserApiKeyService {
             key_prefix: key.key_prefix.clone(),
             description: key.description.clone(),
             status: key.status.to_string(),
-            last_used_at: key.last_used_at,
-            created_at: key.created_at,
+            last_used_at: key.last_used_at_utc(),
+            created_at: key.created_at_utc(),
         }
     }
 
@@ -86,8 +86,7 @@ impl UserApiKeyService {
         let saved = self
             .api_key_repo
             .save(&entity)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         // 记录审计日志
         let details = serde_json::json!({
@@ -103,16 +102,15 @@ impl UserApiKeyService {
         );
         self.audit_log_repo
             .save(&audit)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(CreateApiKeyResponse {
             id: saved.id,
             full_key,
-            key_prefix: saved.key_prefix,
-            description: saved.description,
+            key_prefix: saved.key_prefix.clone(),
+            description: saved.description.clone(),
             status: saved.status.to_string(),
-            created_at: saved.created_at,
+            created_at: saved.created_at_utc(),
         })
     }
 
@@ -121,8 +119,7 @@ impl UserApiKeyService {
         let keys = self
             .api_key_repo
             .find_all_by_user(user_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(keys.into_iter().map(|k| Self::to_response(&k)).collect())
     }
@@ -132,8 +129,7 @@ impl UserApiKeyService {
         let key = self
             .api_key_repo
             .find_by_id(key_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound("API key 未找到".to_string()))?;
 
         // 校验 key 属于当前用户
@@ -149,8 +145,7 @@ impl UserApiKeyService {
         let key = self
             .api_key_repo
             .find_by_id(key_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound("API key 未找到".to_string()))?;
 
         self.revoke_key_and_audit(key_id, &key, None).await
@@ -165,8 +160,7 @@ impl UserApiKeyService {
     ) -> Result<(), AppError> {
         self.api_key_repo
             .revoke(key_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         let details = serde_json::json!({
             "key_prefix": key.key_prefix,
@@ -180,8 +174,7 @@ impl UserApiKeyService {
         );
         self.audit_log_repo
             .save(&audit)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -201,8 +194,7 @@ impl UserApiKeyService {
         let key = self
             .api_key_repo
             .find_by_id(key_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound("API key 未找到".to_string()))?;
 
         if key.user_id != user_id {
@@ -215,8 +207,7 @@ impl UserApiKeyService {
         let saved = self
             .api_key_repo
             .save(&updated)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -231,8 +222,7 @@ impl UserApiKeyService {
         let api_key = self
             .api_key_repo
             .find_by_key_hash(&key_hash)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::Unauthorized("无效的 API key".to_string()))?;
 
         if !api_key.status.is_enabled() {

@@ -38,8 +38,8 @@ impl AccountService {
             name: account.name.clone(),
             api_key_suffix: account.api_key_suffix.clone(),
             status: account.status.to_string(),
-            created_at: account.created_at,
-            updated_at: account.updated_at,
+            created_at: account.created_at.with_timezone(&chrono::Utc),
+            updated_at: account.updated_at.with_timezone(&chrono::Utc),
         }
     }
 
@@ -52,8 +52,7 @@ impl AccountService {
         let provider = self
             .provider_repo
             .find_by_id(provider_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", provider_id)))?;
 
         if !provider.status.is_enabled() {
@@ -88,8 +87,7 @@ impl AccountService {
         let saved = self
             .account_repo
             .save_with_encrypted_key(&account, &encrypted)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -102,8 +100,7 @@ impl AccountService {
         let mut account = self
             .account_repo
             .find_by_id(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("账号 {} 未找到", id)))?;
 
         if let Some(name) = req.name {
@@ -129,18 +126,16 @@ impl AccountService {
 
                 self.account_repo
                     .update_encrypted_api_key(id, &encrypted)
-                    .await
-                    .map_err(|e| AppError::Database(e.to_string()))?;
+                    .await?;
             }
         }
 
-        account.updated_at = chrono::Utc::now();
+        account.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
         let saved = self
             .account_repo
             .save(&account)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -149,8 +144,7 @@ impl AccountService {
         let account = self
             .account_repo
             .find_by_id(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .ok_or_else(|| AppError::NotFound(format!("账号 {} 未找到", id)))?;
 
         Ok(Self::to_response(&account))
@@ -163,8 +157,7 @@ impl AccountService {
         let accounts = self
             .account_repo
             .find_by_provider_id(provider_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(accounts.iter().map(Self::to_response).collect())
     }
@@ -172,8 +165,7 @@ impl AccountService {
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         self.account_repo
             .delete(id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         Ok(())
     }

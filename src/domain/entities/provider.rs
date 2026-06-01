@@ -1,23 +1,41 @@
-use crate::domain::value_objects::status::Status;
-use crate::shared::error::AppError;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use chrono::{DateTime, FixedOffset, Utc};
+use sea_orm::entity::prelude::*;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Provider {
+use crate::domain::value_objects::status::Status;
+use crate::shared::error::AppError;
+
+/// SeaORM 实体映射 providers 表
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[sea_orm(table_name = "providers")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub name: String,
     pub openai_base_url: Option<String>,
     pub anthropic_base_url: Option<String>,
+    #[sea_orm(column_type = "JsonBinary")]
     pub models: Vec<String>,
     pub default_model: Option<String>,
     pub status: Status,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: DateTimeWithTimeZone,
+    pub updated_at: DateTimeWithTimeZone,
 }
 
-impl Provider {
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {
+    #[sea_orm(has_many = "super::account::Entity")]
+    Account,
+}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+/// 领域实体 Provider
+pub type Provider = Model;
+
+// ─── 领域行为 ──────────────────────────────────────────────────────
+
+impl Model {
     /// 创建新的 Provider，执行领域校验
     pub fn new(
         name: String,
@@ -45,7 +63,8 @@ impl Provider {
             ));
         }
 
-        let now = Utc::now();
+        let offset = FixedOffset::east_opt(0).expect("UTC offset");
+        let now = Utc::now().with_timezone(&offset);
         Ok(Provider {
             id: Uuid::new_v4(),
             name,
@@ -63,6 +82,16 @@ impl Provider {
             created_at: now,
             updated_at: now,
         })
+    }
+
+    /// 获取 created_at 为 DateTime<Utc>
+    pub fn created_at_utc(&self) -> DateTime<Utc> {
+        self.created_at.with_timezone(&Utc)
+    }
+
+    /// 获取 updated_at 为 DateTime<Utc>
+    pub fn updated_at_utc(&self) -> DateTime<Utc> {
+        self.updated_at.with_timezone(&Utc)
     }
 }
 

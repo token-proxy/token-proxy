@@ -12,10 +12,10 @@ use crate::domain::entities::log_entry::{LogContent, LogEntry, LogTokenUsage};
 use crate::domain::repositories::log_repository::{
     LogEntryWithTokenSummary, LogQuery, LogRepository, SessionQuery, SessionSummaryData,
 };
-use crate::infrastructure::persistence::entities::log_content::{
+use crate::domain::entities::log_content::{
     ActiveModel as ContentActiveModel, Entity as ContentEntity,
 };
-use crate::infrastructure::persistence::entities::log_metadata::{ActiveModel, Column, Entity};
+use crate::domain::entities::log_metadata::{ActiveModel, Column, Entity};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
@@ -35,11 +35,10 @@ impl LogRepository for SeaOrmLogRepository {
         let db = &*self.db;
         let model = Entity::find_by_id(id)
             .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         match model {
-            Some(m) => Ok(Some(m.try_into()?)),
+            Some(m) => Ok(Some(m)),
             None => Ok(None),
         }
     }
@@ -50,13 +49,9 @@ impl LogRepository for SeaOrmLogRepository {
             .filter(Column::SessionId.eq(session_id))
             .order_by_asc(Column::Timestamp)
             .all(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
-        models
-            .into_iter()
-            .map(|m| m.try_into())
-            .collect::<Result<Vec<LogEntry>, AppError>>()
+        Ok(models)
     }
 
     async fn find_all_paginated(
@@ -95,18 +90,13 @@ impl LogRepository for SeaOrmLogRepository {
 
         let total = paginator
             .num_items()
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         let models = paginator
             .fetch_page(page - 1)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
-        let items = models
-            .into_iter()
-            .map(|m| m.try_into())
-            .collect::<Result<Vec<LogEntry>, AppError>>()?;
+        let items = models;
 
         Ok(PaginatedResult {
             items,
@@ -120,8 +110,7 @@ impl LogRepository for SeaOrmLogRepository {
         let db = &*self.db;
         let exists = Entity::find_by_id(entry.id)
             .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .await?
             .is_some();
 
         let active_model: ActiveModel = entry.clone().into();
@@ -129,21 +118,18 @@ impl LogRepository for SeaOrmLogRepository {
         if exists {
             Entity::update(active_model)
                 .exec(db)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                .await?;
         } else {
             Entity::insert(active_model)
                 .exec(db)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                .await?;
         }
 
-        Entity::find_by_id(entry.id)
+        let result = Entity::find_by_id(entry.id)
             .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .map(|m| m.try_into())
-            .ok_or_else(|| AppError::Internal("保存后无法查询到 LogEntry".to_string()))?
+            .await?
+            .ok_or_else(|| AppError::Internal("保存后无法查询到 LogEntry".to_string()))?;
+        Ok(result)
     }
 
     async fn save_content(&self, content: &LogContent) -> Result<(), AppError> {
@@ -151,8 +137,7 @@ impl LogRepository for SeaOrmLogRepository {
         let active_model: ContentActiveModel = content.clone().into();
         ContentEntity::insert(active_model)
             .exec(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
         Ok(())
     }
 
@@ -160,11 +145,10 @@ impl LogRepository for SeaOrmLogRepository {
         let db = &*self.db;
         let model = ContentEntity::find_by_id(log_id)
             .one(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
 
         match model {
-            Some(m) => Ok(Some(m.try_into()?)),
+            Some(m) => Ok(Some(m)),
             None => Ok(None),
         }
     }
@@ -176,8 +160,7 @@ impl LogRepository for SeaOrmLogRepository {
         // 再删除 log_metadata
         Entity::delete_by_id(id)
             .exec(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
         Ok(())
     }
 
@@ -297,13 +280,12 @@ impl LogRepository for SeaOrmLogRepository {
         // 执行 count 查询
         let count_stmt = Statement::from_sql_and_values(DbBackend::Postgres, &count_sql, count_params);
         let count_result = db
-            .query_one(count_stmt)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .query_one_raw(count_stmt)
+            .await?
             .ok_or_else(|| AppError::Internal("计数查询结果为空".to_string()))?;
         let total: i64 = count_result
             .try_get_by_index(0)
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            ?;
         let total = total as u64;
 
         if total == 0 {
@@ -318,104 +300,103 @@ impl LogRepository for SeaOrmLogRepository {
         // 执行数据查询
         let data_stmt = Statement::from_sql_and_values(DbBackend::Postgres, &data_sql, data_params);
         let results = db
-            .query_all(data_stmt)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .query_all_raw(data_stmt)
+            .await?;
 
         let items: Vec<LogEntryWithTokenSummary> = results
             .iter()
             .map(|row| {
                 let id: Uuid = row
                     .try_get_by_index::<Uuid>(0)
-                    .map_err(|e| AppError::Database(e.to_string()))?;
+                    ?;
 
                 let timestamp_col: chrono::DateTime<FixedOffset> = row
                     .try_get_by_index(1)
-                    .map_err(|e| AppError::Database(e.to_string()))?;
+                    ?;
 
                 Ok(LogEntryWithTokenSummary {
                     entry: LogEntry {
                         id,
-                        timestamp: timestamp_col.with_timezone(&Utc),
+                        timestamp: timestamp_col,
                         session_id: row
                             .try_get_by_index::<String>(2)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         user_id: row
                             .try_get_by_index::<Option<Uuid>>(3)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         access_point_id: row
                             .try_get_by_index::<Option<Uuid>>(4)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         provider_id: row
                             .try_get_by_index::<Option<Uuid>>(5)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         account_id: row
                             .try_get_by_index::<Option<Uuid>>(6)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         model_original: row
                             .try_get_by_index::<Option<String>>(7)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         model_mapped: row
                             .try_get_by_index::<Option<String>>(8)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         status_code: row
                             .try_get_by_index::<Option<i16>>(9)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         duration_ms: row
                             .try_get_by_index::<Option<i32>>(10)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         error_message: row
                             .try_get_by_index::<Option<String>>(11)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         request_index: row
                             .try_get_by_index::<i32>(12)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         client_session_id: row
                             .try_get_by_index::<Option<String>>(13)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         client_app: row
                             .try_get_by_index::<Option<String>>(14)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         client_user_agent: row
                             .try_get_by_index::<Option<String>>(15)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         conversation_source: row
                             .try_get_by_index::<String>(16)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         agent_id: row
                             .try_get_by_index::<Option<String>>(17)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         has_error: row
                             .try_get_by_index::<bool>(18)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         raw_content_available: row
                             .try_get_by_index::<bool>(19)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         client_name: row
                             .try_get_by_index::<Option<String>>(20)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         client_version: row
                             .try_get_by_index::<Option<String>>(21)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         client_channel: row
                             .try_get_by_index::<Option<String>>(22)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         client_platform: row
                             .try_get_by_index::<Option<String>>(23)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         api_type: row
                             .try_get_by_index::<String>(24)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                     },
                     input_tokens: row
                         .try_get_by_index::<Option<i32>>(25)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     output_tokens: row
                         .try_get_by_index::<Option<i32>>(26)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     total_tokens: row
                         .try_get_by_index::<Option<i32>>(27)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                 })
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -508,13 +489,12 @@ impl LogRepository for SeaOrmLogRepository {
         );
         let count_stmt = Statement::from_sql_and_values(DbBackend::Postgres, &count_sql, count_params);
         let count_result = db
-            .query_one(count_stmt)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?
+            .query_one_raw(count_stmt)
+            .await?
             .ok_or_else(|| AppError::Internal("会话计数查询结果为空".to_string()))?;
         let total: i64 = count_result
             .try_get_by_index(0)
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            ?;
         let total = total as u64;
 
         if total == 0 {
@@ -559,49 +539,48 @@ impl LogRepository for SeaOrmLogRepository {
 
         let data_stmt = Statement::from_sql_and_values(DbBackend::Postgres, &data_sql, data_params);
         let results = db
-            .query_all(data_stmt)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .query_all_raw(data_stmt)
+            .await?;
 
         let items: Vec<SessionSummaryData> = results
             .iter()
             .map(|row| {
                 let start_time_col: chrono::DateTime<FixedOffset> = row
                     .try_get_by_index(3)
-                    .map_err(|e| AppError::Database(e.to_string()))?;
+                    ?;
 
                 Ok(SessionSummaryData {
                     session_id: row
                         .try_get_by_index::<String>(0)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     user_id: row
                         .try_get_by_index::<Option<Uuid>>(1)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     access_point_id: row
                         .try_get_by_index::<Option<Uuid>>(2)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
-                    start_time: start_time_col.with_timezone(&Utc),
+                        ?,
+                    start_time: start_time_col.to_utc(),
                     request_count: row
                         .try_get_by_index::<i64>(4)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     total_input_tokens: row
                         .try_get_by_index::<i64>(5)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     total_output_tokens: row
                         .try_get_by_index::<i64>(6)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     total_cache_creation_input_tokens: row
                         .try_get_by_index::<i64>(7)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     total_cache_read_input_tokens: row
                         .try_get_by_index::<i64>(8)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     total_thinking_tokens: row
                         .try_get_by_index::<i64>(9)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     total_tokens: row
                         .try_get_by_index::<i64>(10)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                 })
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -655,139 +634,138 @@ impl LogRepository for SeaOrmLogRepository {
 
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, [id.into()]);
         let result = db
-            .query_one(stmt)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .query_one_raw(stmt)
+            .await?;
 
         match result {
             Some(row) => {
                 let timestamp_col: chrono::DateTime<FixedOffset> = row
                     .try_get_by_index(1)
-                    .map_err(|e| AppError::Database(e.to_string()))?;
+                    ?;
 
                 let entry = LogEntry {
                     id: row.try_get_by_index::<Uuid>(0)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
-                    timestamp: timestamp_col.with_timezone(&Utc),
+                        ?,
+                    timestamp: timestamp_col,
                     session_id: row.try_get_by_index::<String>(2)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     user_id: row.try_get_by_index::<Option<Uuid>>(3)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     access_point_id: row.try_get_by_index::<Option<Uuid>>(4)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     provider_id: row.try_get_by_index::<Option<Uuid>>(5)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     account_id: row.try_get_by_index::<Option<Uuid>>(6)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     model_original: row.try_get_by_index::<Option<String>>(7)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     model_mapped: row.try_get_by_index::<Option<String>>(8)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     status_code: row.try_get_by_index::<Option<i16>>(9)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     duration_ms: row.try_get_by_index::<Option<i32>>(10)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     error_message: row.try_get_by_index::<Option<String>>(11)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     request_index: row.try_get_by_index::<i32>(12)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     client_session_id: row.try_get_by_index::<Option<String>>(13)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     client_app: row.try_get_by_index::<Option<String>>(14)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     client_user_agent: row.try_get_by_index::<Option<String>>(15)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     conversation_source: row.try_get_by_index::<String>(16)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     agent_id: row.try_get_by_index::<Option<String>>(17)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     has_error: row.try_get_by_index::<bool>(18)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     raw_content_available: row.try_get_by_index::<bool>(19)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     client_name: row.try_get_by_index::<Option<String>>(20)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     client_version: row.try_get_by_index::<Option<String>>(21)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     client_channel: row.try_get_by_index::<Option<String>>(22)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     client_platform: row.try_get_by_index::<Option<String>>(23)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                     api_type: row.try_get_by_index::<String>(24)
-                        .map_err(|e| AppError::Database(e.to_string()))?,
+                        ?,
                 };
 
                 let content = LogContent {
                     log_id: entry.id,
-                    request_headers: row.try_get_by_index::<Option<serde_json::Value>>(25)
-                        .map_err(|e| AppError::Database(e.to_string()))?
-                        .unwrap_or(serde_json::Value::Null),
-                    request_body: row.try_get_by_index::<Option<serde_json::Value>>(26)
-                        .map_err(|e| AppError::Database(e.to_string()))?
-                        .unwrap_or(serde_json::Value::Null),
-                    response_body: row.try_get_by_index::<Option<String>>(27)
-                        .map_err(|e| AppError::Database(e.to_string()))?
-                        .unwrap_or_default(),
+                    request_headers: Some(row.try_get_by_index::<Option<serde_json::Value>>(25)
+                        ?
+                        .unwrap_or(serde_json::Value::Null)),
+                    request_body: Some(row.try_get_by_index::<Option<serde_json::Value>>(26)
+                        ?
+                        .unwrap_or(serde_json::Value::Null)),
+                    response_body: Some(row.try_get_by_index::<Option<String>>(27)
+                        ?
+                        .unwrap_or_default()),
                 };
 
                 // 检查是否有 token 用量（ltu.id 不为 NULL）
                 let usage_id: Option<Uuid> = row.try_get_by_index::<Option<Uuid>>(28)
-                    .map_err(|e| AppError::Database(e.to_string()))?;
+                    ?;
 
                 let usage = if let Some(uid) = usage_id {
                     let usage_ts_col: chrono::DateTime<FixedOffset> = row
                         .try_get_by_index(40)
-                        .map_err(|e| AppError::Database(e.to_string()))?;
+                        ?;
                     let usage_created_col: chrono::DateTime<FixedOffset> = row
                         .try_get_by_index(50)
-                        .map_err(|e| AppError::Database(e.to_string()))?;
+                        ?;
 
                     Some(LogTokenUsage {
                         id: uid,
                         log_id: row.try_get_by_index::<Option<Uuid>>(29)
-                            .map_err(|e| AppError::Database(e.to_string()))?
+                            ?
                             .unwrap_or(entry.id),
                         input_tokens: row.try_get_by_index::<i32>(30)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         output_tokens: row.try_get_by_index::<i32>(31)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         cache_creation_input_tokens: row.try_get_by_index::<i32>(32)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         cache_read_input_tokens: row.try_get_by_index::<i32>(33)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         thinking_tokens: row.try_get_by_index::<i32>(34)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         total_tokens: row.try_get_by_index::<i32>(35)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         raw_usage: row.try_get_by_index::<Option<serde_json::Value>>(36)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(37)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(38)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         session_id: row.try_get_by_index::<Option<String>>(39)
-                            .map_err(|e| AppError::Database(e.to_string()))?
+                            ?
                             .unwrap_or_default(),
-                        timestamp: usage_ts_col.with_timezone(&Utc),
+                        timestamp: usage_ts_col,
                         user_id: row.try_get_by_index::<Option<Uuid>>(41)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         access_point_id: row.try_get_by_index::<Option<Uuid>>(42)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         provider_id: row.try_get_by_index::<Option<Uuid>>(43)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         account_id: row.try_get_by_index::<Option<Uuid>>(44)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         model_original: row.try_get_by_index::<Option<String>>(45)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         model_mapped: row.try_get_by_index::<Option<String>>(46)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         conversation_source: row.try_get_by_index::<Option<String>>(47)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         agent_id: row.try_get_by_index::<Option<String>>(48)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
+                            ?,
                         agent_type: row.try_get_by_index::<Option<String>>(49)
-                            .map_err(|e| AppError::Database(e.to_string()))?,
-                        created_at: usage_created_col.with_timezone(&Utc),
+                            ?,
+                        created_at: usage_created_col,
                     })
                 } else {
                     None
@@ -805,8 +783,7 @@ impl LogRepository for SeaOrmLogRepository {
         let db = &*self.db;
         let count = Entity::find()
             .count(db)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .await?;
         Ok(count)
     }
 
@@ -831,20 +808,19 @@ impl LogRepository for SeaOrmLogRepository {
         );
 
         let results = db
-            .query_all(stmt)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .query_all_raw(stmt)
+            .await?;
 
         let mut data = Vec::new();
         for row in &results {
             let day_str: String = row
                 .try_get_by_index(0)
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                ?;
             let day = NaiveDate::parse_from_str(&day_str, "%Y-%m-%d")
                 .map_err(|e| AppError::Internal(format!("日期解析失败: {}", e)))?;
             let count: i64 = row
                 .try_get_by_index(1)
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                ?;
             data.push((day, count as u64));
         }
 
@@ -866,18 +842,17 @@ impl LogRepository for SeaOrmLogRepository {
             Statement::from_sql_and_values(DbBackend::Postgres, sql, [(limit as i64).into()]);
 
         let results = db
-            .query_all(stmt)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .query_all_raw(stmt)
+            .await?;
 
         let mut data = Vec::new();
         for row in &results {
             let id: Uuid = row
                 .try_get_by_index(0)
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                ?;
             let count: i64 = row
                 .try_get_by_index(1)
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                ?;
             data.push((id, count as u64));
         }
 
@@ -899,18 +874,17 @@ impl LogRepository for SeaOrmLogRepository {
             Statement::from_sql_and_values(DbBackend::Postgres, sql, [(limit as i64).into()]);
 
         let results = db
-            .query_all(stmt)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .query_all_raw(stmt)
+            .await?;
 
         let mut data = Vec::new();
         for row in &results {
             let model: String = row
                 .try_get_by_index(0)
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                ?;
             let count: i64 = row
                 .try_get_by_index(1)
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                ?;
             data.push((model, count as u64));
         }
 
@@ -928,15 +902,14 @@ impl LogRepository for SeaOrmLogRepository {
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, []);
 
         let results = db
-            .query_all(stmt)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .query_all_raw(stmt)
+            .await?;
 
         let count: i64 = results
             .first()
             .ok_or_else(|| AppError::Internal("查询结果为空".to_string()))?
             .try_get_by_index(0)
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            ?;
 
         Ok(count as u64)
     }
