@@ -19,15 +19,18 @@ pub mod user_routes;
 /// - 公开路由：无需认证
 /// - JWT 保护路由：需 JWT 认证
 /// - 代理路由：需用户 API key 认证
+///
+/// 每组路由直接基于 route 函数返回的 Router<AppState> 构建，
+/// 避免 Router::new() 包裹导致的 Router<()> 合并类型擦除 —
+/// 这种类型擦除会破坏状态传播，导致公开路由的处理器无法被正确匹配。
 pub fn build(state: AppState) -> Router {
     // 公开路由 — 不应用任何认证中间件
-    let public = Router::new()
-        .merge(auth_routes::public_routes())
-        .route("/api/health", get(health_check));
+    let public = auth_routes::public_routes()
+        .route("/api/health", get(health_check))
+        .with_state(state.clone());
 
     // JWT 保护的路由
-    let jwt_protected = Router::new()
-        .merge(auth_routes::protected_routes())
+    let jwt_protected = auth_routes::protected_routes()
         .merge(provider_routes::routes())
         .merge(account_routes::routes())
         .merge(user_routes::routes())
@@ -38,21 +41,21 @@ pub fn build(state: AppState) -> Router {
         .layer(middleware::from_fn_with_state(
             state.clone(),
             jwt_auth::auth_middleware,
-        ));
+        ))
+        .with_state(state.clone());
 
     // API key 保护的路由（代理转发）
-    let proxy = Router::new()
-        .merge(proxy_routes::routes())
+    let proxy = proxy_routes::routes()
         .layer(middleware::from_fn_with_state(
             state.clone(),
             user_api_key_auth::middleware,
-        ));
+        ))
+        .with_state(state.clone());
 
     Router::new()
         .merge(public)
         .merge(jwt_protected)
         .merge(proxy)
-        .with_state(state)
 }
 
 /// GET /api/health
