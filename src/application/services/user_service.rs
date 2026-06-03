@@ -5,11 +5,11 @@ use uuid::Uuid;
 use crate::application::dto::user_dto::{
     ChangePasswordRequest, CreateUserRequest, UpdateProfileRequest, UpdateUserRequest, UserResponse,
 };
-use crate::domain::entities::audit_log::AuditLog;
-use crate::domain::entities::user::User;
-use crate::domain::repositories::audit_log_repository::AuditLogRepository;
-use crate::domain::repositories::user_repository::UserRepository;
-use crate::domain::value_objects::status::Status;
+use crate::domain::log::AuditLog;
+use crate::domain::user::User;
+use crate::domain::log::AuditLogRepository;
+use crate::domain::user::UserRepository;
+use crate::domain::shared::Status;
 use crate::infrastructure::auth::password::{hash_password, verify_password};
 use crate::shared::error::AppError;
 

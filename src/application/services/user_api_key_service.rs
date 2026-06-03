@@ -5,10 +5,10 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::application::dto::user_dto::{CreateApiKeyResponse, UserApiKeyResponse};
-use crate::domain::entities::audit_log::AuditLog;
-use crate::domain::entities::user_api_key::UserApiKey;
-use crate::domain::repositories::audit_log_repository::AuditLogRepository;
-use crate::domain::repositories::user_api_key_repository::UserApiKeyRepository;
+use crate::domain::log::AuditLog;
+use crate::domain::user::UserApiKey;
+use crate::domain::log::AuditLogRepository;
+use crate::domain::user::UserApiKeyRepository;
 use crate::shared::error::AppError;
 
 /// API key 前缀标识

@@ -5,9 +5,12 @@ use chrono::Utc;
 use sea_orm::IntoActiveModel;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
-use crate::domain::entities::user_api_key::{ActiveModel, Column, Entity, UserApiKey};
-use crate::domain::repositories::user_api_key_repository::UserApiKeyRepository;
-use crate::domain::value_objects::status::Status;
+use crate::domain::user::user_api_key::{
+    ActiveModel as UserApiKeyActiveModel, Column as UserApiKeyColumn, Entity as UserApiKeyEntity,
+};
+use crate::domain::user::UserApiKey;
+use crate::domain::user::UserApiKeyRepository;
+use crate::domain::shared::Status;
 use crate::shared::error::AppError;
 use uuid::Uuid;
 
@@ -24,36 +27,36 @@ impl SeaOrmUserApiKeyRepository {
 #[async_trait]
 impl UserApiKeyRepository for SeaOrmUserApiKeyRepository {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<UserApiKey>, AppError> {
-        Ok(Entity::find_by_id(id).one(&*self.db).await?)
+        Ok(UserApiKeyEntity::find_by_id(id).one(&*self.db).await?)
     }
 
     async fn find_by_key_hash(&self, key_hash: &str) -> Result<Option<UserApiKey>, AppError> {
-        Ok(Entity::find()
-            .filter(Column::KeyHash.eq(key_hash))
+        Ok(UserApiKeyEntity::find()
+            .filter(UserApiKeyColumn::KeyHash.eq(key_hash))
             .one(&*self.db)
             .await?)
     }
 
     async fn find_all_by_user(&self, user_id: Uuid) -> Result<Vec<UserApiKey>, AppError> {
-        Ok(Entity::find()
-            .filter(Column::UserId.eq(user_id))
+        Ok(UserApiKeyEntity::find()
+            .filter(UserApiKeyColumn::UserId.eq(user_id))
             .all(&*self.db)
             .await?)
     }
 
     async fn save(&self, key: &UserApiKey) -> Result<UserApiKey, AppError> {
         let db = &*self.db;
-        let exists = Entity::find_by_id(key.id).one(db).await?.is_some();
+        let exists = UserApiKeyEntity::find_by_id(key.id).one(db).await?.is_some();
 
-        let active_model: ActiveModel = key.clone().into_active_model();
+        let active_model: UserApiKeyActiveModel = key.clone().into_active_model();
 
         if exists {
-            Entity::update(active_model).exec(db).await?;
+            UserApiKeyEntity::update(active_model).exec(db).await?;
         } else {
-            Entity::insert(active_model).exec(db).await?;
+            UserApiKeyEntity::insert(active_model).exec(db).await?;
         }
 
-        Entity::find_by_id(key.id)
+        UserApiKeyEntity::find_by_id(key.id)
             .one(db)
             .await?
             .ok_or_else(|| AppError::Internal("保存后无法查询到 UserApiKey".to_string()))
@@ -61,12 +64,12 @@ impl UserApiKeyRepository for SeaOrmUserApiKeyRepository {
 
     async fn revoke(&self, id: Uuid) -> Result<(), AppError> {
         let db = &*self.db;
-        if let Some(model) = Entity::find_by_id(id)
-            .filter(Column::Status.ne(Status::Disabled))
+        if let Some(model) = UserApiKeyEntity::find_by_id(id)
+            .filter(UserApiKeyColumn::Status.ne(Status::Disabled))
             .one(db)
             .await?
         {
-            let mut active: ActiveModel = model.into_active_model();
+            let mut active: UserApiKeyActiveModel = model.into_active_model();
             active.status = sea_orm::Set(Status::Disabled);
             active.update(db).await?;
         }
@@ -76,7 +79,7 @@ impl UserApiKeyRepository for SeaOrmUserApiKeyRepository {
     async fn update_last_used(&self, id: Uuid) -> Result<(), AppError> {
         let db = &*self.db;
 
-        let mut active: ActiveModel = Entity::find_by_id(id)
+        let mut active: UserApiKeyActiveModel = UserApiKeyEntity::find_by_id(id)
             .one(db)
             .await?
             .ok_or_else(|| AppError::NotFound("UserApiKey 未找到".to_string()))?

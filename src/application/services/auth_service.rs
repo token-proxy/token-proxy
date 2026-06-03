@@ -4,9 +4,9 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::application::dto::auth_dto::{Claims, LoginRequest, LoginResponse, RefreshRequest};
-use crate::domain::entities::refresh_token::RefreshToken;
-use crate::domain::repositories::refresh_token_repository::RefreshTokenRepository;
-use crate::domain::repositories::user_repository::UserRepository;
+use crate::domain::user::RefreshToken;
+use crate::domain::user::RefreshTokenRepository;
+use crate::domain::user::UserRepository;
 use crate::infrastructure::auth::jwt::JwtService;
 use crate::infrastructure::auth::password::verify_password;
 use crate::shared::error::AppError;

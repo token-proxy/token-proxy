@@ -8,14 +8,14 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::domain::entities::log_entry::{LogContent, LogEntry, LogTokenUsage};
-use crate::domain::repositories::log_repository::{
+use crate::domain::log::{LogContent, LogEntry, LogTokenUsage};
+use crate::domain::log::{
     LogEntryWithTokenSummary, LogQuery, LogRepository, SessionQuery, SessionSummaryData,
 };
-use crate::domain::entities::log_content::{
+use crate::domain::log::content::{
     ActiveModel as ContentActiveModel, Entity as ContentEntity,
 };
-use crate::domain::entities::log_metadata::{ActiveModel, Column, Entity};
+use crate::domain::log::metadata::{ActiveModel, Column, Entity};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 

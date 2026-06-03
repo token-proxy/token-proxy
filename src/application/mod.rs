@@ -6,9 +6,9 @@ pub mod services;
 use sea_orm::DatabaseConnection;
 
 use crate::config::Config;
-use crate::domain::repositories::audit_log_repository::AuditLogRepository;
-use crate::domain::repositories::log_repository::LogRepository;
-use crate::domain::repositories::log_token_usage_repository::LogTokenUsageRepository;
+use crate::domain::log::AuditLogRepository;
+use crate::domain::log::LogRepository;
+use crate::domain::log::LogTokenUsageRepository;
 use crate::infrastructure::auth::jwt::JwtService;
 use crate::infrastructure::http_client::proxy_client::ProxyClient;
 

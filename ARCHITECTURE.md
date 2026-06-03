@@ -33,11 +33,12 @@
 
 ```
 src/
-├── domain/                 # 领域层
-│   ├── entities/           # 11 个 SeaORM 实体 (领域实体即 ORM 实体)
-│   ├── value_objects/      # 6 个值对象 (新增 MatchType)
-│   ├── repositories/       # Repository trait (含日志内容、事件和 token 用量)
-│   └── services/           # 2 个领域服务
+├── domain/                 # 领域层 (按聚合组织)
+│   ├── access_point/       # AccessPoint 聚合 (核心编排)
+│   ├── provider/           # Provider 聚合 (配置持有者 + 密钥管理)
+│   ├── user/               # User 聚合 (认证)
+│   ├── log/                # Log 聚合 (只读事件数据)
+│   └── shared/             # 跨聚合共享 (Status, ApiKey, AccessPointType, EncryptionService, ApiProtocol)
 ├── application/            # 应用层 (用例编排, 依赖注入)
 │   ├── dto/                # 6 组 DTO
 │   ├── services/           # 8 个应用服务
@@ -65,47 +66,53 @@ src/
 
 ```
 domain/
-├── entities/               # SeaORM Model + 行为方法
-│   ├── provider.rs         # LLM 提供商 (含 default_model)
-│   ├── account.rs          # API 账号 (含 api_key_encrypted: Vec<u8>)
-│   ├── user.rs             # 管理员用户
-│   ├── access_point.rs     # 接入点 (resolve_model, new 等方法)
-│   ├── refresh_token.rs    # JWT 刷新令牌 (is_expired, is_valid)
-│   ├── user_api_key.rs     # 用户 API key (SHA-256 哈希存储)
-│   ├── audit_log.rs        # 操作审计日志
-│   ├── log_metadata.rs     # LogEntry SeaORM Model (new_proxy_entry)
-│   ├── log_content.rs      # LogContent SeaORM Model (字段使用 Option<Json>)
-│   ├── log_token_usage.rs  # LogTokenUsage SeaORM Model
-│   └── log_entry.rs        # re-export (LogEntry/LogContent/LogTokenUsage 别名)
-├── value_objects/          # 不可变值对象
+├── access_point/           # AccessPoint 聚合 (核心编排)
+│   ├── access_point.rs     # SeaORM Model + ModelEx 聚合根 + base_url/resolve_model/validate_usable/decrypt_upstream_key 行为方法
 │   ├── short_code.rs       # 接入点短码 (生成/校验)
-│   ├── api_key.rs          # API Key (掩码展示)
-│   ├── model_mapping.rs    # 模型映射对 (source → target, 支持 exact/prefix 匹配) + 常量 (UNMATCHED_MODEL_SENTINEL, DEFAULT_MODEL_SENTINEL, Claude 模型族前缀) + normalize_match_type 函数 (强制 __unmatched__ 和 Claude 家族前缀始终视为 prefix); __unmatched__ 作为兜底规则优先级最低, 前端视为模式匹配; __default_model__ 作为目标模型哨兵, 运行态由 resolve_final_model 解析为 Provider.default_model
+│   ├── model_mapping.rs    # 模型映射对 (source → target, 支持 exact/prefix 匹配) + 常量 + normalize_match_type
+│   ├── repository.rs       # AccessPointRepository trait
+│   └── mod.rs              # 模块导出 (Model as AccessPoint, ModelEx as AccessPointEx)
+├── provider/               # Provider 聚合 (配置持有者 + 密钥管理)
+│   ├── provider.rs         # SeaORM Model + base_url_for 方法
+│   ├── account.rs          # Account SeaORM Model
+│   ├── model_list.rs       # ModelList 值对象
+│   ├── repository.rs       # ProviderRepository + AccountRepository traits
+│   └── mod.rs
+├── user/                   # User 聚合 (认证)
+│   ├── user.rs             # User SeaORM Model
+│   ├── refresh_token.rs    # RefreshToken (is_expired, is_valid)
+│   ├── user_api_key.rs     # UserApiKey (SHA-256 哈希存储)
+│   ├── repository.rs       # UserRepository + RefreshTokenRepository + UserApiKeyRepository traits
+│   └── mod.rs
+├── log/                    # Log 聚合 (只读事件数据)
+│   ├── metadata.rs         # LogEntry SeaORM Model (new_proxy_entry)
+│   ├── content.rs          # LogContent SeaORM Model
+│   ├── token_usage.rs      # LogTokenUsage SeaORM Model
+│   ├── audit_log.rs        # AuditLog SeaORM Model
+│   ├── repository.rs       # LogRepository + LogTokenUsageRepository + AuditLogRepository traits
+│   └── mod.rs              # re-export (LogEntry/LogContent/LogTokenUsage/AuditLog 别名)
+├── shared/                 # 跨聚合共享
 │   ├── status.rs           # 启用/禁用状态枚举
-│   └── access_point_type.rs # 接入点类型枚举 (Anthropic)
-├── repositories/           # Repository trait (接口定义)
-│   ├── provider_repository.rs
-│   ├── account_repository.rs
-│   ├── user_repository.rs
-│   ├── access_point_repository.rs
-│   ├── refresh_token_repository.rs
-│   ├── log_repository.rs
-│   └── user_api_key_repository.rs
-└── services/               # 领域服务
-    ├── encryption_service.rs  # 加密服务 trait (encrypt/decrypt)
-    └── model_mapping_service.rs # 统一匹配逻辑: find_matching_mapping (精确 > 前缀 > __unmatched__ 兜底) + resolve_final_model (映射结果 → 若为 __default_model__ 哨兵则解析为 Provider.default_model → 原始模型); 匹配过程使用 normalize_match_type 强制 Claude 家族源模型以 prefix 方式匹配, 消除客户端错误指定 exact 导致的不一致
+│   ├── api_key.rs          # API Key (掩码展示)
+│   ├── api_type.rs         # AccessPointType 枚举 (Anthropic)
+│   ├── encryption.rs       # EncryptionService trait (encrypt/decrypt)
+│   ├── api_protocol.rs     # ApiProtocol trait (协议抽象)
+│   └── mod.rs
+└── mod.rs                  # 领域层入口 (声明 5 个聚合模块 + shared)
 ```
 
-**领域实体即 ORM 实体**：domain/entities 直接使用 SeaORM `DeriveEntityModel` 宏定义实体，消除了基础设施层的重复实体和 200+ 行 TryFrom/From 手工映射代码。领域实体附加的行为方法（new、resolve_model、is_expired 等）直接定义在 Model 上。
+**领域实体即 ORM 实体**：domain 层直接使用 SeaORM `DeriveEntityModel` 宏定义实体，消除了基础设施层的重复实体和 200+ 行 TryFrom/From 手工映射代码。领域实体附加的行为方法（new、resolve_model、is_expired 等）直接定义在 Model 上。
+
+**聚合根模式**：AccessPoint 的 `ModelEx` (= `AccessPointEx`) 是代理管道的聚合根，包含已加载的 Provider 和 Account 关联。Repository 的 `find_by_short_code` 返回 `AccessPointEx`。ProxyPipeline 仅与该聚合根交互，不再直接引用 Provider/Account 类型。
 
 **聚合边界**：
 
 | 聚合根 | 包含子实体 | 跨聚合引用 |
 |--------|-----------|-----------|
-| Provider | Account | - |
+| AccessPoint (ModelEx) | ShortCode, ModelMappingCollection | provider_id → Provider, account_id → Account (均在 ModelEx 中加载) |
+| Provider | Account, ModelList | - |
 | User | RefreshToken, UserApiKey | - |
-| AccessPoint | - | provider_id, account_id (Uuid) |
-| LogEntry | LogContent, LogConversationEvent, LogTokenUsage | user_id, access_point_id, provider_id, account_id (Uuid) |
+| LogEntry | LogContent, LogTokenUsage | user_id, access_point_id, provider_id, account_id (Uuid) |
 
 ### 应用层 (application/)
 
@@ -370,27 +377,27 @@ POST /ap/{short_code}/v1/messages
 0. 提取 Authorization 头 → 计算 SHA-256 hex → 查找 UserApiKey (验证 enabled, 更新 last_used_at)
     │
     ▼
-1. 提取 short_code → 查找 AccessPoint (验证 enabled)
+1. find_by_short_code(short_code) → AccessPointEx (含已加载的 Provider 和 Account)
     │
     ▼
-2. 通过 AccessPoint.provider_id → 查找 Provider (验证 enabled)
+2. ap_ex.validate_usable() → 校验自身 + Provider + Account 三个状态
     │
     ▼
-3. 通过 AccessPoint.account_id → 查找 Account (验证 enabled, 解密 API Key)
+3. ap_ex.base_url() → 通过 api_type 从 Provider 获取上游 URL
     │
     ▼
-4. 统一模型映射: find_matching_mapping 使用 normalize_match_type 进行匹配 (精确匹配 > 前缀匹配 > __unmatched__ 规则, 其中 Claude 家族前缀和 __unmatched__ 始终以 prefix 方式匹配, 消除客户端错误指定 exact 导致的不一致), 若匹配到 target_model == __default_model__ 哨兵则通过 resolve_final_model 解析为 Provider.default_model; 无映射时以 Provider.default_model 或原始模型兜底; 替换 JSON 中 model 字段, 记录最终 model_mapped
+4. ap_ex.decrypt_upstream_key(encryption_svc) → 解密 Account API Key
     │
     ▼
-5. 构建新的上游请求: 入站 `authorization` 只用于用户 API key 认证, 不参与上游请求构造; 上游请求使用解密后的账号 API key 设置 `Authorization: Bearer <account_key>`, 仅复制 `x-*` 自定义头、`accept`、`content-type` 等业务头, 并排除入站 `authorization` / `x-api-key`
+5. ap_ex.resolve_model(requested_model) → 模型映射 (精确 > 前缀 > __unmatched__) + Provider.default_model 兜底 → 替换请求体中的 model 字段
     │
     ▼
-6. 发送到上游 LLM API
+6. 构建新的上游请求 → 发送到上游 LLM API
     ├── 非流式: 完整响应 → 返回
     └── SSE 流式: 逐块转发 → 逐块返回
     │
     ▼
-7. 异步写入日志 (log_metadata + log_contents, 不阻塞响应)
+7. 异步写入日志 (log_metadata + log_contents + log_conversation_events + log_token_usage, 不阻塞响应)
 ```
 
 ## 核心架构原则
@@ -488,3 +495,4 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 2026-05-29 | 实体合并改造: 将 SeaORM DeriveEntityModel 从 `infrastructure/persistence/entities/` 迁移到 `domain/entities/`，删除基础设施层 entities 目录。domain 层引入 SeaORM 宏依赖，消除 200+ 行 TryFrom/From 手工映射代码。领域实体即 ORM 实体，不再区分 |
 | 2026-05-27 | 前端组件架构拆分: 从 RequestLogPage 提取 `RequestLogTable` 组件 (表格列定义 + Table 渲染); 从 SessionLogPage 提取 `SessionListView` (会话列表视图) 和 `SessionDetailView` (会话详情视图); SessionLogPage 瘦身为路由壳, 根据 sessionId 参数切换列表/详情视图; 新增 `/logs/:id` 路由和 `LogDetailPage` 页面; 前端源文件数更新为 45 个 |
 | 2026-05-26 | 认证体系优化: 前端 `api.ts` 采用「双层防御」策略（请求前体检 + 401 兜底），模块级 Promise 并发去重，解决浏览器冻结导致定时器失效问题；`JwtService` 新增 `refresh_expiry_secs` 访问器，修复 AuthService 两处误用 access 寿命写入 refresh_token expires_at 的 bug；新增 tokio 后台任务每小时物理清理过期 refresh_token，明确拒绝引入 Redis 或 pg_cron，遵循依赖最小化原则；新增架构原则 7-9（依赖最小化、双层防御、依赖倒置认证场景体现） |
+| 2026-06-03 | 领域层聚合重构: 将 domain/ 层从按技术类别（entities/value_objects/repositories/services）重组为按聚合边界（access_point/provider/user/log/shared）组织。AccessPoint 引入 ModelEx 聚合根，Repository 的 `find_by_short_code` 返回已加载 Provider 和 Account 关联的完整聚合。ProxyPipeline 删除 `select_base_url` 和 `decrypt_account_key` 方法，全部操作委托 AccessPointEx 行为方法（base_url、resolve_model、validate_usable、decrypt_upstream_key）。Provider 新增 `base_url_for` 方法。AccessPointType 移至 shared 解决循环依赖。account_id 退化为纯 FK 列（不定义 belongs_to 关系）。Relation 定义保持 DeriveRelation 枚举语法（SeaORM 2.0-rc.38 兼容性） |

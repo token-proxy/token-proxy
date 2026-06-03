@@ -2,7 +2,7 @@ use aes_gcm::aead::{Aead, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Nonce};
 use async_trait::async_trait;
 
-use crate::domain::services::encryption_service::EncryptionService;
+use crate::domain::shared::EncryptionService;
 use crate::shared::error::AppError;
 
 /// AES-256-GCM 加密服务

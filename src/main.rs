@@ -16,16 +16,16 @@ use token_proxy::application::services::user_api_key_service::UserApiKeyService;
 use token_proxy::application::services::user_service::UserService;
 use token_proxy::application::AppState;
 use token_proxy::config::Config;
-use token_proxy::domain::repositories::access_point_repository::AccessPointRepository;
-use token_proxy::domain::repositories::account_repository::AccountRepository;
-use token_proxy::domain::repositories::audit_log_repository::AuditLogRepository;
-use token_proxy::domain::repositories::log_repository::LogRepository;
-use token_proxy::domain::repositories::log_token_usage_repository::LogTokenUsageRepository;
-use token_proxy::domain::repositories::provider_repository::ProviderRepository;
-use token_proxy::domain::repositories::refresh_token_repository::RefreshTokenRepository;
-use token_proxy::domain::repositories::user_api_key_repository::UserApiKeyRepository;
-use token_proxy::domain::repositories::user_repository::UserRepository;
-use token_proxy::domain::services::encryption_service::EncryptionService;
+use token_proxy::domain::access_point::repository::AccessPointRepository;
+use token_proxy::domain::provider::repository::AccountRepository;
+use token_proxy::domain::provider::repository::ProviderRepository;
+use token_proxy::domain::log::AuditLogRepository;
+use token_proxy::domain::log::LogRepository;
+use token_proxy::domain::log::LogTokenUsageRepository;
+use token_proxy::domain::user::RefreshTokenRepository;
+use token_proxy::domain::user::UserApiKeyRepository;
+use token_proxy::domain::user::UserRepository;
+use token_proxy::domain::shared::EncryptionService;
 use token_proxy::infrastructure::auth::jwt::JwtService;
 use token_proxy::infrastructure::encryption::aes256_gcm::Aes256GcmEncryptionService;
 use token_proxy::infrastructure::http_client::proxy_client::ProxyClient;
@@ -274,7 +274,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let password_hash = token_proxy::infrastructure::auth::password::hash_password(&password)
             .map_err(|e| format!("密码哈希失败: {}", e))?;
 
-        let admin = token_proxy::domain::entities::user::User::new(
+        let admin = token_proxy::domain::user::User::new(
             "admin".to_string(),
             "管理员".to_string(),
             password_hash,

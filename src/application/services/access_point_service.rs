@@ -5,16 +5,16 @@ use uuid::Uuid;
 use crate::application::dto::access_point_dto::{
     AccessPointResponse, CreateAccessPointRequest, ModelMappingDto, UpdateAccessPointRequest,
 };
-use crate::domain::entities::access_point::AccessPoint;
-use crate::domain::repositories::access_point_repository::AccessPointRepository;
-use crate::domain::repositories::account_repository::AccountRepository;
-use crate::domain::repositories::provider_repository::ProviderRepository;
-use crate::domain::value_objects::access_point_type::AccessPointType;
-use crate::domain::value_objects::model_mapping::{
+use crate::domain::access_point::{AccessPoint, AccessPointEx};
+use crate::domain::access_point::repository::AccessPointRepository;
+use crate::domain::provider::repository::AccountRepository;
+use crate::domain::provider::repository::ProviderRepository;
+use crate::domain::shared::AccessPointType;
+use crate::domain::access_point::model_mapping::{
     normalize_match_type, MatchType, ModelMapping,
 };
-use crate::domain::value_objects::short_code::ShortCode;
-use crate::domain::value_objects::status::Status;
+use crate::domain::access_point::ShortCode;
+use crate::domain::shared::Status;
 use crate::shared::error::AppError;
 
 pub struct AccessPointService {
@@ -242,13 +242,35 @@ impl AccessPointService {
         &self,
         short_code: &str,
     ) -> Result<AccessPointResponse, AppError> {
-        let ap = self
+        let ap: AccessPointEx = self
             .access_point_repo
             .find_by_short_code(short_code)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("接入点 {} 未找到", short_code)))?;
 
-        Ok(Self::to_response(&ap))
+        let mappings: Vec<ModelMappingDto> = ap
+            .model_mappings
+            .iter()
+            .map(|m| ModelMappingDto {
+                source_model: m.source_model.clone(),
+                target_model: m.target_model.clone(),
+                match_type: m.match_type.as_str().to_string(),
+            })
+            .collect();
+
+        Ok(AccessPointResponse {
+            id: ap.id,
+            name: ap.name.clone(),
+            api_type: ap.api_type.to_string(),
+            short_code: ap.short_code.to_string(),
+            provider_id: ap.provider_id,
+            account_id: ap.account_id,
+            model_mappings: mappings,
+            access_url: format!("/ap/{}", ap.short_code),
+            status: ap.status.to_string(),
+            created_at: ap.created_at_utc(),
+            updated_at: ap.updated_at_utc(),
+        })
     }
 
     pub async fn list_all(&self) -> Result<Vec<AccessPointResponse>, AppError> {

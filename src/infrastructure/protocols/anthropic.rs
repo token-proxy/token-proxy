@@ -1,7 +1,7 @@
 use axum::http::HeaderMap;
 use serde_json::Value;
 
-use crate::domain::services::ApiProtocol;
+use crate::domain::shared::ApiProtocol;
 
 /// Anthropic Messages API 协议实现
 ///
