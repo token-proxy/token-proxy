@@ -5,11 +5,11 @@ use uuid::Uuid;
 use crate::application::dto::account_dto::{
     AccountResponse, CreateAccountRequest, UpdateAccountRequest,
 };
-use crate::domain::entities::account::Account;
-use crate::domain::repositories::account_repository::AccountRepository;
-use crate::domain::repositories::provider_repository::ProviderRepository;
-use crate::domain::services::encryption_service::EncryptionService;
-use crate::domain::value_objects::api_key::ApiKey;
+use crate::domain::provider::Account;
+use crate::domain::provider::repository::AccountRepository;
+use crate::domain::provider::repository::ProviderRepository;
+use crate::domain::shared::EncryptionService;
+use crate::domain::shared::ApiKey;
 use crate::shared::error::AppError;
 
 pub struct AccountService {

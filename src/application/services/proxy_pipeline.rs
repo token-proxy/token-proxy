@@ -8,11 +8,11 @@ use serde_json::{Map, Value};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::domain::entities::access_point::AccessPoint;
-use crate::domain::entities::log_entry::LogEntry;
-use crate::domain::repositories::access_point_repository::AccessPointRepository;
-use crate::domain::services::{ApiProtocol, EncryptionService};
-use crate::domain::value_objects::access_point_type::AccessPointType;
+use crate::domain::access_point::AccessPointEx;
+use crate::domain::log::LogEntry;
+use crate::domain::access_point::repository::AccessPointRepository;
+use crate::domain::shared::{ApiProtocol, EncryptionService};
+use crate::domain::shared::AccessPointType;
 use crate::infrastructure::http_client::proxy_client::ProxyClient;
 use crate::infrastructure::protocols::anthropic::AnthropicProtocol;
 use crate::application::services::log_service::LogService;
@@ -54,33 +54,19 @@ impl ProxyPipeline {
         user_id: Uuid,
     ) -> Result<axum::response::Response, AppError> {
         // 1. 加载聚合
-        let (access_point, provider, account) = self
+        let access_point = self
             .access_point_repo
-            .find_with_relations(short_code)
+            .find_by_short_code(short_code)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("接入点 '{}' 未找到", short_code)))?;
 
-        if !access_point.status.is_enabled() {
-            return Err(AppError::Forbidden(format!("接入点 '{}' 已被禁用", short_code)));
-        }
-        if !provider.status.is_enabled() {
-            return Err(AppError::Forbidden(format!(
-                "接入点 '{}' 关联的提供商已被禁用",
-                short_code
-            )));
-        }
-        if !account.status.is_enabled() {
-            return Err(AppError::Forbidden(format!(
-                "接入点 '{}' 关联的账号已被禁用",
-                short_code
-            )));
-        }
+        access_point.validate_usable()?;
 
         // 2. 解密上游 API key
-        let upstream_key = self.decrypt_account_key(&account.api_key_encrypted).await?;
+        let upstream_key = access_point.decrypt_upstream_key(&*self.encryption_service).await?;
 
         // 3. 确定 base_url 并构造上游 URL
-        let base_url = self.select_base_url(&access_point.api_type, &provider)?;
+        let base_url = access_point.base_url()?;
         let upstream_url = format!("{}/{}", base_url.trim_end_matches('/'), remainder);
 
         // 4. 解析请求体
@@ -96,10 +82,7 @@ impl ProxyPipeline {
             .map(|s| s.to_string());
 
         let requested_model = model_original.as_deref().unwrap_or("");
-        let final_model = access_point.resolve_model(
-            requested_model,
-            provider.default_model.as_deref(),
-        );
+        let final_model = access_point.resolve_model(requested_model);
 
         // 6. 替换模型字段
         let model_changed = !requested_model.is_empty() && final_model != requested_model;
@@ -150,35 +133,6 @@ impl ProxyPipeline {
         }
     }
 
-    /// 解密账户的 API key
-    async fn decrypt_account_key(&self, encrypted: &[u8]) -> Result<String, AppError> {
-        if encrypted.is_empty() {
-            return Err(AppError::NotFound(
-                "API Key 未正确存储，请删除并重新添加 Account".to_string(),
-            ));
-        }
-        let decrypted = self
-            .encryption_service
-            .decrypt(encrypted)
-            .await
-            .map_err(|e| AppError::Encryption(e.to_string()))?;
-        String::from_utf8(decrypted)
-            .map_err(|_| AppError::Internal("API Key 解码失败: 非法的 UTF-8 格式".to_string()))
-    }
-
-    /// 根据 api_type 选择对应的 base_url
-    fn select_base_url<'a>(
-        &self,
-        api_type: &AccessPointType,
-        provider: &'a crate::domain::entities::provider::Provider,
-    ) -> Result<&'a str, AppError> {
-        match api_type {
-            AccessPointType::Anthropic => provider
-                .anthropic_base_url
-                .as_deref()
-                .ok_or_else(|| AppError::Internal("提供商未配置 Anthropic 基础 URL".to_string())),
-        }
-    }
 
     /// 构造上游请求 headers
     ///
@@ -229,7 +183,7 @@ impl ProxyPipeline {
         modified_body: String,
         original_body: String,
         request_headers: &HeaderMap,
-        access_point: &AccessPoint,
+        access_point: &AccessPointEx,
         model_original: Option<String>,
         model_mapped: String,
         user_id: Uuid,
@@ -304,7 +258,7 @@ impl ProxyPipeline {
         modified_body: String,
         original_body: String,
         request_headers: &HeaderMap,
-        access_point: &AccessPoint,
+        access_point: &AccessPointEx,
         model_original: Option<String>,
         model_mapped: String,
         user_id: Uuid,

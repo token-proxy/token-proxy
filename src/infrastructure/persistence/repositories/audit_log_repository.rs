@@ -3,9 +3,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder, Set};
 
-use crate::domain::entities::audit_log::AuditLog;
-use crate::domain::repositories::audit_log_repository::AuditLogRepository;
-use crate::domain::entities::audit_log::{ActiveModel, Column, Entity};
+use crate::domain::log::AuditLog;
+use crate::domain::log::AuditLogRepository;
+use crate::domain::log::audit_log::{ActiveModel, Column, Entity};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 

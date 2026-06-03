@@ -4,7 +4,7 @@
 
 ## 技术栈
 
-- **后端**: Rust (edition 2021) + axum 0.8 + SeaORM 1 + tokio
+- **后端**: Rust (edition 2021) + axum 0.8 + SeaORM 2 + tokio
 - **前端**: React 19 + TypeScript 6 + Vite 8 + Semi Design 2.97
 - **数据库**: PostgreSQL 17 (应用层按月分区管理)
 - **构建**: cargo-make (任务编排) + Docker (多阶段构建)
@@ -14,11 +14,12 @@
 
 ```
 src/
-├── domain/              # 领域层 (零外部框架依赖)
-│   ├── entities/        # 11 个 SeaORM Model 实体 (唯一实体定义, 字段直接使用领域类型自动转换)
-│   ├── value_objects/   # ShortCode, ApiKey, ModelMapping, Status, AccessPointType
-│   ├── repositories/    # Repository traits (接口定义)
-│   └── services/        # EncryptionService trait, ModelMappingService
+├── domain/              # 领域层 (零外部框架依赖，按聚合组织)
+│   ├── access_point/    # AccessPoint 聚合 (接入点 + ShortCode + ModelMapping + AccessPointType + Repository trait)
+│   ├── provider/        # Provider 聚合 (Provider + Account + ModelList + Repository traits)
+│   ├── user/            # User 聚合 (User + RefreshToken + UserApiKey + Repository traits)
+│   ├── log/             # Log 聚合 (LogEntry + LogContent + LogTokenUsage + AuditLog + Repository traits)
+│   └── shared/          # 跨聚合共享 (Status + ApiKey + AccessPointType + EncryptionService trait + ApiProtocol trait)
 ├── application/         # 应用层 (用例编排)
 │   ├── dto/             # 请求/响应 DTO (9 组)
 │   ├── services/        # 8 个应用服务 (依赖注入 domain traits)
@@ -45,7 +46,8 @@ src/
 - 部署: Dockerfile (多阶段: Node 22 构建前端 -> Rust 1.89 构建后端 -> Alpine 3.21 运行时)
 - docker-compose.yml (pgvector/pgvector:pg17 + app)
 - 特性亮点: Provider.default_model (从 models 列表选择)、模型映射 MatchType (exact/prefix)、统一模型匹配优先级、AccessPoint.api_type、DEFAULT_MODEL_SENTINEL 哨兵值
-- 实体合并: 所有 SeaORM Model 实体定义统一在 `domain/entities/` 中, 不再存在独立的 `infrastructure/persistence/entities/` 目录。实体字段直接使用领域类型 (Status/ShortCode/AccessPointType/ModelMappingCollection) 通过 DeriveActiveEnum/DeriveValueType/FromJsonQueryResult 自动转换。log_entry.rs 退化为 re-export 文件
+- 实体合并: 所有 SeaORM Model 实体定义统一在 `domain/` 的各聚合目录中, 不再存在独立的 `infrastructure/persistence/entities/` 目录。实体字段直接使用领域类型 (Status/ShortCode/AccessPointType/ModelMappingCollection) 通过 DeriveActiveEnum/DeriveValueType/FromJsonQueryResult 自动转换
+- 聚合根: AccessPoint 的 `ModelEx` (= `AccessPointEx`) 是代理管道的聚合根, 包含已加载的 Provider 和 Account 关联。`find_by_short_code` 返回 `AccessPointEx`, ProxyPipeline 仅与该聚合根交互, 不再直接引用 Provider/Account 类型
 
 ## 数据库 Schema (11 个核心表)
 
@@ -189,7 +191,8 @@ aggr.resolve(x, y)
 - 日志默认展示不得依赖 `log_contents`; `log_metadata` 和 `log_conversation_events` 必须足够支撑请求日志列表和会话详情页, `log_contents` 仅用于原始明细弹窗
 - `__unmatched__` 哨兵是模型映射中的特殊 source_model, 使用 `prefix` 匹配类型, 用于为所有未精确/前缀匹配的请求模型指定目标模型, 每个接入点最多一个。接入点创建时, Drawer 自动预填一条 `__unmatched__ -> __default_model__` 映射。保存接入点时过滤映射, target_model 必须属于 Provider.models 或等于 `__default_model__` 哨兵
 - `api_type` 枚举的实际范围在 `AccessPointType` 值对象中定义, 新增类型需要同步修改 Rust 枚举 + 数据库列约束 + 前端 Select 选项
-- `domain/entities/` 是唯一的实体定义目录, 包含 11 个 SeaORM Model 文件 (access_point/account/provider/user/refresh_token/user_api_key/audit_log/log_metadata/log_content/log_token_usage) 和 1 个 re-export 文件 (log_entry)。仓库层统一从 `crate::domain::entities` 导入, 不再从 `infrastructure/persistence/entities` 导入
+- `domain/` 按聚合组织为 5 个子目录: access_point/ provider/ user/ log/ shared/。每个聚合目录包含其所有实体、值对象和 Repository trait。跨聚合共享类型放在 shared/。不再使用 entities/、value_objects/、repositories/、services/ 技术类别目录
+- AccessPoint 聚合的 `ModelEx` (= `AccessPointEx`) 是代理管道的聚合根。Repository 的 `find_by_short_code` 返回 `AccessPointEx`（包含已加载的 Provider 和 Account）。ProxyPipeline 仅与 AccessPointEx 交互，不直接引用 Provider 或 Account 类型
 
 ## 核心文件路径
 
@@ -200,7 +203,7 @@ aggr.resolve(x, y)
 | `src/config.rs` | 环境变量配置加载 |
 | `src/application/mod.rs` | AppState 定义 |
 | `src/shared/error.rs` | AppError 错误类型 |
-| `src/application/services/proxy_service.rs` | 核心代理上下文解析引擎 (含用户 API key 认证) |
+| `src/application/services/proxy_pipeline.rs` | 核心代理转发管道 (聚合根模式: 加载 AccessPointEx → validate_usable → base_url → resolve_model → decrypt_upstream_key → 转发) |
 | `src/application/services/log_service.rs` | 日志写入和查询服务 (metadata/content/events/token usage 编排) |
 | `src/infrastructure/parsers/log_content.rs` | 请求体、SSE、thinking、tool_use 和 token usage 解析器 |
 | `src/infrastructure/parsers/claude_code.rs` | Claude Code 请求头解析器 (`x-claude-code-session-id` / `x-claude-code-agent-id`) |
@@ -212,12 +215,11 @@ aggr.resolve(x, y)
 | `src/presentation/middleware/jwt_auth.rs` | JWT 认证中间件 + CurrentUser extractor |
 | `src/infrastructure/persistence/partition_manager.rs` | 分区管理器 |
 | `src/infrastructure/persistence/repositories/user_api_key_repository.rs` | UserApiKey 仓储实现 |
-| `src/domain/entities/user_api_key.rs` | 用户 API key 领域实体 |
-| `src/domain/entities/provider.rs` | Provider 实体 (含 default_model) |
-| `src/domain/value_objects/model_mapping.rs` | ModelMapping + MatchType + 模型族前缀常量 + normalize_match_type/is_prefix_source_model |
-| `src/domain/value_objects/access_point_type.rs` | AccessPointType 枚举 (Anthropic) |
-| `src/domain/services/model_mapping_service.rs` | 模型匹配领域服务 (精确 > 前缀 > __unmatched__ > default_model) |
-| `src/domain/repositories/user_api_key_repository.rs` | UserApiKey Repository trait |
+| `src/domain/user/user_api_key.rs` | 用户 API key 领域实体 (User 聚合) |
+| `src/domain/provider/provider.rs` | Provider 实体 (含 default_model + base_url_for 方法) |
+| `src/domain/access_point/model_mapping.rs` | ModelMapping + MatchType + 模型族前缀常量 + normalize_match_type/is_prefix_source_model |
+| `src/domain/access_point/access_point.rs` | AccessPoint 聚合根 (SeaORM Model + ModelEx + base_url/resolve_model/validate_usable/decrypt_upstream_key) |
+| `src/domain/shared/api_type.rs` | AccessPointType 枚举 (Anthropic) |
 | `src/migrations/m20260524_000001_provider_default_model.rs` | providers 表增加 default_model 列 |
 | `src-dashboard/App.tsx` | 前端路由定义 |
 | `src-dashboard/pages/ProfilePage.tsx` | 个人设置页 (个人资料/改密/API key 管理) |

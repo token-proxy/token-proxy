@@ -7,11 +7,11 @@ use crate::application::dto::log_dto::{
     LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse,
     SessionContentItemResponse, SessionSummaryResponse, TokenUsageResponse,
 };
-use crate::domain::entities::log_entry::{LogContent, LogEntry, LogTokenUsage};
-use crate::domain::repositories::access_point_repository::AccessPointRepository;
-use crate::domain::repositories::log_repository::{LogQuery, LogRepository, SessionQuery};
-use crate::domain::repositories::log_token_usage_repository::LogTokenUsageRepository;
-use crate::domain::repositories::user_repository::UserRepository;
+use crate::domain::log::{LogContent, LogEntry, LogTokenUsage};
+use crate::domain::access_point::repository::AccessPointRepository;
+use crate::domain::log::{LogQuery, LogRepository, SessionQuery};
+use crate::domain::log::LogTokenUsageRepository;
+use crate::domain::user::UserRepository;
 use crate::infrastructure::parsers::{claude_code, log_content, user_agent};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;

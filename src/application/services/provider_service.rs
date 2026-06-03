@@ -6,13 +6,13 @@ use uuid::Uuid;
 use crate::application::dto::provider_dto::{
     CreateProviderRequest, ProviderResponse, ProviderSummary, UpdateProviderRequest,
 };
-use crate::domain::entities::audit_log::AuditLog;
-use crate::domain::entities::provider::Provider;
-use crate::domain::repositories::account_repository::AccountRepository;
-use crate::domain::repositories::audit_log_repository::AuditLogRepository;
-use crate::domain::repositories::provider_repository::ProviderRepository;
-use crate::domain::services::encryption_service::EncryptionService;
-use crate::domain::value_objects::status::Status;
+use crate::domain::log::AuditLog;
+use crate::domain::provider::Provider;
+use crate::domain::provider::repository::AccountRepository;
+use crate::domain::log::AuditLogRepository;
+use crate::domain::provider::repository::ProviderRepository;
+use crate::domain::shared::EncryptionService;
+use crate::domain::shared::Status;
 use crate::shared::error::AppError;
 
 pub struct ProviderService {

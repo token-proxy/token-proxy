@@ -1,0 +1,93 @@
+use chrono::{DateTime, FixedOffset, Utc};
+use sea_orm::entity::prelude::*;
+use uuid::Uuid;
+
+/// SeaORM 实体映射 log_metadata 表
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[sea_orm(table_name = "log_metadata")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
+    pub timestamp: DateTimeWithTimeZone,
+    pub session_id: String,
+    pub user_id: Option<Uuid>,
+    pub access_point_id: Option<Uuid>,
+    pub provider_id: Option<Uuid>,
+    pub account_id: Option<Uuid>,
+    pub model_original: Option<String>,
+    pub model_mapped: Option<String>,
+    pub status_code: Option<i16>,
+    pub duration_ms: Option<i32>,
+    pub error_message: Option<String>,
+    pub request_index: i32,
+    pub client_session_id: Option<String>,
+    pub client_app: Option<String>,
+    pub client_user_agent: Option<String>,
+    pub conversation_source: String,
+    pub agent_id: Option<String>,
+    pub has_error: bool,
+    pub raw_content_available: bool,
+    /// 客户端名称（从 user-agent 解析）
+    pub client_name: Option<String>,
+    /// 客户端版本号
+    pub client_version: Option<String>,
+    /// 客户端发布渠道
+    pub client_channel: Option<String>,
+    /// 客户端平台
+    pub client_platform: Option<String>,
+    /// API 类型（Anthropic / OpenAI 等）
+    pub api_type: String,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::content::Entity",
+        from = "Column::Id",
+        to = "super::content::Column::LogId"
+    )]
+    LogContent,
+}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+// ─── 领域行为 ──────────────────────────────────────────────────────
+
+impl Model {
+    /// 创建用于代理日志的新实例（包含常用默认值）
+    pub fn new_proxy_entry() -> Self {
+        let offset = FixedOffset::east_opt(0).expect("UTC offset");
+        Model {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now().with_timezone(&offset),
+            session_id: String::new(),
+            user_id: None,
+            access_point_id: None,
+            provider_id: None,
+            account_id: None,
+            model_original: None,
+            model_mapped: None,
+            status_code: None,
+            duration_ms: None,
+            error_message: None,
+            request_index: 0,
+            client_session_id: None,
+            client_app: None,
+            client_user_agent: None,
+            conversation_source: "unknown".to_string(),
+            agent_id: None,
+            has_error: false,
+            raw_content_available: true,
+            client_name: None,
+            client_version: None,
+            client_channel: None,
+            client_platform: None,
+            api_type: "anthropic".to_string(),
+        }
+    }
+
+    /// 获取 timestamp 为 DateTime<Utc>
+    pub fn timestamp_utc(&self) -> DateTime<Utc> {
+        self.timestamp.with_timezone(&Utc)
+    }
+}
