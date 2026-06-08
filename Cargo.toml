@@ -34,6 +34,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 dotenvy = "0.15"
 rust-embed = "8"
+mime_guess = "2"
 bytes = "1"
 futures = "0.3"
 tokio-stream = "0.1"

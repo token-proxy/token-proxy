@@ -26,6 +26,7 @@ args = ["run"]
 # ─── 生产构建 ────────────────────────────────────────
 
 [tasks.build]
+clear = true
 description = "生产构建 (前端 npm build + 后端 cargo build --release)"
 run_task = { name = ["build-frontend", "build-backend"], parallel = false }
 

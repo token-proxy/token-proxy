@@ -22,7 +22,7 @@ RUN cargo build --release 2>/dev/null || true
 RUN rm -rf src
 
 COPY src/ src/
-COPY --from=frontend-builder /app/dist frontend/dist/
+COPY --from=frontend-builder /app/dist dist/
 
 RUN cargo build --release
 
