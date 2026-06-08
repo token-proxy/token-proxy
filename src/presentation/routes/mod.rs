@@ -1,6 +1,7 @@
 use axum::{middleware, routing::get, Json, Router};
 
 use crate::application::AppState;
+use crate::presentation::frontend;
 use crate::presentation::middleware::{jwt_auth, user_api_key_auth};
 
 pub mod access_point_routes;
@@ -56,6 +57,7 @@ pub fn build(state: AppState) -> Router {
         .merge(public)
         .merge(jwt_protected)
         .merge(proxy)
+        .fallback(get(frontend::serve_frontend))
 }
 
 /// GET /api/health
