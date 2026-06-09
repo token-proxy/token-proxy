@@ -213,7 +213,7 @@ impl UserService {
             "change_password",
             "user",
             Some(user_id),
-            None,
+            Some(serde_json::json!({"action": "change_password"})),
         );
         self.audit_log_repo
             .save(&audit)
