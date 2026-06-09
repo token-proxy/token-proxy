@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 
 use crate::domain::user::User;
 use crate::domain::user::UserRepository;
@@ -50,6 +50,7 @@ impl UserRepository for SeaOrmUserRepository {
         let active_model: UserActiveModel = user.clone().into();
 
         if exists {
+            let active_model = active_model.reset_all();
             UserEntity::update(active_model).exec(db).await?;
         } else {
             UserEntity::insert(active_model).exec(db).await?;

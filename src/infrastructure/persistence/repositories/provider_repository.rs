@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 
 use crate::domain::provider::Provider;
 use crate::domain::provider::repository::ProviderRepository;
@@ -48,6 +48,7 @@ impl ProviderRepository for SeaOrmProviderRepository {
         let active_model: ProviderActiveModel = provider.clone().into();
 
         if exists {
+            let active_model = active_model.reset_all();
             ProviderEntity::update(active_model).exec(db).await?;
         } else {
             ProviderEntity::insert(active_model).exec(db).await?;

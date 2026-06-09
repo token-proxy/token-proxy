@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter};
 
 use crate::domain::access_point::AccessPoint;
 use crate::domain::access_point::repository::AccessPointRepository;
@@ -100,6 +100,7 @@ impl AccessPointRepository for SeaOrmAccessPointRepository {
         let active_model: AccessPointActiveModel = access_point.clone().into();
 
         if exists {
+            let active_model = active_model.reset_all();
             AccessPointEntity::update(active_model).exec(db).await?;
         } else {
             AccessPointEntity::insert(active_model).exec(db).await?;

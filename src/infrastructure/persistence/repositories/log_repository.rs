@@ -3,8 +3,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, Statement,
 };
 use uuid::Uuid;
 
@@ -116,6 +116,7 @@ impl LogRepository for SeaOrmLogRepository {
         let active_model: ActiveModel = entry.clone().into();
 
         if exists {
+            let active_model = active_model.reset_all();
             Entity::update(active_model)
                 .exec(db)
                 .await?;

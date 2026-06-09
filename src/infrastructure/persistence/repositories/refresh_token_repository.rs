@@ -52,6 +52,7 @@ impl RefreshTokenRepository for SeaOrmRefreshTokenRepository {
         let active_model: RefreshTokenActiveModel = token.clone().into();
 
         if exists {
+            let active_model = active_model.reset_all();
             RefreshTokenEntity::update(active_model).exec(db).await?;
         } else {
             RefreshTokenEntity::insert(active_model).exec(db).await?;
