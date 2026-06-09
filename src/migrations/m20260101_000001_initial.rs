@@ -315,7 +315,7 @@ impl MigrationTrait for Migration {
                     .col(string(AuditLogs::Action).not_null())
                     .col(string(AuditLogs::EntityType).not_null())
                     .col(uuid_null(AuditLogs::EntityId))
-                    .col(json(AuditLogs::Details))
+                    .col(json_null(AuditLogs::Details))
                     .col(
                         timestamp_with_time_zone(AuditLogs::Timestamp).default(Expr::cust("NOW()")),
                     )
