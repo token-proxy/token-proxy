@@ -3,7 +3,7 @@ import { Button, Typography } from '@douyinfe/semi-ui';
 import AccessPointDrawer from '../components/AccessPointDrawer.tsx';
 import AccessPointTable from '../components/AccessPointTable.tsx';
 import useAccessPoints from '../hooks/useAccessPoints.ts';
-import { DEFAULT_MODEL, UNMATCHED_MODEL, type AccessPoint, type AccessPointFormData, type ModelMapping } from '../types/accessPoint.ts';
+import { type AccessPoint, type AccessPointFormData, type ModelMapping } from '../types/accessPoint.ts';
 
 const { Title } = Typography;
 
@@ -31,11 +31,13 @@ export default function AccessPointManagement(): ReactNode {
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<AccessPointFormData>(emptyForm);
   const [mappings, setMappings] = useState<ModelMapping[]>([]);
+  const [defaultModel, setDefaultModel] = useState<string | undefined>();
 
   const openCreateDrawer = () => {
     setEditingAccessPoint(null);
     setFormData(emptyForm);
     setMappings([]);
+    setDefaultModel(undefined);
     clearAccounts();
     setDrawerVisible(true);
   };
@@ -50,6 +52,7 @@ export default function AccessPointManagement(): ReactNode {
       api_type: accessPoint.api_type,
     });
     setMappings(accessPoint.model_mappings ?? []);
+    setDefaultModel(accessPoint.default_model);
     if (accessPoint.provider_id) {
       loadAccountsByProvider(accessPoint.provider_id);
     }
@@ -57,34 +60,25 @@ export default function AccessPointManagement(): ReactNode {
   };
 
   const handleProviderChange = async (providerId: string) => {
-    const currentProvider = providers.find((item) => item.id === providerId);
     setFormData({ ...formData, provider_id: providerId, account_id: undefined });
     loadAccountsByProvider(providerId);
 
-    let provider = currentProvider;
     try {
-      provider = await loadProviderById(providerId);
+      await loadProviderById(providerId);
     } catch {
-      provider = currentProvider;
+      // ignore
     }
 
-    if (!editingAccessPoint && provider?.default_model) {
-      setMappings([
-        {
-          source_model: UNMATCHED_MODEL,
-          target_model: DEFAULT_MODEL,
-          match_type: 'prefix',
-        },
-      ]);
-    } else if (!editingAccessPoint) {
+    if (!editingAccessPoint) {
       setMappings([]);
+      setDefaultModel(undefined);
     }
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const saved = await saveAccessPoint(formData, mappings, editingAccessPoint);
+      const saved = await saveAccessPoint(formData, mappings, defaultModel, editingAccessPoint);
       if (saved) {
         setDrawerVisible(false);
       }
@@ -117,6 +111,7 @@ export default function AccessPointManagement(): ReactNode {
         saving={saving}
         formData={formData}
         mappings={mappings}
+        defaultModel={defaultModel}
         providers={providers}
         accounts={accounts}
         accountsLoading={accountsLoading}
@@ -124,6 +119,7 @@ export default function AccessPointManagement(): ReactNode {
         onFormChange={setFormData}
         onProviderChange={handleProviderChange}
         onMappingsChange={setMappings}
+        onDefaultModelChange={setDefaultModel}
         onSave={handleSave}
       />
     </div>
