@@ -22,6 +22,7 @@ pub struct Model {
     pub provider_id: Uuid,
     pub account_id: Uuid,
     pub model_mappings: ModelMappingCollection,
+    pub default_model: Option<String>,
     pub status: Status,
     pub created_by: Uuid,
     pub created_at: DateTimeWithTimeZone,
@@ -57,6 +58,7 @@ impl Model {
             provider_id,
             account_id,
             model_mappings: ModelMappingCollection::default(),
+            default_model: None,
             status: Status::Enabled,
             created_by,
             created_at: now.with_timezone(&offset),
@@ -67,7 +69,6 @@ impl Model {
     pub fn resolve_model(
         &self,
         requested_model: &str,
-        default_model: Option<&str>,
     ) -> String {
         let mapped = if requested_model.is_empty() {
             None
@@ -76,7 +77,7 @@ impl Model {
         };
         ModelMappingCollection::resolve_final_model(
             mapped.as_deref(),
-            default_model,
+            self.default_model.as_deref(),
             requested_model,
         )
     }
@@ -115,10 +116,6 @@ impl ModelEx {
     }
 
     pub fn resolve_model(&self, requested_model: &str) -> String {
-        let default_model = self
-            .provider
-            .as_ref()
-            .and_then(|p| p.default_model.as_deref());
         let mapped = if requested_model.is_empty() {
             None
         } else {
@@ -126,7 +123,7 @@ impl ModelEx {
         };
         ModelMappingCollection::resolve_final_model(
             mapped.as_deref(),
-            default_model,
+            self.default_model.as_deref(),
             requested_model,
         )
     }
@@ -185,7 +182,7 @@ impl ModelEx {
 mod tests {
     use super::*;
     use crate::domain::access_point::model_mapping::{
-        ModelMapping, DEFAULT_MODEL_SENTINEL, UNMATCHED_MODEL_SENTINEL,
+        ModelMapping, UNMATCHED_MODEL_SENTINEL,
     };
 
     fn test_access_point() -> Model {
@@ -207,47 +204,44 @@ mod tests {
             "gpt-4-turbo".to_string(),
         )]
         .into();
-        assert_eq!(ap.resolve_model("gpt-4", None), "gpt-4-turbo");
+        assert_eq!(ap.resolve_model("gpt-4"), "gpt-4-turbo");
     }
 
     #[test]
-    fn test_resolve_model_unmatched_with_default() {
+    fn test_resolve_model_unmatched_mapping() {
         let mut ap = test_access_point();
         ap.model_mappings = vec![ModelMapping::new_exact(
             UNMATCHED_MODEL_SENTINEL.to_string(),
-            DEFAULT_MODEL_SENTINEL.to_string(),
+            "deepseek-chat".to_string(),
         )]
         .into();
-        assert_eq!(
-            ap.resolve_model("unknown-model", Some("claude-sonnet")),
-            "claude-sonnet"
-        );
+        ap.default_model = Some("claude-sonnet".to_string());
+        assert_eq!(ap.resolve_model("unknown-model"), "deepseek-chat");
     }
 
     #[test]
     fn test_resolve_model_no_match_default_fallback() {
-        let ap = test_access_point();
-        assert_eq!(
-            ap.resolve_model("unknown-model", Some("default-model")),
-            "default-model"
-        );
+        let mut ap = test_access_point();
+        ap.default_model = Some("default-model".to_string());
+        assert_eq!(ap.resolve_model("unknown-model"), "default-model");
     }
 
     #[test]
     fn test_resolve_model_no_match_no_default() {
         let ap = test_access_point();
-        assert_eq!(ap.resolve_model("my-model", None), "my-model");
+        assert_eq!(ap.resolve_model("my-model"), "my-model");
     }
 
     #[test]
     fn test_resolve_model_empty_requested_with_default() {
-        let ap = test_access_point();
-        assert_eq!(ap.resolve_model("", Some("default")), "default");
+        let mut ap = test_access_point();
+        ap.default_model = Some("default".to_string());
+        assert_eq!(ap.resolve_model(""), "default");
     }
 
     #[test]
     fn test_resolve_model_empty_requested_no_default() {
         let ap = test_access_point();
-        assert_eq!(ap.resolve_model("", None), "");
+        assert_eq!(ap.resolve_model(""), "");
     }
 }

@@ -52,7 +52,6 @@ impl ProviderService {
             openai_base_url: provider.openai_base_url.clone(),
             anthropic_base_url: provider.anthropic_base_url.clone(),
             models: provider.models.clone().into(),
-            default_model: provider.default_model.clone(),
             status: provider.status.to_string(),
             created_at: provider.created_at.with_timezone(&chrono::Utc),
             updated_at: provider.updated_at.with_timezone(&chrono::Utc),
@@ -79,7 +78,6 @@ impl ProviderService {
             req.name,
             req.openai_base_url,
             req.anthropic_base_url,
-            req.default_model,
         )?;
         let saved = self
             .provider_repo
@@ -96,7 +94,6 @@ impl ProviderService {
                 "name": &provider.name,
                 "openai_base_url": &provider.openai_base_url,
                 "anthropic_base_url": &provider.anthropic_base_url,
-                "default_model": &provider.default_model,
             })),
         )
         .await;
@@ -119,11 +116,7 @@ impl ProviderService {
         let old_status = provider.status.to_string();
 
         if let Some(name) = req.name {
-            let trimmed = name.trim().to_string();
-            if trimmed.is_empty() {
-                return Err(AppError::Validation("提供商名称不能为空".to_string()));
-            }
-            provider.name = trimmed;
+            provider.rename(name)?;
         }
         if let Some(url) = req.openai_base_url {
             provider.openai_base_url = Some(url).filter(|u| !u.trim().is_empty());
@@ -132,23 +125,17 @@ impl ProviderService {
             provider.anthropic_base_url = Some(url).filter(|u| !u.trim().is_empty());
         }
         if let Some(models) = req.models {
-            provider.models = models.into();
-        }
-        if let Some(default_model) = req.default_model {
-            let trimmed = default_model.trim().to_string();
-            provider.default_model = if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            };
+            provider.set_models(models);
         }
         if let Some(status_str) = req.status {
             let status: Status = status_str
                 .parse()
                 .map_err(|e: AppError| AppError::Validation(e.to_string()))?;
-            provider.status = status;
+            match status {
+                Status::Enabled => provider.enable(),
+                Status::Disabled => provider.disable(),
+            }
         }
-        provider.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
         let saved = self
             .provider_repo
@@ -316,10 +303,7 @@ impl ProviderService {
         }
 
         // 3. 合并去重
-        provider.models.extend(new_models);
-        provider.models.sort();
-        provider.models.dedup();
-        provider.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
+        provider.merge_models(new_models);
 
         let saved = self
             .provider_repo
