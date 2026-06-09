@@ -17,7 +17,6 @@ impl MigrationTrait for Migration {
                     .col(string_null(Providers::OpenaiBaseUrl))
                     .col(string_null(Providers::AnthropicBaseUrl))
                     .col(json(Providers::Models).default(Expr::cust("'[]'::json")))
-                    .col(string_null(Providers::DefaultModel))
                     .col(string(Providers::Status).default("enabled"))
                     .col(
                         timestamp_with_time_zone(Providers::CreatedAt).default(Expr::cust("NOW()")),
@@ -83,6 +82,7 @@ impl MigrationTrait for Migration {
                     .col(uuid(AccessPoints::ProviderId).not_null())
                     .col(uuid(AccessPoints::AccountId).not_null())
                     .col(json(AccessPoints::ModelMappings).default(Expr::cust("'[]'::json")))
+                    .col(string_null(AccessPoints::DefaultModel))
                     .col(string(AccessPoints::Status).default("enabled"))
                     .col(uuid(AccessPoints::CreatedBy).not_null())
                     .col(
@@ -198,18 +198,8 @@ impl MigrationTrait for Migration {
                     client_user_agent          TEXT,
                     conversation_source        VARCHAR(32) NOT NULL DEFAULT 'unknown',
                     agent_id                   VARCHAR(255),
-                    agent_type                 VARCHAR(64),
-                    parent_agent_tool_use_id   VARCHAR(255),
-                    request_kind               VARCHAR(64),
-                    primary_tool_name          VARCHAR(128),
-                    message_preview            TEXT,
-                    message_full               TEXT,
-                    response_preview           TEXT,
-                    has_thinking               BOOLEAN NOT NULL DEFAULT FALSE,
-                    has_tool_use               BOOLEAN NOT NULL DEFAULT FALSE,
                     has_error                  BOOLEAN NOT NULL DEFAULT FALSE,
                     raw_content_available      BOOLEAN NOT NULL DEFAULT TRUE,
-                    parser_version             VARCHAR(20),
                     client_name                VARCHAR(100),
                     client_version             VARCHAR(50),
                     client_channel             VARCHAR(50),
@@ -241,40 +231,11 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 9. log_conversation_events 和 log_token_usage 表
+        // 9. log_token_usage 表
         manager
             .get_connection()
             .execute_unprepared(
                 r#"
-                CREATE TABLE IF NOT EXISTS log_conversation_events (
-                    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    log_id              UUID NOT NULL,
-                    session_id          VARCHAR(255) NOT NULL,
-                    timestamp           TIMESTAMPTZ NOT NULL,
-                    request_index       INTEGER NOT NULL,
-                    event_index         INTEGER NOT NULL,
-                    parent_event_id     UUID,
-                    parent_tool_use_id  VARCHAR(255),
-                    source              VARCHAR(32) NOT NULL,
-                    role                VARCHAR(32) NOT NULL,
-                    event_type          VARCHAR(64) NOT NULL,
-                    agent_id            VARCHAR(255),
-                    agent_type          VARCHAR(64),
-                    tool_use_id         VARCHAR(255),
-                    tool_name           VARCHAR(128),
-                    title               TEXT,
-                    content             TEXT,
-                    content_preview     TEXT,
-                    thinking_content    TEXT,
-                    hidden_content      JSONB,
-                    display_payload     JSONB,
-                    confidence          SMALLINT NOT NULL DEFAULT 100,
-                    content_type        VARCHAR(50),
-                    signature           TEXT,
-                    tool_result_content TEXT,
-                    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                );
-
                 CREATE TABLE IF NOT EXISTS log_token_usage (
                     id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     log_id                      UUID NOT NULL UNIQUE,
@@ -416,14 +377,6 @@ impl MigrationTrait for Migration {
                     ON log_metadata (session_id, request_index);
                 CREATE INDEX IF NOT EXISTS idx_log_metadata_source
                     ON log_metadata (conversation_source);
-                CREATE INDEX IF NOT EXISTS idx_log_events_session_sort
-                    ON log_conversation_events (session_id, request_index, event_index);
-                CREATE INDEX IF NOT EXISTS idx_log_events_log_id
-                    ON log_conversation_events (log_id);
-                CREATE INDEX IF NOT EXISTS idx_log_events_agent
-                    ON log_conversation_events (session_id, agent_id);
-                CREATE INDEX IF NOT EXISTS idx_log_events_parent
-                    ON log_conversation_events (parent_event_id);
                 CREATE INDEX IF NOT EXISTS idx_log_token_usage_session
                     ON log_token_usage (session_id);
                 CREATE INDEX IF NOT EXISTS idx_log_token_usage_user_time
@@ -489,7 +442,7 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared(
-                "DROP TABLE IF EXISTS log_token_usage CASCADE; DROP TABLE IF EXISTS log_conversation_events CASCADE;",
+                "DROP TABLE IF EXISTS log_token_usage CASCADE;",
             )
             .await?;
 
@@ -534,7 +487,6 @@ enum Providers {
     OpenaiBaseUrl,
     AnthropicBaseUrl,
     Models,
-    DefaultModel,
     Status,
     CreatedAt,
     UpdatedAt,
@@ -575,6 +527,7 @@ enum AccessPoints {
     ProviderId,
     AccountId,
     ModelMappings,
+    DefaultModel,
     Status,
     CreatedBy,
     CreatedAt,
@@ -614,15 +567,6 @@ enum LogMetadata {
     ClientUserAgent,
     ConversationSource,
     AgentId,
-    AgentType,
-    ParentAgentToolUseId,
-    RequestKind,
-    PrimaryToolName,
-    MessagePreview,
-    MessageFull,
-    ResponsePreview,
-    HasThinking,
-    HasToolUse,
     HasError,
     RawContentAvailable,
 }
