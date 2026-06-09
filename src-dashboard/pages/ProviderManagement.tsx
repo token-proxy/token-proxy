@@ -289,6 +289,7 @@ export default function ProviderManagement(): ReactNode {
       title: '模型',
       dataIndex: 'models',
       key: 'models',
+      width: 100,
       render: (models?: string[]) => (
         <Space wrap>
           {models && models.length > 0

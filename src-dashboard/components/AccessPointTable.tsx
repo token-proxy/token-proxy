@@ -35,7 +35,7 @@ export default function AccessPointTable({
         <CopyableIdText value={record.id} />
       ),
     },
-    { title: '名称', dataIndex: 'name', key: 'name' },
+    { title: '名称', dataIndex: 'name', key: 'name', width: 100 },
     {
       title: 'Short Code',
       dataIndex: 'short_code',
