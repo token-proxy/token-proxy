@@ -15,6 +15,7 @@ interface AccessPointDrawerProps {
   saving: boolean;
   formData: AccessPointFormData;
   mappings: ModelMapping[];
+  defaultModel: string | undefined;
   providers: ProviderOption[];
   accounts: AccountOption[];
   accountsLoading: boolean;
@@ -22,6 +23,7 @@ interface AccessPointDrawerProps {
   onFormChange: (formData: AccessPointFormData) => void;
   onProviderChange: (providerId: string) => void;
   onMappingsChange: (mappings: ModelMapping[]) => void;
+  onDefaultModelChange: (value: string | undefined) => void;
   onSave: () => void;
 }
 
@@ -38,6 +40,8 @@ export default function AccessPointDrawer({
   onFormChange,
   onProviderChange,
   onMappingsChange,
+  defaultModel,
+  onDefaultModelChange,
   onSave,
 }: AccessPointDrawerProps): ReactNode {
   const handleAddMapping = () => {
@@ -100,11 +104,6 @@ export default function AccessPointDrawer({
             ))}
           </Select>
         </div>
-        {selectedProvider && (
-          <div style={{ marginTop: 8, color: 'var(--semi-color-text-2)', fontSize: 13 }}>
-            默认模型: {selectedProvider.default_model || '未设置'}
-          </div>
-        )}
         <div style={{ marginTop: 16 }}>
           <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>Account</div>
           <Select
@@ -136,11 +135,26 @@ export default function AccessPointDrawer({
           mappings={mappings}
           apiType={formData.api_type}
           modelOptions={modelOptions}
-          defaultModel={selectedProvider?.default_model}
           onAdd={handleAddMapping}
           onRemove={handleRemoveMapping}
           onChange={handleMappingChange}
         />
+
+        <div style={{ marginTop: 24 }}>
+          <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>默认模型</div>
+          <Select
+            value={defaultModel}
+            placeholder={modelOptions.length === 0 ? '模型列表为空，无法选择' : '选择路由兜底模型（可选）'}
+            showClear
+            disabled={modelOptions.length === 0}
+            optionList={modelOptions.map((m) => ({ value: m, label: m }))}
+            onChange={(value) => onDefaultModelChange(value as string | undefined)}
+            style={{ width: '100%' }}
+          />
+          <div style={{ marginTop: 4, color: 'var(--semi-color-text-2)', fontSize: 12 }}>
+            当模型映射均未匹配时，使用此模型作为兜底
+          </div>
+        </div>
 
         <Button
           type="primary"

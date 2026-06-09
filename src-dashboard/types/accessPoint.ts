@@ -1,11 +1,9 @@
 export const UNMATCHED_MODEL = '__unmatched__';
-export const DEFAULT_MODEL = '__default_model__';
 
 export interface ProviderOption {
   id: string;
   name: string;
   models?: string[];
-  default_model?: string;
 }
 
 export interface AccountOption {
@@ -30,6 +28,7 @@ export interface AccessPoint {
   account_id: string;
   api_type: string;
   model_mappings: ModelMapping[];
+  default_model?: string;
   access_url: string;
   status: string;
   created_at: string;

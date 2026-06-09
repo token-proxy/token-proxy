@@ -1,12 +1,11 @@
 import { Button, Select, Tag } from '@douyinfe/semi-ui';
 import type { ReactNode } from 'react';
-import { DEFAULT_MODEL, UNMATCHED_MODEL, type ModelMapping } from '../types/accessPoint.ts';
+import { UNMATCHED_MODEL, type ModelMapping } from '../types/accessPoint.ts';
 
 interface ModelMappingEditorProps {
   mappings: ModelMapping[];
   apiType?: string;
   modelOptions: string[];
-  defaultModel?: string;
   onAdd: () => void;
   onRemove: (index: number) => void;
   onChange: (index: number, field: keyof ModelMapping, value: string) => void;
@@ -25,9 +24,8 @@ const MATCH_TYPE_LABELS: Record<MappingMatchType, string> = {
   prefix: '模式匹配',
 };
 
-const labelForModel = (value: string, defaultModel?: string) => {
+const labelForModel = (value: string) => {
   if (value === UNMATCHED_MODEL) return '未匹配';
-  if (value === DEFAULT_MODEL) return defaultModel ? `默认模型 (${defaultModel})` : '默认模型';
   return ANTHROPIC_FAMILIES.find((family) => family.value === value)?.label ?? value;
 };
 
@@ -37,12 +35,12 @@ const matchTypeForSource = (value: string): MappingMatchType => (
 
 const uniqueOptions = (values: string[]) => [...new Set(values.filter(Boolean))];
 
-const optionLabel = (type: MappingMatchType, value: string, defaultModel?: string) => (
+const optionLabel = (type: MappingMatchType, value: string) => (
   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
     <Tag color={type === 'prefix' ? 'purple' : 'blue'} size="small">
       {MATCH_TYPE_LABELS[type]}
     </Tag>
-    <span>{labelForModel(value, defaultModel)}</span>
+    <span>{labelForModel(value)}</span>
   </span>
 );
 
@@ -50,7 +48,6 @@ export default function ModelMappingEditor({
   mappings,
   apiType,
   modelOptions,
-  defaultModel,
   onAdd,
   onRemove,
   onChange,
@@ -61,10 +58,7 @@ export default function ModelMappingEditor({
     ...modelOptions,
     ...mappings.map((mapping) => mapping.source_model),
   ]);
-  const targetValues = uniqueOptions([
-    ...(defaultModel ? [DEFAULT_MODEL] : []),
-    ...modelOptions,
-  ]);
+  const targetValues = uniqueOptions([...modelOptions]);
 
   const sourceOptionList = sourceValues.map((value) => {
     const matchType = matchTypeForSource(value);
@@ -75,7 +69,7 @@ export default function ModelMappingEditor({
   });
   const targetOptionList = targetValues.map((value) => ({
     value,
-    label: optionLabel('exact', value, defaultModel),
+    label: optionLabel('exact', value),
   }));
 
   return (
