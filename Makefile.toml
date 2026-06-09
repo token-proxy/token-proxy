@@ -9,7 +9,7 @@ FRONTEND_PORT = "5173"
 # ─── 开发模式 ────────────────────────────────────────
 
 [tasks.dev]
-description = "启动开发模式 (前端 Vite HMR + 后端 cargo run)"
+description = "启动开发模式 (前端 Vite HMR + 后端 cargo watch)"
 run_task = { name = ["dev-frontend", "dev-backend"], parallel = true }
 
 [tasks.dev-frontend]
@@ -18,10 +18,10 @@ command = "npm"
 args = ["run", "dev"]
 
 [tasks.dev-backend]
-description = "启动后端 (cargo run)"
+description = "启动后端 (cargo watch, 文件变更自动重编译重启)"
 env = { SERVER_PORT = "${BACKEND_PORT}" }
 command = "cargo"
-args = ["run"]
+args = ["watch", "-x", "run"]
 
 # ─── 生产构建 ────────────────────────────────────────
 
