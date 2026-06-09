@@ -55,6 +55,7 @@ impl AccessPointService {
             provider_id: ap.provider_id,
             account_id: ap.account_id,
             model_mappings: mappings,
+            default_model: ap.default_model.clone(),
             access_url: format!("/ap/{}", ap.short_code),
             status: ap.status.to_string(),
             created_at: ap.created_at_utc(),
@@ -145,6 +146,15 @@ impl AccessPointService {
                 .collect();
         }
 
+        if let Some(dm) = req.default_model {
+            let trimmed = dm.trim().to_string();
+            access_point.default_model = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            };
+        }
+
         let saved = self
             .access_point_repo
             .save(&access_point)
@@ -218,6 +228,15 @@ impl AccessPointService {
             ap.status = status;
         }
 
+        if let Some(dm) = req.default_model {
+            let trimmed = dm.trim().to_string();
+            ap.default_model = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            };
+        }
+
         ap.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
         let saved = self
@@ -266,6 +285,7 @@ impl AccessPointService {
             provider_id: ap.provider_id,
             account_id: ap.account_id,
             model_mappings: mappings,
+            default_model: ap.default_model.clone(),
             access_url: format!("/ap/{}", ap.short_code),
             status: ap.status.to_string(),
             created_at: ap.created_at_utc(),

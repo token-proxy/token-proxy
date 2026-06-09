@@ -13,6 +13,7 @@ impl ModelList {
     pub fn iter(&self) -> impl Iterator<Item = &String> { self.0.iter() }
     pub fn inner(&self) -> &[String] { &self.0 }
     pub fn contains(&self, item: &str) -> bool { self.0.contains(&item.to_string()) }
+    pub fn first(&self) -> Option<&String> { self.0.first() }
 }
 
 impl From<Vec<String>> for ModelList {

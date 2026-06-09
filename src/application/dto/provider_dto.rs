@@ -9,7 +9,6 @@ pub struct CreateProviderRequest {
     pub name: String,
     pub openai_base_url: Option<String>,
     pub anthropic_base_url: Option<String>,
-    pub default_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -18,7 +17,6 @@ pub struct UpdateProviderRequest {
     pub openai_base_url: Option<String>,
     pub anthropic_base_url: Option<String>,
     pub models: Option<Vec<String>>,
-    pub default_model: Option<String>,
     pub status: Option<String>,
 }
 
@@ -31,7 +29,6 @@ pub struct ProviderResponse {
     pub openai_base_url: Option<String>,
     pub anthropic_base_url: Option<String>,
     pub models: Vec<String>,
-    pub default_model: Option<String>,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

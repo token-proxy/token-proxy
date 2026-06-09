@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 
 /// 未匹配的模型哨兵常量：当没有精确/前缀匹配时，使用此规则
 pub const UNMATCHED_MODEL_SENTINEL: &str = "__unmatched__";
-pub const DEFAULT_MODEL_SENTINEL: &str = "__default_model__";
-
 /// Claude 模型族前缀常量
 pub const CLAUDE_OPUS_PREFIX: &str = "claude-opus-";
 pub const CLAUDE_SONNET_PREFIX: &str = "claude-sonnet-";
@@ -185,19 +183,15 @@ impl ModelMappingCollection {
     /// 确定最终使用的模型名称
     ///
     /// 优先级：
-    /// 1. 映射后的模型名（如果匹配到映射规则且不是哨兵值）
-    /// 2. `__default_model__` 哨兵 → 使用 Provider 的默认模型
-    /// 3. Provider 的默认模型（如果配置了）
-    /// 4. 原始请求的模型名（兜底）
+    /// 1. 映射匹配到的目标模型名
+    /// 2. 接入点的默认模型（如果配置了）
+    /// 3. 原始请求的模型名（兜底）
     pub fn resolve_final_model(
         mapped_model: Option<&str>,
         default_model: Option<&str>,
         original_model: &str,
     ) -> String {
         match mapped_model {
-            Some(DEFAULT_MODEL_SENTINEL) => default_model
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| original_model.to_string()),
             Some(model) => model.to_string(),
             None => default_model
                 .map(|s| s.to_string())
@@ -398,16 +392,6 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_final_model_default_sentinel() {
-        let result = ModelMappingCollection::resolve_final_model(
-            Some(DEFAULT_MODEL_SENTINEL),
-            Some("default-model"),
-            "original",
-        );
-        assert_eq!(result, "default-model");
-    }
-
-    #[test]
     fn test_resolve_final_model_default_fallback() {
         let result =
             ModelMappingCollection::resolve_final_model(None, Some("default-model"), "original");
@@ -423,8 +407,5 @@ mod tests {
     #[test]
     fn test_constants() {
         assert_eq!(UNMATCHED_MODEL_SENTINEL, "__unmatched__");
-        assert_eq!(CLAUDE_OPUS_PREFIX, "claude-opus-");
-        assert_eq!(CLAUDE_SONNET_PREFIX, "claude-sonnet-");
-        assert_eq!(CLAUDE_HAIKU_PREFIX, "claude-haiku-");
     }
 }

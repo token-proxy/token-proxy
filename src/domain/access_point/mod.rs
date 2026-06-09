@@ -11,6 +11,6 @@ pub use access_point::{
 pub use model_mapping::{
     is_prefix_source_model, normalize_match_type, MatchType, ModelMapping,
     ModelMappingCollection, CLAUDE_HAIKU_PREFIX, CLAUDE_OPUS_PREFIX, CLAUDE_SONNET_PREFIX,
-    DEFAULT_MODEL_SENTINEL, UNMATCHED_MODEL_SENTINEL,
+    UNMATCHED_MODEL_SENTINEL,
 };
 pub use short_code::ShortCode;

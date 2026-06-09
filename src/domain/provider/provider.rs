@@ -17,7 +17,6 @@ pub struct Model {
     pub openai_base_url: Option<String>,
     pub anthropic_base_url: Option<String>,
     pub models: ModelList,
-    pub default_model: Option<String>,
     pub status: Status,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
@@ -33,7 +32,6 @@ impl Model {
         name: String,
         openai_base_url: Option<String>,
         anthropic_base_url: Option<String>,
-        default_model: Option<String>,
     ) -> Result<Self, AppError> {
         let name = name.trim().to_string();
         if name.is_empty() {
@@ -67,9 +65,6 @@ impl Model {
                 .map(|u| u.trim().to_string())
                 .filter(|u| !u.is_empty()),
             models: ModelList::default(),
-            default_model: default_model
-                .map(|m| m.trim().to_string())
-                .filter(|m| !m.is_empty()),
             status: Status::Enabled,
             created_at: now,
             updated_at: now,
@@ -92,6 +87,52 @@ impl Model {
                 .ok_or_else(|| AppError::Internal("提供商未配置 Anthropic 基础 URL".to_string())),
         }
     }
+
+    /// 重命名，名称不可为空
+    pub fn rename(&mut self, name: String) -> Result<(), AppError> {
+        let trimmed = name.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(AppError::Validation("提供商名称不能为空".to_string()));
+        }
+        self.name = trimmed;
+        self.touch();
+        Ok(())
+    }
+
+    /// 替换模型列表，自动排序去重
+    pub fn set_models(&mut self, models: Vec<String>) {
+        let mut list: ModelList = models.into();
+        list.sort();
+        list.dedup();
+        self.models = list;
+        self.touch();
+    }
+
+    /// 合并模型列表（自动排序去重），供自动发现使用
+    pub fn merge_models(&mut self, new_models: Vec<String>) {
+        self.models.extend(new_models);
+        self.models.sort();
+        self.models.dedup();
+        self.touch();
+    }
+
+    /// 启用
+    pub fn enable(&mut self) {
+        self.status = Status::Enabled;
+        self.touch();
+    }
+
+    /// 禁用
+    pub fn disable(&mut self) {
+        self.status = Status::Disabled;
+        self.touch();
+    }
+
+    /// 更新 updated_at 为当前时间
+    fn touch(&mut self) {
+        self.updated_at = chrono::Utc::now()
+            .with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
+    }
 }
 
 #[cfg(test)]
@@ -104,7 +145,6 @@ mod tests {
             "Test Provider".to_string(),
             Some("https://api.openai.com".to_string()),
             Some("https://api.anthropic.com".to_string()),
-            Some("gpt-4".to_string()),
         )
         .unwrap();
         assert_eq!(provider.name, "Test Provider");
@@ -116,32 +156,7 @@ mod tests {
             provider.anthropic_base_url,
             Some("https://api.anthropic.com".to_string())
         );
-        assert_eq!(provider.default_model, Some("gpt-4".to_string()));
         assert!(provider.status.is_enabled());
-    }
-
-    #[test]
-    fn test_provider_new_default_model_empty() {
-        let provider = Model::new(
-            "Test".to_string(),
-            Some("https://api.openai.com".to_string()),
-            None,
-            Some("  ".to_string()),
-        )
-        .unwrap();
-        assert_eq!(provider.default_model, None);
-    }
-
-    #[test]
-    fn test_provider_new_default_model_none() {
-        let provider = Model::new(
-            "Test".to_string(),
-            Some("https://api.openai.com".to_string()),
-            None,
-            None,
-        )
-        .unwrap();
-        assert_eq!(provider.default_model, None);
     }
 
     #[test]
@@ -150,14 +165,13 @@ mod tests {
             "  ".to_string(),
             None,
             Some("https://api.anthropic.com".to_string()),
-            None,
         );
         assert!(result.is_err());
     }
 
     #[test]
     fn test_provider_new_no_url() {
-        let result = Model::new("Test".to_string(), None, None, None);
+        let result = Model::new("Test".to_string(), None, None);
         assert!(result.is_err());
     }
 
@@ -166,7 +180,6 @@ mod tests {
         let provider = Model::new(
             "OpenAI Only".to_string(),
             Some("https://api.openai.com".to_string()),
-            None,
             None,
         )
         .unwrap();

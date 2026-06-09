@@ -22,6 +22,7 @@ pub struct CreateAccessPointRequest {
     pub short_code: Option<String>,
     pub api_type: Option<String>,
     pub model_mappings: Option<Vec<ModelMappingDto>>,
+    pub default_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -30,6 +31,7 @@ pub struct UpdateAccessPointRequest {
     pub provider_id: Option<Uuid>,
     pub account_id: Option<Uuid>,
     pub model_mappings: Option<Vec<ModelMappingDto>>,
+    pub default_model: Option<String>,
     pub status: Option<String>,
 }
 
@@ -44,6 +46,7 @@ pub struct AccessPointResponse {
     pub provider_id: Uuid,
     pub account_id: Uuid,
     pub model_mappings: Vec<ModelMappingDto>,
+    pub default_model: Option<String>,
     pub access_url: String,
     pub status: String,
     pub created_at: DateTime<Utc>,
