@@ -24,6 +24,7 @@ export default function AccessPointManagement(): ReactNode {
     deleteAccessPoint,
     toggleAccessPoint,
     copyAccessUrl,
+    copyClaudeCodeCommand,
   } = useAccessPoints();
 
   const [drawerVisible, setDrawerVisible] = useState(false);
@@ -100,6 +101,7 @@ export default function AccessPointManagement(): ReactNode {
         operatingIds={operatingIds}
         copyingUrl={copyingUrl}
         onCopyUrl={copyAccessUrl}
+        onCopyClaudeCodeCommand={copyClaudeCodeCommand}
         onEdit={openEditDrawer}
         onDelete={deleteAccessPoint}
         onToggleEnabled={toggleAccessPoint}
