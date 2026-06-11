@@ -2,17 +2,27 @@ use axum::http::HeaderMap;
 use serde_json::Value;
 
 use crate::domain::shared::ApiProtocol;
+use crate::shared::error::AppError;
 
 /// Anthropic Messages API 协议实现
 ///
-/// 处理 Anthropic 特定的请求构造细节：
-/// - 追加 `anthropic-version: 2023-06-01` 头
+/// 封装 Anthropic API 的请求结构知识：
+/// - 模型字段位于 `body["model"]`
 /// - 通过 `body["stream"] == true` 和 `accept: text/event-stream` 检测流式请求
-pub struct AnthropicProtocol;
+pub struct AnthropicApiProtocol;
 
-impl ApiProtocol for AnthropicProtocol {
-    fn upstream_extra_headers(&self, _api_key: &str) -> Vec<(&str, String)> {
-        vec![("anthropic-version", "2023-06-01".to_string())]
+impl ApiProtocol for AnthropicApiProtocol {
+    fn extract_model(&self, body: &Value) -> Result<String, AppError> {
+        body.get("model")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| AppError::Validation("请求体缺少 model 字段".to_string()))
+    }
+
+    fn replace_model(&self, body: &mut Value, model: &str) {
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert("model".to_string(), Value::String(model.to_string()));
+        }
     }
 
     fn is_streaming(&self, body: &Value, headers: &HeaderMap) -> bool {
