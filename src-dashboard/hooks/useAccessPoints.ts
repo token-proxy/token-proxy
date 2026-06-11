@@ -168,7 +168,22 @@ export default function useAccessPoints() {
     const url = `${baseUrl}/ap/${shortCode}`;
     try {
       await navigator.clipboard.writeText(url);
-      Toast.success('接入 URL 已复制');
+      Toast.success('接入链接已复制');
+    } catch {
+      Toast.error('复制失败');
+    } finally {
+      setCopyingUrl(false);
+    }
+  };
+
+  const copyClaudeCodeCommand = async (shortCode: string) => {
+    if (copyingUrl) return;
+    setCopyingUrl(true);
+    const baseUrl = `${window.location.protocol}//${window.location.host}`;
+    const command = `ANTHROPIC_BASE_URL=${baseUrl}/ap/${shortCode} claude`;
+    try {
+      await navigator.clipboard.writeText(command);
+      Toast.success('Claude Code 启动命令已复制');
     } catch {
       Toast.error('复制失败');
     } finally {
@@ -192,5 +207,6 @@ export default function useAccessPoints() {
     deleteAccessPoint,
     toggleAccessPoint,
     copyAccessUrl,
+    copyClaudeCodeCommand,
   };
 }

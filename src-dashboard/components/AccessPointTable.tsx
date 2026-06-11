@@ -10,6 +10,7 @@ interface AccessPointTableProps {
   operatingIds: string[];
   copyingUrl: boolean;
   onCopyUrl: (shortCode: string) => void;
+  onCopyClaudeCodeCommand: (shortCode: string) => void;
   onEdit: (accessPoint: AccessPoint) => void;
   onDelete: (id: string) => void;
   onToggleEnabled: (accessPoint: AccessPoint) => void;
@@ -21,6 +22,7 @@ export default function AccessPointTable({
   operatingIds,
   copyingUrl,
   onCopyUrl,
+  onCopyClaudeCodeCommand,
   onEdit,
   onDelete,
   onToggleEnabled,
@@ -69,11 +71,14 @@ export default function AccessPointTable({
     {
       title: '操作',
       key: 'actions',
-      width: 220,
+      width: 300,
       render: (_: unknown, record: AccessPoint) => (
         <Space>
           <Button size="small" onClick={() => onCopyUrl(record.short_code)} loading={copyingUrl}>
-            复制 URL
+            复制链接
+          </Button>
+          <Button size="small" onClick={() => onCopyClaudeCodeCommand(record.short_code)} loading={copyingUrl}>
+            复制命令
           </Button>
           <Button size="small" onClick={() => onEdit(record)}>编辑</Button>
           <Popconfirm
