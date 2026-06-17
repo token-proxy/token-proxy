@@ -18,22 +18,21 @@ src/
 │   ├── access_point/    # AccessPoint 聚合 (接入点 + ShortCode + ModelMapping + AccessPointType + Repository trait)
 │   ├── provider/        # Provider 聚合 (Provider + Account + ModelList + Repository traits)
 │   ├── user/            # User 聚合 (User + RefreshToken + UserApiKey + Repository traits)
-│   ├── log/             # Log 聚合 (LogEntry + LogContent + LogTokenUsage + AuditLog + Repository traits)
+│   ├── log/             # Log 聚合 (LogMetadata + LogContent + LogTokenUsage + AuditLog + Repository traits)
 │   └── shared/          # 跨聚合共享 (Status + ApiKey + AccessPointType + EncryptionService trait + RequestSnapshotProtocol trait)
 ├── application/         # 应用层 (用例编排)
 │   ├── access_point/    # AccessPoint 用例 (服务 + DTO)
 │   ├── auth/            # 认证用例 (服务 + DTO, 跨聚合)
 │   ├── log/             # 日志用例 (服务 + DTO)
 │   ├── provider/        # Provider / Account 用例 (服务 + DTO)
-│   ├── proxy/           # 代理转发用例 (跨聚合, 含 acl 防腐层子模块)
-│   │   └── acl/         # 防腐层: LogContext / ProxyLogger / LogTaskContext
+│   ├── proxy/           # 代理转发用例 (跨聚合)
 │   ├── user/            # User / ApiKey 用例 (服务 + DTO)
 │   └── mod.rs           # AppState
 ├── infrastructure/      # 基础设施层
 │   ├── persistence/     # Repository 实现 (8 个) + PartitionManager
 │   ├── encryption/      # AES-256-GCM 加密
 │   ├── auth/            # JWT (jsonwebtoken) + argon2 密码哈希
-│   └── http_client/     # reqwest 代理转发客户端
+│   └── http_client/     # 代理 HTTP 客户端 (ProxyClient + ProcessedRequest + ProxyLogger)
 ├── presentation/        # 展示层
 │   ├── routes/          # 9 组 axum handlers
 │   └── middleware/      # JWT 认证中间件
@@ -84,9 +83,11 @@ src/
 - **密码**: argon2id
 - **分区**: PartitionManager 应用层管理, 按月 `RANGE (timestamp)`, 依赖原生 PostgreSQL 分区, 支持多副本 advisory lock 防冲突
 - **代理**: SSE 流式逐块转发 + 异步日志写入; 写日志时同步解析 Claude Code 请求头、请求体、SSE 响应、thinking、tool_use 和 usage, 将可展示摘要写入 `log_metadata`, 将会话事件写入 `log_conversation_events`, 将 token 统计写入 `log_token_usage`, 原始请求 / 响应仅保存在 `log_contents` 中按需查看
-- **代理日志统一积累**: `ProxyLogger` 贯穿整个代理生命周期，无论流式/非流式/客户端断开，最终都统一调用 `flush()` 写库。客户端断开时 Drop 触发自动 flush 并标记 `is_interrupted`，替代了 `InterruptGuard` 和双路径 (`spawn_log_task` + 中断守卫) 的设计
+- **代理日志统一积累**: `ProxyLogger`（`infrastructure/http_client/`）贯穿整个代理生命周期。构造时从 `ProcessedRequest` + `AccessPointEx` 提取字段，填充 `ProxyLogData` DTO（防腐职责）；运行时通过 `append_body`/`set_body` 积累响应体；结束时调用 `flush()` 将完成的 DTO 交给 `LogService::record_proxy_log()`。无论流式/非流式/客户端断开，最终都统一走这条路径。Drop 中自动标记 `is_interrupted` 并触发 flush
 - **响应头透明化**: 代理转发仅过滤 hop-by-hop 头 (`transfer-encoding`, `connection`, `keep-alive` 等)，其余上游响应头全部透传给客户端。不再硬编码 `content-type: text/event-stream` 等预设值
 - **运输方式由响应决定**: 流式/非流式的判断依据上游响应头 `content-type` 是否包含 `text/event-stream`，替代此前基于请求特征 (`processed.is_streaming`) 的预设
+- **ProxyLogData DTO**: `ProxyLogger` 持有并逐步填充的 DTO（`application/log/dto/`），flush 时一次性交给 `LogService`。ProxyLogger 不再构造领域实体——`LogService::record_proxy_log()` 内部从 DTO 构造 `LogMetadata`，消除了 `LogEntry::from_proxy_data()` 等拼装方法
+- **LogMetadata 命名**: `log_metadata` 表的实体从 `LogEntry` 改名为 `LogMetadata`，与 `LogContent`、`LogTokenUsage` 构成统一的 `Log*` 家族命名
 - **日志记录三阶段独立错误处理**: `record_proxy_log` 按元数据保存 → 内容保存 → token 用量解析三个阶段串行执行，元数据失败立即 return，内容/token 阶段失败仅记录 warn/error 不阻断后续流程
 - **路由**: 公开路径 (`/api/auth/*`, `/ap/*`, `/api/health`) 跳过 JWT 认证
 - **接入点认证**: `/ap/*` 路径跳过 JWT 中间件, 但在 ProxyService 中强制验证用户 API key (`Authorization: Bearer <user_api_key>`), 通过 SHA-256 哈希匹配后记录 user_id
@@ -202,8 +203,7 @@ aggr.resolve(x, y)
 - `api_type` 枚举的实际范围在 `AccessPointType` 值对象中定义, 新增类型需要同步修改 Rust 枚举 + 数据库列约束 + 前端 Select 选项
 - `domain/` 按聚合组织为 5 个子目录: access_point/ provider/ user/ log/ shared/。每个聚合目录包含其所有实体、值对象和 Repository trait。跨聚合共享类型放在 shared/。不再使用 entities/、value_objects/、repositories/、services/ 技术类别目录
 - AccessPoint 聚合的 `ModelEx` (= `AccessPointEx`) 是代理管道的聚合根。Repository 的 `find_by_short_code` 返回 `AccessPointEx`（包含已加载的 Provider 和 Account）。ProxyPipeline 仅与 AccessPointEx 交互，不直接引用 Provider 或 Account 类型
-- `ProxyLogger` 是代理日志的唯一写入点，通过 `append_body`/`set_body` 积累响应体，`flush` 时 spawn 异步写库。Drop 中自动检测是否已 flush，未 flush 则标记 `is_interrupted` 并执行 flush。流式路径的 logger 绑定在闭包中，客户端断开时闭包被 drop 触发自动中断日志
-- `acl/` 子模块 (`application/proxy/acl/`) 是代理层的防腐层，将外部类型 (ProcessedRequest, AccessPointEx) 转换为日志领域类型，隔离基础设施变更对应用层的影响
+- `ProxyLogger`（`infrastructure/http_client/proxy_logger.rs`）是有状态的请求级日志积累器，持有 `ProxyLogData` DTO 并逐步填充，不直接构造领域实体。`flush()` 时将 DTO 提交给 `LogService::record_proxy_log()`，后者内部构造 `LogMetadata`、`LogContent`、`LogTokenUsage` 并写入数据库
 
 ## 核心文件路径
 
@@ -214,12 +214,11 @@ aggr.resolve(x, y)
 | `src/config.rs` | 环境变量配置加载 |
 | `src/application/mod.rs` | AppState 定义 |
 | `src/shared/error.rs` | AppError 错误类型 |
-| `src/application/proxy/proxy_pipeline.rs` | 核心代理转发管道 (聚合根模式: 加载 AccessPointEx → validate_usable → decrypt_upstream_key → ProcessedRequest.prepare → 转发; 日志写入委托给 ProxyLogger) |
-| `src/application/proxy/acl/log_context.rs` | 防腐层: LogContext (从 ProcessedRequest + AccessPointEx 拆解日志参数) |
-| `src/application/proxy/acl/proxy_logger.rs` | ProxyLogger: 代理日志积累器，贯穿代理生命周期，统一 flush 写库 |
-| `src/application/proxy/acl/log_task_context.rs` | LogTaskContext + spawn_log_task: 异步日志写入上下文和调度函数 |
+| `src/application/proxy/proxy_pipeline.rs` | 核心代理转发管道 (聚合根模式: 加载 AccessPointEx → validate_usable → decrypt_upstream_key → ProcessedRequest.prepare → 转发; 日志收集委托给 ProxyLogger) |
+| `src/infrastructure/http_client/proxy_logger.rs` | ProxyLogger: 请求级日志积累器，持有 ProxyLogData DTO，从 ProcessedRequest + AccessPointEx 提取字段（防腐），flush 时提交 DTO 给 LogService |
 | `src/infrastructure/http_client/processed_request.rs` | ProcessedRequest (编排 inbound → outbound 变换、URL 构造、session 提取) |
-| `src/application/log/log_service.rs` | 日志写入和查询服务 (metadata/content/events/token usage 编排) |
+| `src/application/log/log_service.rs` | 日志写入和查询服务 (从 ProxyLogData DTO 构造 LogMetadata → 写入 metadata/content/token usage 三阶段) |
+| `src/application/log/dto/proxy_log_data.rs` | ProxyLogData DTO: ProxyLogger → LogService 之间的数据契约 |
 | `src/infrastructure/parsers/log_content.rs` | 请求体、SSE、thinking、tool_use 和 token usage 解析器 |
 | `src/infrastructure/parsers/claude_code.rs` | Claude Code 请求头解析器 (`x-claude-code-session-id` / `x-claude-code-agent-id`) |
 | `src/application/user/api_key_service.rs` | 用户 API key 管理服务 |

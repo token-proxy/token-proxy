@@ -10,9 +10,9 @@ use uuid::Uuid;
 
 use crate::domain::log::content::{ActiveModel as ContentActiveModel, Entity as ContentEntity};
 use crate::domain::log::metadata::{ActiveModel, Column, Entity};
-use crate::domain::log::{LogContent, LogEntry, LogTokenUsage};
+use crate::domain::log::{LogContent, LogMetadata, LogTokenUsage};
 use crate::domain::log::{
-    LogEntryWithTokenSummary, LogQuery, LogRepository, SessionQuery, SessionSummaryData,
+    LogMetadataWithTokenSummary, LogQuery, LogRepository, SessionQuery, SessionSummaryData,
 };
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
@@ -29,7 +29,7 @@ impl SeaOrmLogRepository {
 
 #[async_trait]
 impl LogRepository for SeaOrmLogRepository {
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<LogEntry>, AppError> {
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<LogMetadata>, AppError> {
         let db = &*self.db;
         let model = Entity::find_by_id(id).one(db).await?;
 
@@ -39,7 +39,7 @@ impl LogRepository for SeaOrmLogRepository {
         }
     }
 
-    async fn find_by_session_id(&self, session_id: &str) -> Result<Vec<LogEntry>, AppError> {
+    async fn find_by_session_id(&self, session_id: &str) -> Result<Vec<LogMetadata>, AppError> {
         let db = &*self.db;
         let models = Entity::find()
             .filter(Column::SessionId.eq(session_id))
@@ -55,7 +55,7 @@ impl LogRepository for SeaOrmLogRepository {
         page: u64,
         page_size: u64,
         filter: &LogQuery,
-    ) -> Result<PaginatedResult<LogEntry>, AppError> {
+    ) -> Result<PaginatedResult<LogMetadata>, AppError> {
         let db = &*self.db;
         let page = page.max(1);
         let page_size = page_size.min(100);
@@ -98,7 +98,7 @@ impl LogRepository for SeaOrmLogRepository {
         })
     }
 
-    async fn save(&self, entry: &LogEntry) -> Result<LogEntry, AppError> {
+    async fn save(&self, entry: &LogMetadata) -> Result<LogMetadata, AppError> {
         let db = &*self.db;
         let exists = Entity::find_by_id(entry.id).one(db).await?.is_some();
 
@@ -114,7 +114,7 @@ impl LogRepository for SeaOrmLogRepository {
         let result = Entity::find_by_id(entry.id)
             .one(db)
             .await?
-            .ok_or_else(|| AppError::Internal("保存后无法查询到 LogEntry".to_string()))?;
+            .ok_or_else(|| AppError::Internal("保存后无法查询到 LogMetadata".to_string()))?;
         Ok(result)
     }
 
@@ -151,7 +151,7 @@ impl LogRepository for SeaOrmLogRepository {
         page: u64,
         page_size: u64,
         filter: &LogQuery,
-    ) -> Result<PaginatedResult<LogEntryWithTokenSummary>, AppError> {
+    ) -> Result<PaginatedResult<LogMetadataWithTokenSummary>, AppError> {
         let db = &*self.db;
         let page = page.max(1);
         let page_size = page_size.min(100);
@@ -282,15 +282,15 @@ impl LogRepository for SeaOrmLogRepository {
         let data_stmt = Statement::from_sql_and_values(DbBackend::Postgres, &data_sql, data_params);
         let results = db.query_all_raw(data_stmt).await?;
 
-        let items: Vec<LogEntryWithTokenSummary> = results
+        let items: Vec<LogMetadataWithTokenSummary> = results
             .iter()
             .map(|row| {
                 let id: Uuid = row.try_get_by_index::<Uuid>(0)?;
 
                 let timestamp_col: chrono::DateTime<FixedOffset> = row.try_get_by_index(1)?;
 
-                Ok(LogEntryWithTokenSummary {
-                    entry: LogEntry {
+                Ok(LogMetadataWithTokenSummary {
+                    entry: LogMetadata {
                         id,
                         timestamp: timestamp_col,
                         session_id: row.try_get_by_index::<String>(2)?,
@@ -494,7 +494,7 @@ impl LogRepository for SeaOrmLogRepository {
     async fn find_log_detail_full(
         &self,
         id: Uuid,
-    ) -> Result<Option<(LogEntry, LogContent, Option<LogTokenUsage>)>, AppError> {
+    ) -> Result<Option<(LogMetadata, LogContent, Option<LogTokenUsage>)>, AppError> {
         let db = &*self.db;
 
         let sql = r#"
@@ -537,7 +537,7 @@ impl LogRepository for SeaOrmLogRepository {
             Some(row) => {
                 let timestamp_col: chrono::DateTime<FixedOffset> = row.try_get_by_index(1)?;
 
-                let entry = LogEntry {
+                let entry = LogMetadata {
                     id: row.try_get_by_index::<Uuid>(0)?,
                     timestamp: timestamp_col,
                     session_id: row.try_get_by_index::<String>(2)?,

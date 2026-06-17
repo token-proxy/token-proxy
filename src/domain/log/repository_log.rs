@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use uuid::Uuid;
 
-use crate::domain::log::{LogContent, LogEntry, LogTokenUsage};
+use crate::domain::log::{LogContent, LogMetadata, LogTokenUsage};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 use async_trait::async_trait;
@@ -19,8 +19,8 @@ pub struct LogQuery {
 
 /// 日志条目带 token 用量摘要
 #[derive(Debug, Clone)]
-pub struct LogEntryWithTokenSummary {
-    pub entry: LogEntry,
+pub struct LogMetadataWithTokenSummary {
+    pub entry: LogMetadata,
     pub input_tokens: Option<i32>,
     pub output_tokens: Option<i32>,
     pub total_tokens: Option<i32>,
@@ -56,10 +56,10 @@ pub struct SessionQuery {
 #[async_trait]
 pub trait LogRepository: Send + Sync {
     /// 根据 ID 查找日志条目
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<LogEntry>, AppError>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<LogMetadata>, AppError>;
 
     /// 根据会话 ID 查找日志条目
-    async fn find_by_session_id(&self, session_id: &str) -> Result<Vec<LogEntry>, AppError>;
+    async fn find_by_session_id(&self, session_id: &str) -> Result<Vec<LogMetadata>, AppError>;
 
     /// 分页查询日志条目（支持过滤）
     async fn find_all_paginated(
@@ -67,10 +67,10 @@ pub trait LogRepository: Send + Sync {
         page: u64,
         page_size: u64,
         filter: &LogQuery,
-    ) -> Result<PaginatedResult<LogEntry>, AppError>;
+    ) -> Result<PaginatedResult<LogMetadata>, AppError>;
 
     /// 保存日志条目
-    async fn save(&self, entry: &LogEntry) -> Result<LogEntry, AppError>;
+    async fn save(&self, entry: &LogMetadata) -> Result<LogMetadata, AppError>;
 
     /// 保存日志内容
     async fn save_content(&self, content: &LogContent) -> Result<(), AppError>;
@@ -89,7 +89,7 @@ pub trait LogRepository: Send + Sync {
         page: u64,
         page_size: u64,
         filter: &LogQuery,
-    ) -> Result<PaginatedResult<LogEntryWithTokenSummary>, AppError>;
+    ) -> Result<PaginatedResult<LogMetadataWithTokenSummary>, AppError>;
 
     /// 分页查询会话摘要列表，使用聚合查询统计各会话的 token 用量
     async fn find_sessions_paginated(
@@ -103,7 +103,7 @@ pub trait LogRepository: Send + Sync {
     async fn find_log_detail_full(
         &self,
         id: Uuid,
-    ) -> Result<Option<(LogEntry, LogContent, Option<LogTokenUsage>)>, AppError>;
+    ) -> Result<Option<(LogMetadata, LogContent, Option<LogTokenUsage>)>, AppError>;
 
     // ─── 统计方法 ───
 

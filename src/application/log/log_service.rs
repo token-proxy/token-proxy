@@ -3,12 +3,12 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::dto::{
-    LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse,
+    LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse, ProxyLogData,
     SessionContentItemResponse, SessionSummaryResponse, TokenUsageResponse,
 };
 use crate::domain::access_point::repository::AccessPointRepository;
 use crate::domain::log::LogTokenUsageRepository;
-use crate::domain::log::{LogContent, LogEntry, LogTokenUsage};
+use crate::domain::log::{LogContent, LogMetadata, LogTokenUsage};
 use crate::domain::log::{LogQuery, LogRepository, SessionQuery};
 use crate::domain::user::UserRepository;
 use crate::infrastructure::parsers::{claude_code_context, client_info, parsed_token_usage};
@@ -56,7 +56,7 @@ impl LogService {
     }
 
     /// 创建日志条目（仅元数据），返回日志 ID
-    pub async fn create_log_entry(&self, entry: &LogEntry) -> Result<Uuid, AppError> {
+    pub async fn create_log_entry(&self, entry: &LogMetadata) -> Result<Uuid, AppError> {
         let saved = self.log_repo.save(entry).await?;
         Ok(saved.id)
     }
@@ -68,74 +68,94 @@ impl LogService {
 
     /// 记录代理日志的核心入口
     ///
-    /// 负责：
+    /// 接收 ProxyLogData DTO，内部负责：
+    /// - 从 DTO 构造 LogMetadata（LogMetadata）
     /// - HTTP 头解析（claude_code、user_agent）
     /// - 请求头脱敏 + JSON 序列化
     /// - Token 用量提取（从 SSE message_delta）
     /// - 原始内容存储（request_body、response_body）
-    pub async fn record_proxy_log(
-        &self,
-        mut entry: LogEntry,
-        request_headers: &axum::http::HeaderMap,
-        request_body: serde_json::Value,
-        response_body: String,
-        response_headers: axum::http::HeaderMap,
-    ) -> Result<Uuid, AppError> {
+    pub async fn record_proxy_log(&self, data: ProxyLogData) -> Result<Uuid, AppError> {
         // 解析 HTTP 头（会话 ID、Agent ID、conversation_source 等）
-        let header_context = claude_code_context::parse_headers(request_headers);
+        let header_context = claude_code_context::parse_headers(&data.request_headers);
 
         // 解析 User-Agent 获取客户端信息
+        let mut client_name = None;
+        let mut client_version = None;
+        let mut client_channel = None;
+        let mut client_platform = None;
         if let Some(ref ua) = header_context.client_user_agent {
-            let client_info = client_info::parse_user_agent(ua);
-            entry.client_name = client_info.client_name;
-            entry.client_version = client_info.client_version;
-            entry.client_channel = client_info.client_channel;
-            entry.client_platform = client_info.client_platform;
+            let info = client_info::parse_user_agent(ua);
+            client_name = info.client_name;
+            client_version = info.client_version;
+            client_channel = info.client_channel;
+            client_platform = info.client_platform;
         }
 
-        entry.client_app = header_context.client_app;
-        entry.client_user_agent = header_context.client_user_agent;
-        entry.conversation_source = header_context.conversation_source;
-        entry.agent_id = header_context.agent_id;
+        let entry = LogMetadata {
+            id: Uuid::new_v4(),
+            timestamp: chrono::Utc::now().fixed_offset(),
+            session_id: data.session_id.clone(),
+            user_id: Some(data.user_id),
+            access_point_id: Some(data.access_point_id),
+            provider_id: Some(data.provider_id),
+            account_id: Some(data.account_id),
+            model_original: Some(data.model_original.clone()),
+            model_mapped: Some(data.model_mapped.clone()),
+            api_type: data.api_type.clone(),
+            status_code: Some(data.status_code as i16),
+            duration_ms: Some(data.duration_ms),
+            is_interrupted: data.is_interrupted,
+            error_message: data.error_message.clone(),
+            request_index: 0,
+            client_app: header_context.client_app,
+            client_user_agent: header_context.client_user_agent,
+            conversation_source: header_context.conversation_source,
+            agent_id: header_context.agent_id,
+            has_error: false,
+            raw_content_available: true,
+            client_name,
+            client_version,
+            client_channel,
+            client_platform,
+        };
 
         // ── 阶段 1：保存元数据（主表，失败则后续无意义）──
         let saved = self.log_repo.save(&entry).await?;
 
         // 请求头脱敏 + 序列化为 JSON
-        let request_headers_json = headers_to_json(request_headers);
+        let request_headers_json = headers_to_json(&data.request_headers);
 
-        // 响应头序列化为 JSON（不需要脱敏，上游 LLM API 不含敏感信息）
-        let response_headers_json = response_headers_to_json(&response_headers);
+        // 响应头序列化为 JSON
+        let response_headers_json = response_headers_to_json(&data.resp_headers);
 
         // ── 阶段 2：保存原始内容（阶段 1 已成功，允许此阶段失败）──
         let content = LogContent {
             log_id: saved.id,
             request_headers: Some(request_headers_json),
-            request_body: Some(request_body),
-            response_body: Some(response_body.clone()),
+            request_body: Some(data.request_body),
+            response_body: Some(data.response_body.clone()),
             response_headers: Some(response_headers_json),
         };
         if let Err(e) = self.log_repo.save_content(&content).await {
             tracing::error!(error = %e, "日志内容写入失败");
-            // 不 return，元数据已存，继续 token 解析
         }
 
         // ── 阶段 3：提取 token 用量（独立步骤，失败不影响日志完整性）──
-        match parsed_token_usage::parse_usage_from_response(&response_body) {
+        match parsed_token_usage::parse_usage_from_response(&data.response_body) {
             Some(usage_data) => {
                 let token_entry = LogTokenUsage {
                     id: Uuid::new_v4(),
                     log_id: saved.id,
-                    session_id: saved.session_id,
+                    session_id: saved.session_id.clone(),
                     timestamp: saved.timestamp,
                     user_id: saved.user_id,
                     access_point_id: saved.access_point_id,
                     provider_id: saved.provider_id,
                     account_id: saved.account_id,
-                    model_original: saved.model_original,
-                    model_mapped: saved.model_mapped,
-                    conversation_source: Some(saved.conversation_source),
-                    agent_id: saved.agent_id,
+                    model_original: saved.model_original.clone(),
+                    model_mapped: saved.model_mapped.clone(),
+                    conversation_source: Some(saved.conversation_source.clone()),
+                    agent_id: saved.agent_id.clone(),
                     agent_type: None,
                     input_tokens: usage_data.input_tokens,
                     output_tokens: usage_data.output_tokens,
@@ -155,7 +175,7 @@ impl LogService {
             None => {
                 tracing::warn!(
                     status_code = ?entry.status_code,
-                    body_len = response_body.len(),
+                    body_len = data.response_body.len(),
                     "未从响应体中解析到 token 用量"
                 );
             }

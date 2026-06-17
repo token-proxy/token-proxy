@@ -6,14 +6,13 @@ use bytes::Bytes;
 use futures::StreamExt;
 use uuid::Uuid;
 
-use super::acl::log_context::LogContext;
-use super::acl::ProxyLogger;
 use crate::application::log::LogService;
 use crate::domain::access_point::repository::AccessPointRepository;
 use crate::domain::access_point::AccessPointEx;
 use crate::domain::shared::EncryptionService;
 use crate::infrastructure::http_client::ProcessedRequest;
 use crate::infrastructure::http_client::ProxyClient;
+use crate::infrastructure::http_client::ProxyLogger;
 use crate::shared::error::AppError;
 
 /// 代理转发管道
@@ -80,8 +79,6 @@ impl ProxyPipeline {
             Bytes::from(serde_json::to_string(processed.outbound.body()).unwrap_or_default());
         let start = Instant::now();
 
-        let log_ctx = LogContext::from_request(&processed, access_point, user_id);
-
         let upstream_resp = self
             .proxy_client
             .forward(
@@ -118,14 +115,14 @@ impl ProxyPipeline {
             .map(|v| v.contains("text/event-stream"))
             .unwrap_or(false);
 
-        let runtime = tokio::runtime::Handle::current();
         let logger = ProxyLogger::new(
-            log_ctx,
+            processed,
+            access_point,
+            user_id,
             status.as_u16(),
             start,
             resp_headers,
             self.log_service.clone(),
-            runtime,
         );
 
         if is_sse {
