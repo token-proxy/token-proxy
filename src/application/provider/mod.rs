@@ -1,4 +1,6 @@
-pub mod account_dto;
 pub mod account_service;
 pub mod dto;
-pub mod service;
+pub mod provider_service;
+
+pub use account_service::AccountService;
+pub use provider_service::ProviderService;

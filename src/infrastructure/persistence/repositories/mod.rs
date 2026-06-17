@@ -7,3 +7,13 @@ pub mod provider_repository;
 pub mod refresh_token_repository;
 pub mod user_api_key_repository;
 pub mod user_repository;
+
+pub use access_point_repository::SeaOrmAccessPointRepository;
+pub use account_repository::SeaOrmAccountRepository;
+pub use audit_log_repository::SeaOrmAuditLogRepository;
+pub use log_repository::SeaOrmLogRepository;
+pub use log_token_usage_repository::SeaOrmLogTokenUsageRepository;
+pub use provider_repository::SeaOrmProviderRepository;
+pub use refresh_token_repository::SeaOrmRefreshTokenRepository;
+pub use user_api_key_repository::SeaOrmUserApiKeyRepository;
+pub use user_repository::SeaOrmUserRepository;

@@ -1,2 +1,4 @@
+pub mod access_point_service;
 pub mod dto;
-pub mod service;
+
+pub use access_point_service::AccessPointService;

@@ -11,6 +11,7 @@ pub mod log_routes;
 pub mod me_routes;
 pub mod provider_routes;
 pub mod proxy_routes;
+pub mod stats;
 pub mod stats_routes;
 pub mod user_routes;
 

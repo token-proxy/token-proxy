@@ -12,7 +12,7 @@ use crate::domain::access_point::repository::AccessPointRepository;
 use crate::domain::log::{LogQuery, LogRepository, SessionQuery};
 use crate::domain::log::LogTokenUsageRepository;
 use crate::domain::user::UserRepository;
-use crate::infrastructure::parsers::{claude_code, log_content, user_agent};
+use crate::infrastructure::parsers::{claude_code_context, client_info, parsed_token_usage};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
@@ -89,11 +89,11 @@ impl LogService {
         response_headers: axum::http::HeaderMap,
     ) -> Result<Uuid, AppError> {
         // 解析 HTTP 头（会话 ID、Agent ID、conversation_source 等）
-        let header_context = claude_code::parse_headers(request_headers);
+        let header_context = claude_code_context::parse_headers(request_headers);
 
         // 解析 User-Agent 获取客户端信息
         if let Some(ref ua) = header_context.client_user_agent {
-            let client_info = user_agent::parse_user_agent(ua);
+            let client_info = client_info::parse_user_agent(ua);
             entry.client_name = client_info.client_name;
             entry.client_version = client_info.client_version;
             entry.client_channel = client_info.client_channel;
@@ -125,7 +125,7 @@ impl LogService {
         self.log_repo.save_content(&content).await?;
 
         // 提取 token 用量
-        if let Some(usage_data) = log_content::parse_usage_from_response(&response_body) {
+        if let Some(usage_data) = parsed_token_usage::parse_usage_from_response(&response_body) {
             self.token_usage_repo
                 .save(&LogTokenUsage {
                     id: Uuid::new_v4(),

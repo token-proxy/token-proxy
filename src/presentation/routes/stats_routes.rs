@@ -3,60 +3,14 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use chrono::{NaiveDate, Utc};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use chrono::Utc;
 
 use crate::application::AppState;
 use crate::shared::error::AppError;
 
-// ─── 查询 DTO ───
-
-#[derive(Debug, Deserialize)]
-pub struct TrendsQuery {
-    /// 统计最近 N 天的趋势（默认 7 天，最大 365 天）
-    pub days: Option<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct TopQuery {
-    /// 返回 Top N 条记录（默认 10，最大 100）
-    pub limit: Option<u64>,
-}
-
-// ─── 响应 DTO ───
-
-#[derive(Debug, Serialize)]
-pub struct OverviewResponse {
-    /// 请求总数
-    pub total_requests: u64,
-    /// 活跃接入点数量（有日志记录的接入点）
-    pub active_access_points: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct TrendItem {
-    /// 日期
-    pub date: NaiveDate,
-    /// 请求量
-    pub count: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct TopAccessPointItem {
-    /// 接入点 ID
-    pub access_point_id: Uuid,
-    /// 请求次数
-    pub count: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct TopModelItem {
-    /// 模型名称
-    pub model: String,
-    /// 请求次数
-    pub count: u64,
-}
+use super::stats::dto::{
+    OverviewResponse, TopAccessPointItem, TopModelItem, TopQuery, TrendItem, TrendsQuery,
+};
 
 /// 构建统计查询路由
 ///

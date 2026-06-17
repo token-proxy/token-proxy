@@ -3,11 +3,12 @@ use std::sync::Arc;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::dto::{Claims, LoginRequest, LoginResponse, RefreshRequest};
+use super::claims::Claims;
+use super::dto::{LoginRequest, LoginResponse, RefreshRequest};
 use crate::domain::user::RefreshToken;
 use crate::domain::user::RefreshTokenRepository;
 use crate::domain::user::UserRepository;
-use crate::infrastructure::auth::jwt::JwtService;
+use crate::infrastructure::auth::JwtService;
 use crate::infrastructure::auth::password::verify_password;
 use crate::shared::error::AppError;
 

@@ -1,2 +1,4 @@
-pub mod log_anti_corruption;
-pub mod pipeline;
+pub mod acl;
+pub mod proxy_pipeline;
+
+pub use proxy_pipeline::ProxyPipeline;

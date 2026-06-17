@@ -1,12 +1,12 @@
-/// HTTP User-Agent 解析器
-///
-/// 从 User-Agent 字符串中提取客户端信息, 支持格式:
-/// `claude-cli/2.1.146 (external, cli)`
-///
-/// 解析规则:
-/// - 斜杠 `/` 前为 client_name
-/// - 斜杠 `/` 后到第一个空白字符为 client_version
-/// - 括号 `()` 内以逗号分隔: 前为 client_channel, 后为 client_platform
+//! HTTP User-Agent 解析器
+//!
+//! 从 User-Agent 字符串中提取客户端信息, 支持格式:
+//! `claude-cli/2.1.146 (external, cli)`
+//!
+//! 解析规则:
+//! - 斜杠 `/` 前为 client_name
+//! - 斜杠 `/` 后到第一个空白字符为 client_version
+//! - 括号 `()` 内以逗号分隔: 前为 client_channel, 后为 client_platform
 
 /// 客户端信息
 #[derive(Debug, Clone, Default, PartialEq)]

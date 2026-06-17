@@ -4,10 +4,13 @@ use std::time::{Duration, Instant};
 use axum::http::HeaderMap;
 use uuid::Uuid;
 
-use crate::application::log::service::LogService;
+use crate::application::log::LogService;
 use crate::domain::access_point::AccessPointEx;
 use crate::domain::log::LogEntry;
-use crate::infrastructure::http_client::request_transform::ProcessedRequest;
+use crate::infrastructure::http_client::ProcessedRequest;
+
+use super::interrupt_guard::InterruptGuard;
+use super::log_task_context::LogTaskContext;
 
 /// 防腐层：封装 ProcessedRequest + AccessPointEx → 日志参数的转换
 ///
@@ -23,8 +26,8 @@ pub struct LogContext {
     original_model: String,
     mapped_model: String,
     api_type: String,
-    request_headers: HeaderMap,
-    request_body: serde_json::Value,
+    pub(crate) request_headers: HeaderMap,
+    pub(crate) request_body: serde_json::Value,
 }
 
 impl LogContext {
@@ -108,82 +111,5 @@ impl LogContext {
             resp_headers,
             runtime,
         }
-    }
-}
-
-// ─── LogTaskContext ────────────────────────────────────────────────────
-
-pub struct LogTaskContext {
-    log_service: Arc<LogService>,
-    entry: LogEntry,
-    request_headers: HeaderMap,
-    request_body: serde_json::Value,
-    response_text: String,
-    resp_headers: HeaderMap,
-}
-
-/// 异步写日志
-pub fn spawn_log_task(ctx: LogTaskContext) {
-    tokio::spawn(async move {
-        if let Err(e) = ctx
-            .log_service
-            .record_proxy_log(
-                ctx.entry,
-                &ctx.request_headers,
-                ctx.request_body,
-                ctx.response_text,
-                ctx.resp_headers,
-            )
-            .await
-        {
-            tracing::error!(error = %e, "代理日志写入失败");
-        }
-    });
-}
-
-// ─── InterruptGuard ────────────────────────────────────────────────────
-
-/// 客户端断开检测守卫
-///
-/// 当 generator 被提前 drop（客户端断开连接）时，
-/// Drop 中写入一条标记了 is_interrupted 的部分日志。
-pub struct InterruptGuard {
-    pub(crate) completed: bool,
-    log_service: Arc<LogService>,
-    log_ctx: LogContext,
-    status_code: u16,
-    start: Instant,
-    pub(crate) buffer: Arc<std::sync::Mutex<String>>,
-    resp_headers: HeaderMap,
-    runtime: tokio::runtime::Handle,
-}
-
-impl Drop for InterruptGuard {
-    fn drop(&mut self) {
-        if self.completed {
-            return;
-        }
-
-        let buf = self.buffer.lock().unwrap().clone();
-        let elapsed = self.start.elapsed();
-        let mut entry = self.log_ctx.build_log_entry();
-        entry.is_interrupted = true;
-        entry.status_code = Some(self.status_code as i16);
-        entry.duration_ms = Some(elapsed.as_millis() as i32);
-        entry.error_message = Some("客户端断开连接".to_string());
-
-        let log_service = self.log_service.clone();
-        let request_headers = self.log_ctx.request_headers.clone();
-        let request_body = self.log_ctx.request_body.clone();
-        let resp_headers = self.resp_headers.clone();
-
-        self.runtime.spawn(async move {
-            if let Err(e) = log_service
-                .record_proxy_log(entry, &request_headers, request_body, buf, resp_headers)
-                .await
-            {
-                tracing::error!(error = %e, "中断日志写入失败");
-            }
-        });
     }
 }

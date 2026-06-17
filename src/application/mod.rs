@@ -13,17 +13,17 @@ use crate::config::Config;
 use crate::domain::log::AuditLogRepository;
 use crate::domain::log::LogRepository;
 use crate::domain::log::LogTokenUsageRepository;
-use crate::infrastructure::auth::jwt::JwtService;
-use crate::infrastructure::http_client::proxy_client::ProxyClient;
+use crate::infrastructure::auth::JwtService;
+use crate::infrastructure::http_client::ProxyClient;
 
-use access_point::service::AccessPointService;
-use auth::service::AuthService;
-use log::service::LogService;
-use provider::account_service::AccountService;
-use provider::service::ProviderService;
-use proxy::pipeline::ProxyPipeline;
-use user::api_key_service::UserApiKeyService;
-use user::service::UserService;
+use access_point::AccessPointService;
+use auth::AuthService;
+use log::LogService;
+use provider::AccountService;
+use provider::ProviderService;
+use proxy::ProxyPipeline;
+use user::UserApiKeyService;
+use user::UserService;
 
 /// 应用全局共享状态
 #[derive(Clone)]

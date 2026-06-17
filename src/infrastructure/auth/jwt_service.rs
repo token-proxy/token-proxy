@@ -1,24 +1,10 @@
 use chrono::Utc;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::shared::error::AppError;
 
-/// JWT 声明
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Claims {
-    /// 主题（用户 ID 的字符串形式）
-    pub sub: String,
-    /// 用户 UUID
-    pub user_id: Uuid,
-    /// 用户名
-    pub username: String,
-    /// 过期时间戳（秒）
-    pub exp: usize,
-    /// 签发时间戳（秒）
-    pub iat: usize,
-}
+use super::claims::Claims;
 
 /// JWT 令牌服务
 pub struct JwtService {

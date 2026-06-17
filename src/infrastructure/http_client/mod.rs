@@ -1,2 +1,5 @@
+pub mod processed_request;
 pub mod proxy_client;
-pub mod request_transform;
+
+pub use processed_request::ProcessedRequest;
+pub use proxy_client::ProxyClient;
