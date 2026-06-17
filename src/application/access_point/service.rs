@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::application::dto::access_point_dto::{
+use super::dto::{
     AccessPointResponse, CreateAccessPointRequest, ModelMappingDto, UpdateAccessPointRequest,
 };
 use crate::domain::access_point::{AccessPoint, AccessPointEx};

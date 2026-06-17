@@ -19,11 +19,15 @@ src/
 │   ├── provider/        # Provider 聚合 (Provider + Account + ModelList + Repository traits)
 │   ├── user/            # User 聚合 (User + RefreshToken + UserApiKey + Repository traits)
 │   ├── log/             # Log 聚合 (LogEntry + LogContent + LogTokenUsage + AuditLog + Repository traits)
-│   └── shared/          # 跨聚合共享 (Status + ApiKey + AccessPointType + EncryptionService trait + ApiProtocol trait)
+│   └── shared/          # 跨聚合共享 (Status + ApiKey + AccessPointType + EncryptionService trait + RequestSnapshotProtocol trait)
 ├── application/         # 应用层 (用例编排)
-│   ├── dto/             # 请求/响应 DTO (9 组)
-│   ├── services/        # 8 个应用服务 (依赖注入 domain traits)
-│   └── AppState         # 全局共享状态
+│   ├── access_point/    # AccessPoint 用例 (服务 + DTO)
+│   ├── auth/            # 认证用例 (服务 + DTO, 跨聚合)
+│   ├── log/             # 日志用例 (服务 + DTO)
+│   ├── provider/        # Provider / Account 用例 (服务 + DTO)
+│   ├── proxy/           # 代理转发用例 (跨聚合)
+│   ├── user/            # User / ApiKey 用例 (服务 + DTO)
+│   └── mod.rs           # AppState
 ├── infrastructure/      # 基础设施层
 │   ├── persistence/     # Repository 实现 (8 个) + PartitionManager
 │   ├── encryption/      # AES-256-GCM 加密
@@ -203,11 +207,13 @@ aggr.resolve(x, y)
 | `src/config.rs` | 环境变量配置加载 |
 | `src/application/mod.rs` | AppState 定义 |
 | `src/shared/error.rs` | AppError 错误类型 |
-| `src/application/services/proxy_pipeline.rs` | 核心代理转发管道 (聚合根模式: 加载 AccessPointEx → validate_usable → base_url → resolve_model → decrypt_upstream_key → 转发) |
-| `src/application/services/log_service.rs` | 日志写入和查询服务 (metadata/content/events/token usage 编排) |
+| `src/application/proxy/pipeline.rs` | 核心代理转发管道 (聚合根模式: 加载 AccessPointEx → validate_usable → decrypt_upstream_key → ProcessedRequest.prepare → 转发; 日志写入委托给 LogContext 防腐层) |
+| `src/application/proxy/log_anti_corruption.rs` | 防腐层: LogContext (从 ProcessedRequest + AccessPointEx 拆解日志参数)、LogTaskContext、InterruptGuard (客户端断开守卫)、spawn_log_task 异步写日志 |
+| `src/infrastructure/http_client/request_transform.rs` | ProcessedRequest (编排 inbound → outbound 变换、URL 构造、流检测、session 提取) |
+| `src/application/log/service.rs` | 日志写入和查询服务 (metadata/content/events/token usage 编排) |
 | `src/infrastructure/parsers/log_content.rs` | 请求体、SSE、thinking、tool_use 和 token usage 解析器 |
 | `src/infrastructure/parsers/claude_code.rs` | Claude Code 请求头解析器 (`x-claude-code-session-id` / `x-claude-code-agent-id`) |
-| `src/application/services/user_api_key_service.rs` | 用户 API key 管理服务 |
+| `src/application/user/api_key_service.rs` | 用户 API key 管理服务 |
 | `src/presentation/routes/me_routes.rs` | 个人设置路由 (`/api/users/me/*`) |
 | `src/migrations/m20260101_000001_initial.rs` | 初始数据库 Schema |
 | `src/migrations/m20260523_000001_user_api_keys.rs` | 用户 API key 表迁移 |
@@ -218,8 +224,11 @@ aggr.resolve(x, y)
 | `src/domain/user/user_api_key.rs` | 用户 API key 领域实体 (User 聚合) |
 | `src/domain/provider/provider.rs` | Provider 实体 (含 default_model + base_url_for 方法) |
 | `src/domain/access_point/model_mapping.rs` | ModelMapping + MatchType + 模型族前缀常量 + normalize_match_type/is_prefix_source_model |
-| `src/domain/access_point/access_point.rs` | AccessPoint 聚合根 (SeaORM Model + ModelEx + base_url/resolve_model/validate_usable/decrypt_upstream_key) |
+| `src/domain/access_point/access_point.rs` | AccessPoint 聚合根 (SeaORM Model + ModelEx + base_url/resolve_model/transform_request_snapshot/validate_usable/decrypt_upstream_key) |
+| `src/domain/shared/request_snapshot.rs` | RequestSnapshot 值对象 (headers + body + model) |
+| `src/domain/shared/request_snapshot_protocol.rs` | RequestSnapshotProtocol trait (extract_model / replace_model / is_streaming / transform_headers) |
 | `src/domain/shared/api_type.rs` | AccessPointType 枚举 (Anthropic) |
+| `src/infrastructure/protocols/anthropic.rs` | AnthropicRequestSnapshot 实现 |
 | `src/migrations/m20260524_000001_provider_default_model.rs` | providers 表增加 default_model 列 |
 | `src-dashboard/App.tsx` | 前端路由定义 |
 | `src-dashboard/pages/ProfilePage.tsx` | 个人设置页 (个人资料/改密/API key 管理) |
@@ -233,6 +242,6 @@ aggr.resolve(x, y)
 | `src-dashboard/components/SessionDetailView.tsx` | 会话详情视图 (信息卡片 + 时间线 + 事件表格 + RawContentModal) |
 | `src-dashboard/hooks/useTheme.ts` | 主题 Hook + ThemeProvider |
 | `src-dashboard/hooks/useAccessPoints.ts` | 接入点管理 Hook (含 api_type 传递) |
-| `src/application/services/auth_service.rs` | 认证服务 (login/refresh/logout, Refresh Token Rotation, expires_at 修复) |
+| `src/application/auth/service.rs` | 认证服务 (login/refresh/logout, Refresh Token Rotation, expires_at 修复) |
 | `src/infrastructure/auth/jwt.rs` | JWT 服务 (access + refresh 双 token 签发、refresh_expiry_secs 访问器) |
 | `src-dashboard/api.ts` | 前端 API 封装 (fetch 封装、ensureFreshToken 自动刷新、401 兜底重试、并发去重) |

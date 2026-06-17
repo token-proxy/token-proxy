@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
-pub mod dto;
-pub mod services;
+pub mod access_point;
+pub mod auth;
+pub mod log;
+pub mod provider;
+pub mod proxy;
+pub mod user;
 
 use sea_orm::DatabaseConnection;
 
@@ -12,14 +16,14 @@ use crate::domain::log::LogTokenUsageRepository;
 use crate::infrastructure::auth::jwt::JwtService;
 use crate::infrastructure::http_client::proxy_client::ProxyClient;
 
-use services::access_point_service::AccessPointService;
-use services::account_service::AccountService;
-use services::auth_service::AuthService;
-use services::log_service::LogService;
-use services::provider_service::ProviderService;
-use services::proxy_pipeline::ProxyPipeline;
-use services::user_api_key_service::UserApiKeyService;
-use services::user_service::UserService;
+use access_point::service::AccessPointService;
+use auth::service::AuthService;
+use log::service::LogService;
+use provider::account_service::AccountService;
+use provider::service::ProviderService;
+use proxy::pipeline::ProxyPipeline;
+use user::api_key_service::UserApiKeyService;
+use user::service::UserService;
 
 /// 应用全局共享状态
 #[derive(Clone)]

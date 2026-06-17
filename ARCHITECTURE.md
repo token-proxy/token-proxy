@@ -5,7 +5,7 @@
 ## 目录结构总览
 
 ```
-├── src/                    # 后端 Rust 核心代码 (97 个 .rs 文件)
+├── src/                    # 后端 Rust 核心代码 (101 个 .rs 文件)
 ├── src-dashboard/          # 前端管理面板 SPA (45 个 .ts/.tsx 源文件)
 ├── public/                 # 前端静态资源 (favicon, icons)
 ├── index.html              # 前端 HTML 入口 (Vite)
@@ -38,10 +38,14 @@ src/
 │   ├── provider/           # Provider 聚合 (配置持有者 + 密钥管理)
 │   ├── user/               # User 聚合 (认证)
 │   ├── log/                # Log 聚合 (只读事件数据)
-│   └── shared/             # 跨聚合共享 (Status, ApiKey, AccessPointType, EncryptionService, ApiProtocol)
-├── application/            # 应用层 (用例编排, 依赖注入)
-│   ├── dto/                # 6 组 DTO
-│   ├── services/           # 8 个应用服务
+│   └── shared/             # 跨聚合共享 (Status, ApiKey, AccessPointType, EncryptionService, RequestSnapshot)
+├── application/            # 应用层 (用例编排, 依赖注入, 按聚合组织)
+│   ├── access_point/       # AccessPoint 聚合用例
+│   ├── auth/               # 跨聚合认证用例
+│   ├── log/                # Log 聚合用例
+│   ├── provider/           # Provider 聚合用例
+│   ├── proxy/              # 跨聚合代理转发用例
+│   ├── user/               # User 聚合用例
 │   └── mod.rs              # AppState 全局共享状态
 ├── infrastructure/         # 基础设施层
 │   ├── persistence/        # Repository 实现 + 分区管理
@@ -96,7 +100,7 @@ domain/
 │   ├── api_key.rs          # API Key (掩码展示)
 │   ├── api_type.rs         # AccessPointType 枚举 (Anthropic)
 │   ├── encryption.rs       # EncryptionService trait (encrypt/decrypt)
-│   ├── api_protocol.rs     # ApiProtocol trait (协议抽象)
+│   ├── request_snapshot.rs # RequestSnapshot 值对象 (解析/序列化/变换/流检测/会话提取)
 │   └── mod.rs
 └── mod.rs                  # 领域层入口 (声明 5 个聚合模块 + shared)
 ```
@@ -117,27 +121,47 @@ domain/
 ### 应用层 (application/)
 
 应用层负责用例编排，通过构造函数注入 domain 层的 Repository trait，**不直接依赖 SeaORM**。
+应用层按聚合组织目录结构，与领域层聚合命名对齐。跨聚合的编排服务（auth、proxy）独立归置。
 
 ```
 application/
-├── dto/                    # 请求/响应数据传输对象
-│   ├── provider_dto.rs     # Provider 增改查 DTO
-│   ├── account_dto.rs      # Account 增改查 DTO (不含完整 Key)
-│   ├── user_dto.rs         # User 增改查 DTO + 个人设置 (profile/密码/API key)
-│   ├── access_point_dto.rs # AccessPoint 增改查 DTO
-│   ├── auth_dto.rs         # Login/Refresh/TokenPair DTO
-│   └── log_dto.rs          # 日志查询 DTO
-├── services/               # 应用服务 (注入 Repository traits)
-│   ├── provider_service.rs # 提供商管理用例
+├── access_point/           # AccessPoint 聚合用例
+│   ├── mod.rs              # 模块导出
+│   ├── service.rs          # 接入点管理用例 (含短码生成 + match_type 标准化)
+│   └── dto.rs              # 接入点增改查 DTO
+├── auth/                   # 跨聚合认证用例
+│   ├── mod.rs
+│   ├── service.rs          # 认证用例 (登录/刷新/登出, Refresh Token Rotation)
+│   └── dto.rs              # Login/Refresh/TokenPair DTO
+├── log/                    # Log 聚合用例
+│   ├── mod.rs
+│   ├── service.rs          # 日志写入/查询用例 (metadata、content、events、token usage 编排)
+│   └── dto.rs              # 日志查询 DTO
+├── provider/               # Provider 聚合用例
+│   ├── mod.rs
+│   ├── service.rs          # 提供商管理用例
+│   ├── dto.rs              # Provider 增改查 DTO
 │   ├── account_service.rs  # 账号管理用例 (含加密解密)
-│   ├── user_service.rs     # 用户管理用例 (含密码哈希 + profile 更新 + 密码修改)
-│   ├── user_api_key_service.rs # 用户 API key 管理 (生成/列表/撤销, SHA-256 哈希)
-│   ├── access_point_service.rs # 接入点管理用例 (含短码生成 + match_type 标准化: 创建/更新时对 __unmatched__ 和 Claude 家族源模型强制设置为 prefix)
-│   ├── auth_service.rs     # 认证用例 (登录/刷新/登出)
-│   ├── proxy_service.rs    # 核心代理转发用例 (含 Bearer API key 认证)
-│   └── log_service.rs      # 日志写入 / 查询用例 (metadata、content、conversation events、token usage 编排)
+│   └── account_dto.rs      # Account 增改查 DTO (不含完整 Key)
+├── proxy/                  # 跨聚合代理转发用例
+│   ├── mod.rs
+│   ├── pipeline.rs         # 核心代理转发管道 (含 Bearer API key 认证, ProcessedRequest 编排)
+│   └── log_anti_corruption.rs # LogContext 防腐层 (隔离日志格式细节, 含 LogTaskContext + InterruptGuard)
+├── user/                   # User 聚合用例
+│   ├── mod.rs
+│   ├── service.rs          # 用户管理用例 (含密码哈希 + profile 更新 + 密码修改)
+│   ├── api_key_service.rs  # 用户 API key 管理 (生成/列表/撤销, SHA-256 哈希)
+│   └── dto.rs              # User 增改查 DTO + 个人设置
 └── mod.rs                  # AppState 定义 (所有 Service 的引用容器)
 ```
+
+**目录组织原则**：
+- 每个聚合目录内聚 service 和 dto，通过 `super::dto::` 相对路径引用同目录 DTO
+- 外部引用使用绝对路径 `crate::application::<聚合>::dto::*`
+- auth/ 和 proxy/ 是跨聚合编排服务，不归属于单一聚合
+- 防腐层（Anti-Corruption Layer）置于所属编排服务的子目录内，如 `proxy/log_anti_corruption.rs`
+
+**防腐层模式**：`proxy/log_anti_corruption.rs` 是 DDD 防腐层（Anti-Corruption Layer）的典型实现，位于应用层的 proxy 子目录中。`LogContext` 从 `ProcessedRequest` 和 `AccessPointEx` 中一次性提取所有日志参数，隔离代理转发核心逻辑与日志基础设施的细节。防腐层提供 `build_log_entry()`、`into_log_task_context()`、`into_interrupt_guard()` 等方法，将日志数据组装逻辑集中在防腐层内部。`pipeline.rs` 不再直接构造 `LogEntry` 或管理 `InterruptGuard` 字段——两者均通过 `LogContext` 委托给防腐层处理。`spawn_log_task` 和 `InterruptGuard` 也由防腐层导出，保证代理转发逻辑不被日志格式侵蚀。
 
 **AppState** 是全局共享状态，通过 axum 的 `with_state()` 注入到所有路由处理器，包含 Config、数据库连接、所有 Service 引用、JWT 服务和代理客户端。
 
@@ -474,7 +498,7 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 维度 | 状态 |
 |------|------|
 | Phase 1 MVP | 已完成 |
-| 后端 | 97 个 .rs 文件, cargo check 零错误零警告 |
+| 后端 | 101 个 .rs 文件, cargo check 零错误零警告 |
 | 前端 | 45 个 .ts/.tsx 源文件, tsc --noEmit 零错误 |
 | Schema 迁移 | 3 个迁移文件 (初始表 + user_api_keys + provider_default_model) |
 | Docker 构建 | 多阶段构建就绪 |
@@ -496,3 +520,5 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 2026-05-27 | 前端组件架构拆分: 从 RequestLogPage 提取 `RequestLogTable` 组件 (表格列定义 + Table 渲染); 从 SessionLogPage 提取 `SessionListView` (会话列表视图) 和 `SessionDetailView` (会话详情视图); SessionLogPage 瘦身为路由壳, 根据 sessionId 参数切换列表/详情视图; 新增 `/logs/:id` 路由和 `LogDetailPage` 页面; 前端源文件数更新为 45 个 |
 | 2026-05-26 | 认证体系优化: 前端 `api.ts` 采用「双层防御」策略（请求前体检 + 401 兜底），模块级 Promise 并发去重，解决浏览器冻结导致定时器失效问题；`JwtService` 新增 `refresh_expiry_secs` 访问器，修复 AuthService 两处误用 access 寿命写入 refresh_token expires_at 的 bug；新增 tokio 后台任务每小时物理清理过期 refresh_token，明确拒绝引入 Redis 或 pg_cron，遵循依赖最小化原则；新增架构原则 7-9（依赖最小化、双层防御、依赖倒置认证场景体现） |
 | 2026-06-03 | 领域层聚合重构: 将 domain/ 层从按技术类别（entities/value_objects/repositories/services）重组为按聚合边界（access_point/provider/user/log/shared）组织。AccessPoint 引入 ModelEx 聚合根，Repository 的 `find_by_short_code` 返回已加载 Provider 和 Account 关联的完整聚合。ProxyPipeline 删除 `select_base_url` 和 `decrypt_account_key` 方法，全部操作委托 AccessPointEx 行为方法（base_url、resolve_model、validate_usable、decrypt_upstream_key）。Provider 新增 `base_url_for` 方法。AccessPointType 移至 shared 解决循环依赖。account_id 退化为纯 FK 列（不定义 belongs_to 关系）。Relation 定义保持 DeriveRelation 枚举语法（SeaORM 2.0-rc.38 兼容性） |
+| 2026-06-17 | 应用层按聚合重构: 将 application/ 层从按技术类别（services/ + dto/）重组为按聚合组织（access_point/auth/log/provider/proxy/user），与领域层聚合命名对齐。auth/ 和 proxy/ 作为跨聚合编排服务独立归置。删除已废弃的 `domain/shared/api_protocol.rs`，替换为 `RequestSnapshot` 值对象（内聚 to HeaderMap 变换、模型提取、流检测、会话提取行为）。删除已废弃的 `infrastructure/protocols/` 目录。引入目录组织原则（相对/绝对路径规则） |
+| 2026-06-17 | Proxy 防腐层重构: 新增 `log_anti_corruption.rs` 实现 LogContext 防腐层，从 ProcessedRequest 和 AccessPointEx 中一次性提取所有日志参数。pipeline.rs 将日志数据提取、LogEntry 构造、LogTaskContext 组装和 InterruptGuard 创建全部委托给防腐层处理。InterruptGuard 从 7 个独立字段简化为持有 LogContext。遵循 DDD 防腐层模式，保证代理转发逻辑不被日志格式细节侵蚀 |

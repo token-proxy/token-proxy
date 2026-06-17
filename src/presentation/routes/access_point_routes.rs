@@ -5,7 +5,7 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::application::dto::access_point_dto::{
+use crate::application::access_point::dto::{
     AccessPointResponse, CreateAccessPointRequest, UpdateAccessPointRequest,
 };
 use crate::application::AppState;

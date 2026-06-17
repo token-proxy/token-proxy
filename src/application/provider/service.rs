@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use uuid::Uuid;
 
-use crate::application::dto::provider_dto::{
+use super::dto::{
     CreateProviderRequest, ProviderResponse, ProviderSummary, UpdateProviderRequest,
 };
 use crate::domain::log::AuditLog;

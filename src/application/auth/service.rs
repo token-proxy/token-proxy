@@ -3,7 +3,7 @@ use std::sync::Arc;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::application::dto::auth_dto::{Claims, LoginRequest, LoginResponse, RefreshRequest};
+use super::dto::{Claims, LoginRequest, LoginResponse, RefreshRequest};
 use crate::domain::user::RefreshToken;
 use crate::domain::user::RefreshTokenRepository;
 use crate::domain::user::UserRepository;

@@ -1,7 +1,7 @@
 use axum::{extract::State, routing::{delete, post}, Json, Router};
 use serde_json::Value;
 
-use crate::application::dto::auth_dto::{LoginRequest, LoginResponse, RefreshRequest};
+use crate::application::auth::dto::{LoginRequest, LoginResponse, RefreshRequest};
 use crate::application::AppState;
 use crate::presentation::middleware::jwt_auth::CurrentUser;
 use crate::shared::error::AppError;

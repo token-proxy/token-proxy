@@ -5,7 +5,7 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::application::dto::account_dto::{
+use crate::application::provider::account_dto::{
     AccountResponse, CreateAccountRequest, UpdateAccountRequest,
 };
 use crate::application::AppState;

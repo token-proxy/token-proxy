@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::application::dto::log_dto::{
+use super::dto::{
     LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse,
     SessionContentItemResponse, SessionSummaryResponse, TokenUsageResponse,
 };
@@ -70,26 +70,26 @@ impl LogService {
         self.log_repo
             .save_content(content)
             .await
-            
+
     }
 
     /// 记录代理日志的核心入口
     ///
-    /// 仅执行客观元数据提取：
+    /// 负责：
     /// - HTTP 头解析（claude_code、user_agent）
+    /// - 请求头脱敏 + JSON 序列化
     /// - Token 用量提取（从 SSE message_delta）
     /// - 原始内容存储（request_body、response_body）
-    ///
-    /// 不解析请求/响应体的语义内容 — 展示层的文本提取全部由前端完成。
     pub async fn record_proxy_log(
         &self,
         mut entry: LogEntry,
-        request_headers: serde_json::Value,
+        request_headers: &axum::http::HeaderMap,
         request_body: serde_json::Value,
         response_body: String,
+        response_headers: axum::http::HeaderMap,
     ) -> Result<Uuid, AppError> {
         // 解析 HTTP 头（会话 ID、Agent ID、conversation_source 等）
-        let header_context = claude_code::parse_headers(&request_headers);
+        let header_context = claude_code::parse_headers(request_headers);
 
         // 解析 User-Agent 获取客户端信息
         if let Some(ref ua) = header_context.client_user_agent {
@@ -100,7 +100,6 @@ impl LogService {
             entry.client_platform = client_info.client_platform;
         }
 
-        entry.client_session_id = header_context.client_session_id;
         entry.client_app = header_context.client_app;
         entry.client_user_agent = header_context.client_user_agent;
         entry.conversation_source = header_context.conversation_source;
@@ -109,16 +108,23 @@ impl LogService {
         // 保存元数据
         let saved = self.log_repo.save(&entry).await?;
 
+        // 请求头脱敏 + 序列化为 JSON
+        let request_headers_json = headers_to_json(request_headers);
+
+        // 响应头序列化为 JSON（不需要脱敏，上游 LLM API 不含敏感信息）
+        let response_headers_json = response_headers_to_json(&response_headers);
+
         // 保存原始内容
         let content = LogContent {
             log_id: saved.id,
-            request_headers: Some(request_headers),
+            request_headers: Some(request_headers_json),
             request_body: Some(request_body),
             response_body: Some(response_body.clone()),
+            response_headers: Some(response_headers_json),
         };
         self.log_repo.save_content(&content).await?;
 
-        // 提取 token 用量（客观计数，非内容解释）
+        // 提取 token 用量
         if let Some(usage_data) = log_content::parse_usage_from_response(&response_body) {
             self.token_usage_repo
                 .save(&LogTokenUsage {
@@ -257,9 +263,6 @@ impl LogService {
     }
 
     /// 获取日志完整详情
-    ///
-    /// 返回原始 request_body 和 response_body，
-    /// 文本提取和展示由前端完成。
     pub async fn get_log_detail_full(
         &self,
         id: Uuid,
@@ -271,7 +274,6 @@ impl LogService {
 
         match result {
             Some((entry, content, usage)) => {
-                // 查找用户名和接入点名称
                 let user_name = match entry.user_id {
                     Some(uid) => self
                         .user_repo
@@ -335,8 +337,6 @@ impl LogService {
     }
 
     /// 获取某个会话的所有原始日志内容（含 token 用量）
-    ///
-    /// 前端基于原始数据调用 buildConversationEvents() 构建会话时间线。
     pub async fn get_session_contents(
         &self,
         session_id: &str,
@@ -433,4 +433,41 @@ impl LogService {
         let usages = self.token_usage_repo.find_by_session_id(session_id).await?;
         Ok(usages.iter().map(Self::to_token_usage_response).collect())
     }
+}
+
+// ─── 请求头脱敏（仅日志层使用） ───────────────────────────────────
+
+fn headers_to_json(headers: &axum::http::HeaderMap) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    for (key, value) in headers {
+        let name = key.as_str();
+        let header_value = if is_sensitive_header(&name.to_lowercase()) {
+            serde_json::Value::String("[REDACTED]".to_string())
+        } else {
+            serde_json::Value::String(value.to_str().unwrap_or("[non-UTF8]").to_string())
+        };
+        map.insert(name.to_string(), header_value);
+    }
+    serde_json::Value::Object(map)
+}
+
+fn is_sensitive_header(name: &str) -> bool {
+    name.eq_ignore_ascii_case("authorization")
+        || name.eq_ignore_ascii_case("x-api-key")
+        || name.eq_ignore_ascii_case("proxy-authorization")
+        || name.eq_ignore_ascii_case("cookie")
+        || name.eq_ignore_ascii_case("set-cookie")
+}
+
+// ─── 响应头序列化（无需脱敏） ───────────────────────────────────
+
+fn response_headers_to_json(headers: &axum::http::HeaderMap) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    for (key, value) in headers {
+        let name = key.as_str();
+        let header_value =
+            serde_json::Value::String(value.to_str().unwrap_or("[non-UTF8]").to_string());
+        map.insert(name.to_string(), header_value);
+    }
+    serde_json::Value::Object(map)
 }

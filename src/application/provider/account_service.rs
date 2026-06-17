@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::application::dto::account_dto::{
+use super::account_dto::{
     AccountResponse, CreateAccountRequest, UpdateAccountRequest,
 };
 use crate::domain::provider::Account;

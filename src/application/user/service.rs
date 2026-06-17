@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::application::dto::user_dto::{
+use super::dto::{
     ChangePasswordRequest, CreateUserRequest, UpdateProfileRequest, UpdateUserRequest, UserResponse,
 };
 use crate::domain::log::AuditLog;

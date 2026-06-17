@@ -47,7 +47,7 @@ where
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let claims = parts
             .extensions
-            .get::<crate::application::dto::auth_dto::Claims>()
+            .get::<crate::application::auth::dto::Claims>()
             .ok_or_else(|| AppError::Unauthorized("未认证".to_string()))?;
         Ok(CurrentUser(claims.user_id))
     }

@@ -5,7 +5,7 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::application::dto::log_dto::{
+use crate::application::log::dto::{
     LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse,
     SessionContentItemResponse, SessionSummaryResponse, TokenUsageResponse,
 };
