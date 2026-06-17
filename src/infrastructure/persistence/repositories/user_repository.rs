@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+};
 
 use crate::domain::user::User;
 use crate::domain::user::UserRepository;
@@ -36,7 +38,8 @@ impl UserRepository for SeaOrmUserRepository {
         Ok(UserEntity::find()
             .filter(UserColumn::Username.eq(username))
             .count(&*self.db)
-            .await? > 0)
+            .await?
+            > 0)
     }
 
     async fn find_all(&self) -> Result<Vec<User>, AppError> {

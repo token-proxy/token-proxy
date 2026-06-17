@@ -3,8 +3,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use sea_orm::{ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 
-use crate::domain::provider::Account;
 use crate::domain::provider::repository::AccountRepository;
+use crate::domain::provider::Account;
 use crate::domain::provider::{AccountActiveModel, AccountColumn, AccountEntity};
 use crate::domain::shared::Status;
 use crate::shared::error::AppError;
@@ -100,13 +100,9 @@ impl AccountRepository for SeaOrmAccountRepository {
         };
 
         if exists {
-            AccountEntity::update(active_model)
-                .exec(db)
-                .await?;
+            AccountEntity::update(active_model).exec(db).await?;
         } else {
-            AccountEntity::insert(active_model)
-                .exec(db)
-                .await?;
+            AccountEntity::insert(active_model).exec(db).await?;
         }
 
         AccountEntity::find_by_id(account.id)
@@ -117,9 +113,7 @@ impl AccountRepository for SeaOrmAccountRepository {
 
     async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         let db = &*self.db;
-        AccountEntity::delete_by_id(id)
-            .exec(db)
-            .await?;
+        AccountEntity::delete_by_id(id).exec(db).await?;
 
         Ok(())
     }
@@ -144,9 +138,7 @@ impl AccountRepository for SeaOrmAccountRepository {
             updated_at: Set(account.updated_at),
         };
 
-        AccountEntity::insert(active_model)
-            .exec(db)
-            .await?;
+        AccountEntity::insert(active_model).exec(db).await?;
 
         AccountEntity::find_by_id(account.id)
             .one(db)
@@ -179,9 +171,7 @@ impl AccountRepository for SeaOrmAccountRepository {
             created_at: ActiveValue::NotSet,
         };
 
-        AccountEntity::update(active_model)
-            .exec(db)
-            .await?;
+        AccountEntity::update(active_model).exec(db).await?;
 
         Ok(())
     }

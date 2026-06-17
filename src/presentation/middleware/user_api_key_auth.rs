@@ -25,9 +25,9 @@ pub async fn middleware(
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::Unauthorized("缺少 Authorization 请求头".to_string()))?;
 
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| AppError::Unauthorized("Authorization 格式应为 Bearer <token>".to_string()))?;
+    let token = auth_header.strip_prefix("Bearer ").ok_or_else(|| {
+        AppError::Unauthorized("Authorization 格式应为 Bearer <token>".to_string())
+    })?;
 
     let user_id = state.user_api_key_service.validate_api_key(token).await?;
 

@@ -8,8 +8,8 @@ use super::dto::{LoginRequest, LoginResponse, RefreshRequest};
 use crate::domain::user::RefreshToken;
 use crate::domain::user::RefreshTokenRepository;
 use crate::domain::user::UserRepository;
-use crate::infrastructure::auth::JwtService;
 use crate::infrastructure::auth::password::verify_password;
+use crate::infrastructure::auth::JwtService;
 use crate::shared::error::AppError;
 
 pub struct AuthService {
@@ -77,9 +77,7 @@ impl AuthService {
             now + chrono::Duration::seconds(self.jwt_service.refresh_expiry_secs() as i64);
 
         let refresh_token_entity = RefreshToken::new(user.id, token_hash, expires_at);
-        self.refresh_token_repo
-            .save(&refresh_token_entity)
-            .await?;
+        self.refresh_token_repo.save(&refresh_token_entity).await?;
 
         Ok(LoginResponse {
             access_token,
@@ -107,9 +105,7 @@ impl AuthService {
         }
 
         // 原子吊销旧 token
-        self.refresh_token_repo
-            .revoke(stored_token.id)
-            .await?;
+        self.refresh_token_repo.revoke(stored_token.id).await?;
 
         // 获取用户信息
         let user = self
@@ -142,9 +138,7 @@ impl AuthService {
             now + chrono::Duration::seconds(self.jwt_service.refresh_expiry_secs() as i64);
 
         let new_token_entity = RefreshToken::new(user.id, new_token_hash, expires_at);
-        self.refresh_token_repo
-            .save(&new_token_entity)
-            .await?;
+        self.refresh_token_repo.save(&new_token_entity).await?;
 
         Ok(LoginResponse {
             access_token,
@@ -157,9 +151,7 @@ impl AuthService {
     }
 
     pub async fn logout(&self, user_id: Uuid) -> Result<(), AppError> {
-        self.refresh_token_repo
-            .revoke_all_for_user(user_id)
-            .await?;
+        self.refresh_token_repo.revoke_all_for_user(user_id).await?;
 
         Ok(())
     }

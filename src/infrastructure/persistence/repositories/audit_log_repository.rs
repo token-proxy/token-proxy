@@ -3,9 +3,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder, Set};
 
+use crate::domain::log::audit_log::{ActiveModel, Column, Entity};
 use crate::domain::log::AuditLog;
 use crate::domain::log::AuditLogRepository;
-use crate::domain::log::audit_log::{ActiveModel, Column, Entity};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
@@ -49,6 +49,11 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
         let items = paginator.fetch_page(page.max(1) - 1).await?;
         let total = paginator.num_items().await?;
 
-        Ok(PaginatedResult { items, total, page, page_size })
+        Ok(PaginatedResult {
+            items,
+            total,
+            page,
+            page_size,
+        })
     }
 }

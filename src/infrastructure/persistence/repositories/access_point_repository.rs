@@ -1,15 +1,17 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter,
+};
 
-use crate::domain::access_point::AccessPoint;
 use crate::domain::access_point::repository::AccessPointRepository;
-use crate::domain::shared::Status;
+use crate::domain::access_point::AccessPoint;
 use crate::domain::access_point::{
     AccessPointActiveModel, AccessPointColumn, AccessPointEntity, AccessPointEx,
 };
 use crate::domain::provider::{AccountEntity, ProviderEntity};
+use crate::domain::shared::Status;
 use crate::shared::error::AppError;
 use uuid::Uuid;
 
@@ -31,7 +33,10 @@ impl AccessPointRepository for SeaOrmAccessPointRepository {
         Ok(AccessPointEntity::find_by_id(id).one(&*self.db).await?)
     }
 
-    async fn find_by_short_code(&self, short_code: &str) -> Result<Option<AccessPointEx>, AppError> {
+    async fn find_by_short_code(
+        &self,
+        short_code: &str,
+    ) -> Result<Option<AccessPointEx>, AppError> {
         let ap = AccessPointEntity::find()
             .filter(AccessPointColumn::ShortCode.eq(short_code))
             .one(&*self.db)
@@ -39,14 +44,8 @@ impl AccessPointRepository for SeaOrmAccessPointRepository {
 
         match ap {
             Some(ap_model) => {
-                let provider = ap_model
-                    .find_related(ProviderEntity)
-                    .one(&*self.db)
-                    .await?;
-                let account = ap_model
-                    .find_related(AccountEntity)
-                    .one(&*self.db)
-                    .await?;
+                let provider = ap_model.find_related(ProviderEntity).one(&*self.db).await?;
+                let account = ap_model.find_related(AccountEntity).one(&*self.db).await?;
 
                 let mut model_ex: AccessPointEx = ap_model.into();
 
@@ -95,7 +94,10 @@ impl AccessPointRepository for SeaOrmAccessPointRepository {
 
     async fn save(&self, access_point: &AccessPoint) -> Result<AccessPoint, AppError> {
         let db = &*self.db;
-        let exists = AccessPointEntity::find_by_id(access_point.id).one(db).await?.is_some();
+        let exists = AccessPointEntity::find_by_id(access_point.id)
+            .one(db)
+            .await?
+            .is_some();
 
         let active_model: AccessPointActiveModel = access_point.clone().into();
 

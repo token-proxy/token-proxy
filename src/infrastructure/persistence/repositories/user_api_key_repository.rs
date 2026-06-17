@@ -5,12 +5,12 @@ use chrono::Utc;
 use sea_orm::IntoActiveModel;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
+use crate::domain::shared::Status;
 use crate::domain::user::user_api_key::{
     ActiveModel as UserApiKeyActiveModel, Column as UserApiKeyColumn, Entity as UserApiKeyEntity,
 };
 use crate::domain::user::UserApiKey;
 use crate::domain::user::UserApiKeyRepository;
-use crate::domain::shared::Status;
 use crate::shared::error::AppError;
 use uuid::Uuid;
 
@@ -46,7 +46,10 @@ impl UserApiKeyRepository for SeaOrmUserApiKeyRepository {
 
     async fn save(&self, key: &UserApiKey) -> Result<UserApiKey, AppError> {
         let db = &*self.db;
-        let exists = UserApiKeyEntity::find_by_id(key.id).one(db).await?.is_some();
+        let exists = UserApiKeyEntity::find_by_id(key.id)
+            .one(db)
+            .await?
+            .is_some();
 
         let active_model: UserApiKeyActiveModel = key.clone().into_active_model();
 

@@ -6,6 +6,10 @@ fn main() {
     // 此处仅在 dist/index.html 不存在时创建一个最小占位，避免编译报错。
     if !fs::exists("dist/index.html").unwrap_or(false) {
         fs::create_dir_all("dist").ok();
-        fs::write("dist/index.html", "<!DOCTYPE html><html><body></body></html>").ok();
+        fs::write(
+            "dist/index.html",
+            "<!DOCTYPE html><html><body></body></html>",
+        )
+        .ok();
     }
 }

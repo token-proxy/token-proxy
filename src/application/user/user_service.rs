@@ -6,10 +6,10 @@ use super::dto::{
     ChangePasswordRequest, CreateUserRequest, UpdateProfileRequest, UpdateUserRequest, UserResponse,
 };
 use crate::domain::log::AuditLog;
-use crate::domain::user::User;
 use crate::domain::log::AuditLogRepository;
-use crate::domain::user::UserRepository;
 use crate::domain::shared::Status;
+use crate::domain::user::User;
+use crate::domain::user::UserRepository;
 use crate::infrastructure::auth::password::{hash_password, verify_password};
 use crate::shared::error::AppError;
 
@@ -50,10 +50,7 @@ impl UserService {
         }
 
         // 检查用户名唯一性
-        let exists = self
-            .user_repo
-            .exists_by_username(&trimmed_username)
-            .await?;
+        let exists = self.user_repo.exists_by_username(&trimmed_username).await?;
 
         if exists {
             return Err(AppError::Conflict(format!(
@@ -68,10 +65,7 @@ impl UserService {
 
         let user = User::new(trimmed_username, req.display_name, password_hash);
 
-        let saved = self
-            .user_repo
-            .save(&user)
-            .await?;
+        let saved = self.user_repo.save(&user).await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -106,12 +100,10 @@ impl UserService {
             user.status = status;
         }
 
-        user.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
+        user.updated_at = chrono::Utc::now()
+            .with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
-        let saved = self
-            .user_repo
-            .save(&user)
-            .await?;
+        let saved = self.user_repo.save(&user).await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -127,18 +119,13 @@ impl UserService {
     }
 
     pub async fn list_all(&self) -> Result<Vec<UserResponse>, AppError> {
-        let users = self
-            .user_repo
-            .find_all()
-            .await?;
+        let users = self.user_repo.find_all().await?;
 
         Ok(users.iter().map(Self::to_response).collect())
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
-        self.user_repo
-            .delete(id)
-            .await?;
+        self.user_repo.delete(id).await?;
 
         Ok(())
     }
@@ -161,12 +148,10 @@ impl UserService {
             .ok_or_else(|| AppError::NotFound(format!("用户 {} 未找到", user_id)))?;
 
         user.display_name = trimmed;
-        user.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
+        user.updated_at = chrono::Utc::now()
+            .with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
-        let saved = self
-            .user_repo
-            .save(&user)
-            .await?;
+        let saved = self.user_repo.save(&user).await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -201,11 +186,10 @@ impl UserService {
 
         let mut mutable_user = user;
         mutable_user.password_hash = new_hash;
-        mutable_user.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
+        mutable_user.updated_at = chrono::Utc::now()
+            .with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
-        self.user_repo
-            .save(&mutable_user)
-            .await?;
+        self.user_repo.save(&mutable_user).await?;
 
         // 记录审计日志
         let audit = AuditLog::new(
@@ -215,9 +199,7 @@ impl UserService {
             Some(user_id),
             Some(serde_json::json!({"action": "change_password"})),
         );
-        self.audit_log_repo
-            .save(&audit)
-            .await?;
+        self.audit_log_repo.save(&audit).await?;
 
         Ok(())
     }

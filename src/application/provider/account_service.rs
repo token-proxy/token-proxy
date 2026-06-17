@@ -2,14 +2,12 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use super::dto::{
-    AccountResponse, CreateAccountRequest, UpdateAccountRequest,
-};
-use crate::domain::provider::Account;
+use super::dto::{AccountResponse, CreateAccountRequest, UpdateAccountRequest};
 use crate::domain::provider::repository::AccountRepository;
 use crate::domain::provider::repository::ProviderRepository;
-use crate::domain::shared::EncryptionService;
+use crate::domain::provider::Account;
 use crate::domain::shared::ApiKey;
+use crate::domain::shared::EncryptionService;
 use crate::shared::error::AppError;
 
 pub struct AccountService {
@@ -130,12 +128,10 @@ impl AccountService {
             }
         }
 
-        account.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
+        account.updated_at = chrono::Utc::now()
+            .with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
-        let saved = self
-            .account_repo
-            .save(&account)
-            .await?;
+        let saved = self.account_repo.save(&account).await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -154,18 +150,13 @@ impl AccountService {
         &self,
         provider_id: Uuid,
     ) -> Result<Vec<AccountResponse>, AppError> {
-        let accounts = self
-            .account_repo
-            .find_by_provider_id(provider_id)
-            .await?;
+        let accounts = self.account_repo.find_by_provider_id(provider_id).await?;
 
         Ok(accounts.iter().map(Self::to_response).collect())
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
-        self.account_repo
-            .delete(id)
-            .await?;
+        self.account_repo.delete(id).await?;
 
         Ok(())
     }

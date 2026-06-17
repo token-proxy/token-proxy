@@ -17,19 +17,18 @@ use token_proxy::application::user::UserService;
 use token_proxy::application::AppState;
 use token_proxy::config::Config;
 use token_proxy::domain::access_point::repository::AccessPointRepository;
-use token_proxy::domain::provider::repository::AccountRepository;
-use token_proxy::domain::provider::repository::ProviderRepository;
 use token_proxy::domain::log::AuditLogRepository;
 use token_proxy::domain::log::LogRepository;
 use token_proxy::domain::log::LogTokenUsageRepository;
+use token_proxy::domain::provider::repository::AccountRepository;
+use token_proxy::domain::provider::repository::ProviderRepository;
+use token_proxy::domain::shared::EncryptionService;
 use token_proxy::domain::user::RefreshTokenRepository;
 use token_proxy::domain::user::UserApiKeyRepository;
 use token_proxy::domain::user::UserRepository;
-use token_proxy::domain::shared::EncryptionService;
 use token_proxy::infrastructure::auth::JwtService;
 use token_proxy::infrastructure::encryption::Aes256GcmEncryptionService;
 use token_proxy::infrastructure::http_client::ProxyClient;
-use token_proxy::infrastructure::persistence::PartitionManager;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmAccessPointRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmAccountRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmAuditLogRepository;
@@ -39,6 +38,7 @@ use token_proxy::infrastructure::persistence::repositories::SeaOrmProviderReposi
 use token_proxy::infrastructure::persistence::repositories::SeaOrmRefreshTokenRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmUserApiKeyRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmUserRepository;
+use token_proxy::infrastructure::persistence::PartitionManager;
 use token_proxy::presentation::routes;
 
 #[tokio::main]
@@ -183,7 +183,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 启动后台定时任务：清理过期的 refresh_token
     let token_repo_cleanup = refresh_token_repo.clone();
-    let token_cleanup_interval = std::time::Duration::from_secs(config.partition_check_interval_secs);
+    let token_cleanup_interval =
+        std::time::Duration::from_secs(config.partition_check_interval_secs);
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(token_cleanup_interval);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

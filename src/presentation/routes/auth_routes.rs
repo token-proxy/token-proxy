@@ -1,4 +1,8 @@
-use axum::{extract::State, routing::{delete, post}, Json, Router};
+use axum::{
+    extract::State,
+    routing::{delete, post},
+    Json, Router,
+};
 use serde_json::Value;
 
 use crate::application::auth::dto::{LoginRequest, LoginResponse, RefreshRequest};

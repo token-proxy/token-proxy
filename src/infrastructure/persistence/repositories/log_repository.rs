@@ -8,14 +8,12 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use crate::domain::log::content::{ActiveModel as ContentActiveModel, Entity as ContentEntity};
+use crate::domain::log::metadata::{ActiveModel, Column, Entity};
 use crate::domain::log::{LogContent, LogEntry, LogTokenUsage};
 use crate::domain::log::{
     LogEntryWithTokenSummary, LogQuery, LogRepository, SessionQuery, SessionSummaryData,
 };
-use crate::domain::log::content::{
-    ActiveModel as ContentActiveModel, Entity as ContentEntity,
-};
-use crate::domain::log::metadata::{ActiveModel, Column, Entity};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
@@ -33,9 +31,7 @@ impl SeaOrmLogRepository {
 impl LogRepository for SeaOrmLogRepository {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<LogEntry>, AppError> {
         let db = &*self.db;
-        let model = Entity::find_by_id(id)
-            .one(db)
-            .await?;
+        let model = Entity::find_by_id(id).one(db).await?;
 
         match model {
             Some(m) => Ok(Some(m)),
@@ -88,13 +84,9 @@ impl LogRepository for SeaOrmLogRepository {
 
         let paginator = select.paginate(db, page_size);
 
-        let total = paginator
-            .num_items()
-            .await?;
+        let total = paginator.num_items().await?;
 
-        let models = paginator
-            .fetch_page(page - 1)
-            .await?;
+        let models = paginator.fetch_page(page - 1).await?;
 
         let items = models;
 
@@ -108,22 +100,15 @@ impl LogRepository for SeaOrmLogRepository {
 
     async fn save(&self, entry: &LogEntry) -> Result<LogEntry, AppError> {
         let db = &*self.db;
-        let exists = Entity::find_by_id(entry.id)
-            .one(db)
-            .await?
-            .is_some();
+        let exists = Entity::find_by_id(entry.id).one(db).await?.is_some();
 
         let active_model: ActiveModel = entry.clone().into();
 
         if exists {
             let active_model = active_model.reset_all();
-            Entity::update(active_model)
-                .exec(db)
-                .await?;
+            Entity::update(active_model).exec(db).await?;
         } else {
-            Entity::insert(active_model)
-                .exec(db)
-                .await?;
+            Entity::insert(active_model).exec(db).await?;
         }
 
         let result = Entity::find_by_id(entry.id)
@@ -136,17 +121,13 @@ impl LogRepository for SeaOrmLogRepository {
     async fn save_content(&self, content: &LogContent) -> Result<(), AppError> {
         let db = &*self.db;
         let active_model: ContentActiveModel = content.clone().into();
-        ContentEntity::insert(active_model)
-            .exec(db)
-            .await?;
+        ContentEntity::insert(active_model).exec(db).await?;
         Ok(())
     }
 
     async fn find_content_by_log_id(&self, log_id: Uuid) -> Result<Option<LogContent>, AppError> {
         let db = &*self.db;
-        let model = ContentEntity::find_by_id(log_id)
-            .one(db)
-            .await?;
+        let model = ContentEntity::find_by_id(log_id).one(db).await?;
 
         match model {
             Some(m) => Ok(Some(m)),
@@ -159,9 +140,7 @@ impl LogRepository for SeaOrmLogRepository {
         // 先删除关联的 log_content（如果有）
         let _ = ContentEntity::delete_by_id(id).exec(db).await;
         // 再删除 log_metadata
-        Entity::delete_by_id(id)
-            .exec(db)
-            .await?;
+        Entity::delete_by_id(id).exec(db).await?;
         Ok(())
     }
 
@@ -183,7 +162,8 @@ impl LogRepository for SeaOrmLogRepository {
         let mut param_index = 1u32;
 
         // 先查询总数
-        let mut count_sql = "SELECT COUNT(*)::BIGINT AS cnt FROM log_metadata lm WHERE 1=1".to_string();
+        let mut count_sql =
+            "SELECT COUNT(*)::BIGINT AS cnt FROM log_metadata lm WHERE 1=1".to_string();
         let mut count_params: Vec<sea_orm::Value> = Vec::new();
 
         // 数据查询 SQL
@@ -204,7 +184,8 @@ impl LogRepository for SeaOrmLogRepository {
             FROM log_metadata lm
             LEFT JOIN log_token_usage ltu ON ltu.log_id = lm.id
             WHERE 1=1
-        "#.to_string();
+        "#
+        .to_string();
         let mut data_params: Vec<sea_orm::Value> = Vec::new();
 
         if let Some(ref session_id) = filter.session_id {
@@ -279,14 +260,13 @@ impl LogRepository for SeaOrmLogRepository {
         data_params.push((offset as i64).into());
 
         // 执行 count 查询
-        let count_stmt = Statement::from_sql_and_values(DbBackend::Postgres, &count_sql, count_params);
+        let count_stmt =
+            Statement::from_sql_and_values(DbBackend::Postgres, &count_sql, count_params);
         let count_result = db
             .query_one_raw(count_stmt)
             .await?
             .ok_or_else(|| AppError::Internal("计数查询结果为空".to_string()))?;
-        let total: i64 = count_result
-            .try_get_by_index(0)
-            ?;
+        let total: i64 = count_result.try_get_by_index(0)?;
         let total = total as u64;
 
         if total == 0 {
@@ -300,104 +280,46 @@ impl LogRepository for SeaOrmLogRepository {
 
         // 执行数据查询
         let data_stmt = Statement::from_sql_and_values(DbBackend::Postgres, &data_sql, data_params);
-        let results = db
-            .query_all_raw(data_stmt)
-            .await?;
+        let results = db.query_all_raw(data_stmt).await?;
 
         let items: Vec<LogEntryWithTokenSummary> = results
             .iter()
             .map(|row| {
-                let id: Uuid = row
-                    .try_get_by_index::<Uuid>(0)
-                    ?;
+                let id: Uuid = row.try_get_by_index::<Uuid>(0)?;
 
-                let timestamp_col: chrono::DateTime<FixedOffset> = row
-                    .try_get_by_index(1)
-                    ?;
+                let timestamp_col: chrono::DateTime<FixedOffset> = row.try_get_by_index(1)?;
 
                 Ok(LogEntryWithTokenSummary {
                     entry: LogEntry {
                         id,
                         timestamp: timestamp_col,
-                        session_id: row
-                            .try_get_by_index::<String>(2)
-                            ?,
-                        user_id: row
-                            .try_get_by_index::<Option<Uuid>>(3)
-                            ?,
-                        access_point_id: row
-                            .try_get_by_index::<Option<Uuid>>(4)
-                            ?,
-                        provider_id: row
-                            .try_get_by_index::<Option<Uuid>>(5)
-                            ?,
-                        account_id: row
-                            .try_get_by_index::<Option<Uuid>>(6)
-                            ?,
-                        model_original: row
-                            .try_get_by_index::<Option<String>>(7)
-                            ?,
-                        model_mapped: row
-                            .try_get_by_index::<Option<String>>(8)
-                            ?,
-                        status_code: row
-                            .try_get_by_index::<Option<i16>>(9)
-                            ?,
-                        duration_ms: row
-                            .try_get_by_index::<Option<i32>>(10)
-                            ?,
-                        error_message: row
-                            .try_get_by_index::<Option<String>>(11)
-                            ?,
-                        request_index: row
-                            .try_get_by_index::<i32>(12)
-                            ?,
-                        client_app: row
-                            .try_get_by_index::<Option<String>>(13)
-                            ?,
-                        client_user_agent: row
-                            .try_get_by_index::<Option<String>>(14)
-                            ?,
-                        conversation_source: row
-                            .try_get_by_index::<String>(15)
-                            ?,
-                        agent_id: row
-                            .try_get_by_index::<Option<String>>(16)
-                            ?,
-                        has_error: row
-                            .try_get_by_index::<bool>(17)
-                            ?,
-                        raw_content_available: row
-                            .try_get_by_index::<bool>(18)
-                            ?,
-                        is_interrupted: row
-                            .try_get_by_index::<bool>(19)
-                            ?,
-                        client_name: row
-                            .try_get_by_index::<Option<String>>(20)
-                            ?,
-                        client_version: row
-                            .try_get_by_index::<Option<String>>(21)
-                            ?,
-                        client_channel: row
-                            .try_get_by_index::<Option<String>>(22)
-                            ?,
-                        client_platform: row
-                            .try_get_by_index::<Option<String>>(23)
-                            ?,
-                        api_type: row
-                            .try_get_by_index::<String>(24)
-                            ?,
+                        session_id: row.try_get_by_index::<String>(2)?,
+                        user_id: row.try_get_by_index::<Option<Uuid>>(3)?,
+                        access_point_id: row.try_get_by_index::<Option<Uuid>>(4)?,
+                        provider_id: row.try_get_by_index::<Option<Uuid>>(5)?,
+                        account_id: row.try_get_by_index::<Option<Uuid>>(6)?,
+                        model_original: row.try_get_by_index::<Option<String>>(7)?,
+                        model_mapped: row.try_get_by_index::<Option<String>>(8)?,
+                        status_code: row.try_get_by_index::<Option<i16>>(9)?,
+                        duration_ms: row.try_get_by_index::<Option<i32>>(10)?,
+                        error_message: row.try_get_by_index::<Option<String>>(11)?,
+                        request_index: row.try_get_by_index::<i32>(12)?,
+                        client_app: row.try_get_by_index::<Option<String>>(13)?,
+                        client_user_agent: row.try_get_by_index::<Option<String>>(14)?,
+                        conversation_source: row.try_get_by_index::<String>(15)?,
+                        agent_id: row.try_get_by_index::<Option<String>>(16)?,
+                        has_error: row.try_get_by_index::<bool>(17)?,
+                        raw_content_available: row.try_get_by_index::<bool>(18)?,
+                        is_interrupted: row.try_get_by_index::<bool>(19)?,
+                        client_name: row.try_get_by_index::<Option<String>>(20)?,
+                        client_version: row.try_get_by_index::<Option<String>>(21)?,
+                        client_channel: row.try_get_by_index::<Option<String>>(22)?,
+                        client_platform: row.try_get_by_index::<Option<String>>(23)?,
+                        api_type: row.try_get_by_index::<String>(24)?,
                     },
-                    input_tokens: row
-                        .try_get_by_index::<Option<i32>>(25)
-                        ?,
-                    output_tokens: row
-                        .try_get_by_index::<Option<i32>>(26)
-                        ?,
-                    total_tokens: row
-                        .try_get_by_index::<Option<i32>>(27)
-                        ?,
+                    input_tokens: row.try_get_by_index::<Option<i32>>(25)?,
+                    output_tokens: row.try_get_by_index::<Option<i32>>(26)?,
+                    total_tokens: row.try_get_by_index::<Option<i32>>(27)?,
                 })
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -488,14 +410,13 @@ impl LogRepository for SeaOrmLogRepository {
             "SELECT COUNT(*)::BIGINT FROM (SELECT 1 FROM log_metadata lm {} GROUP BY lm.session_id) sub",
             where_sql
         );
-        let count_stmt = Statement::from_sql_and_values(DbBackend::Postgres, &count_sql, count_params);
+        let count_stmt =
+            Statement::from_sql_and_values(DbBackend::Postgres, &count_sql, count_params);
         let count_result = db
             .query_one_raw(count_stmt)
             .await?
             .ok_or_else(|| AppError::Internal("会话计数查询结果为空".to_string()))?;
-        let total: i64 = count_result
-            .try_get_by_index(0)
-            ?;
+        let total: i64 = count_result.try_get_by_index(0)?;
         let total = total as u64;
 
         if total == 0 {
@@ -539,49 +460,25 @@ impl LogRepository for SeaOrmLogRepository {
         );
 
         let data_stmt = Statement::from_sql_and_values(DbBackend::Postgres, &data_sql, data_params);
-        let results = db
-            .query_all_raw(data_stmt)
-            .await?;
+        let results = db.query_all_raw(data_stmt).await?;
 
         let items: Vec<SessionSummaryData> = results
             .iter()
             .map(|row| {
-                let start_time_col: chrono::DateTime<FixedOffset> = row
-                    .try_get_by_index(3)
-                    ?;
+                let start_time_col: chrono::DateTime<FixedOffset> = row.try_get_by_index(3)?;
 
                 Ok(SessionSummaryData {
-                    session_id: row
-                        .try_get_by_index::<String>(0)
-                        ?,
-                    user_id: row
-                        .try_get_by_index::<Option<Uuid>>(1)
-                        ?,
-                    access_point_id: row
-                        .try_get_by_index::<Option<Uuid>>(2)
-                        ?,
+                    session_id: row.try_get_by_index::<String>(0)?,
+                    user_id: row.try_get_by_index::<Option<Uuid>>(1)?,
+                    access_point_id: row.try_get_by_index::<Option<Uuid>>(2)?,
                     start_time: start_time_col.to_utc(),
-                    request_count: row
-                        .try_get_by_index::<i64>(4)
-                        ?,
-                    total_input_tokens: row
-                        .try_get_by_index::<i64>(5)
-                        ?,
-                    total_output_tokens: row
-                        .try_get_by_index::<i64>(6)
-                        ?,
-                    total_cache_creation_input_tokens: row
-                        .try_get_by_index::<i64>(7)
-                        ?,
-                    total_cache_read_input_tokens: row
-                        .try_get_by_index::<i64>(8)
-                        ?,
-                    total_thinking_tokens: row
-                        .try_get_by_index::<i64>(9)
-                        ?,
-                    total_tokens: row
-                        .try_get_by_index::<i64>(10)
-                        ?,
+                    request_count: row.try_get_by_index::<i64>(4)?,
+                    total_input_tokens: row.try_get_by_index::<i64>(5)?,
+                    total_output_tokens: row.try_get_by_index::<i64>(6)?,
+                    total_cache_creation_input_tokens: row.try_get_by_index::<i64>(7)?,
+                    total_cache_read_input_tokens: row.try_get_by_index::<i64>(8)?,
+                    total_thinking_tokens: row.try_get_by_index::<i64>(9)?,
+                    total_tokens: row.try_get_by_index::<i64>(10)?,
                 })
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -634,140 +531,92 @@ impl LogRepository for SeaOrmLogRepository {
         "#;
 
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, [id.into()]);
-        let result = db
-            .query_one_raw(stmt)
-            .await?;
+        let result = db.query_one_raw(stmt).await?;
 
         match result {
             Some(row) => {
-                let timestamp_col: chrono::DateTime<FixedOffset> = row
-                    .try_get_by_index(1)
-                    ?;
+                let timestamp_col: chrono::DateTime<FixedOffset> = row.try_get_by_index(1)?;
 
                 let entry = LogEntry {
-                    id: row.try_get_by_index::<Uuid>(0)
-                        ?,
+                    id: row.try_get_by_index::<Uuid>(0)?,
                     timestamp: timestamp_col,
-                    session_id: row.try_get_by_index::<String>(2)
-                        ?,
-                    user_id: row.try_get_by_index::<Option<Uuid>>(3)
-                        ?,
-                    access_point_id: row.try_get_by_index::<Option<Uuid>>(4)
-                        ?,
-                    provider_id: row.try_get_by_index::<Option<Uuid>>(5)
-                        ?,
-                    account_id: row.try_get_by_index::<Option<Uuid>>(6)
-                        ?,
-                    model_original: row.try_get_by_index::<Option<String>>(7)
-                        ?,
-                    model_mapped: row.try_get_by_index::<Option<String>>(8)
-                        ?,
-                    status_code: row.try_get_by_index::<Option<i16>>(9)
-                        ?,
-                    duration_ms: row.try_get_by_index::<Option<i32>>(10)
-                        ?,
-                    error_message: row.try_get_by_index::<Option<String>>(11)
-                        ?,
-                    request_index: row.try_get_by_index::<i32>(12)
-                        ?,
-                    client_app: row.try_get_by_index::<Option<String>>(13)
-                        ?,
-                    client_user_agent: row.try_get_by_index::<Option<String>>(14)
-                        ?,
-                    conversation_source: row.try_get_by_index::<String>(15)
-                        ?,
-                    agent_id: row.try_get_by_index::<Option<String>>(16)
-                        ?,
-                    has_error: row.try_get_by_index::<bool>(17)
-                        ?,
-                    raw_content_available: row.try_get_by_index::<bool>(18)
-                        ?,
-                    is_interrupted: row.try_get_by_index::<bool>(19)
-                        ?,
-                    client_name: row.try_get_by_index::<Option<String>>(20)
-                        ?,
-                    client_version: row.try_get_by_index::<Option<String>>(21)
-                        ?,
-                    client_channel: row.try_get_by_index::<Option<String>>(22)
-                        ?,
-                    client_platform: row.try_get_by_index::<Option<String>>(23)
-                        ?,
-                    api_type: row.try_get_by_index::<String>(24)
-                        ?,
+                    session_id: row.try_get_by_index::<String>(2)?,
+                    user_id: row.try_get_by_index::<Option<Uuid>>(3)?,
+                    access_point_id: row.try_get_by_index::<Option<Uuid>>(4)?,
+                    provider_id: row.try_get_by_index::<Option<Uuid>>(5)?,
+                    account_id: row.try_get_by_index::<Option<Uuid>>(6)?,
+                    model_original: row.try_get_by_index::<Option<String>>(7)?,
+                    model_mapped: row.try_get_by_index::<Option<String>>(8)?,
+                    status_code: row.try_get_by_index::<Option<i16>>(9)?,
+                    duration_ms: row.try_get_by_index::<Option<i32>>(10)?,
+                    error_message: row.try_get_by_index::<Option<String>>(11)?,
+                    request_index: row.try_get_by_index::<i32>(12)?,
+                    client_app: row.try_get_by_index::<Option<String>>(13)?,
+                    client_user_agent: row.try_get_by_index::<Option<String>>(14)?,
+                    conversation_source: row.try_get_by_index::<String>(15)?,
+                    agent_id: row.try_get_by_index::<Option<String>>(16)?,
+                    has_error: row.try_get_by_index::<bool>(17)?,
+                    raw_content_available: row.try_get_by_index::<bool>(18)?,
+                    is_interrupted: row.try_get_by_index::<bool>(19)?,
+                    client_name: row.try_get_by_index::<Option<String>>(20)?,
+                    client_version: row.try_get_by_index::<Option<String>>(21)?,
+                    client_channel: row.try_get_by_index::<Option<String>>(22)?,
+                    client_platform: row.try_get_by_index::<Option<String>>(23)?,
+                    api_type: row.try_get_by_index::<String>(24)?,
                 };
 
                 let content = LogContent {
                     log_id: entry.id,
-                    request_headers: Some(row.try_get_by_index::<Option<serde_json::Value>>(25)
-                        ?
-                        .unwrap_or(serde_json::Value::Null)),
-                    request_body: Some(row.try_get_by_index::<Option<serde_json::Value>>(26)
-                        ?
-                        .unwrap_or(serde_json::Value::Null)),
-                    response_body: Some(row.try_get_by_index::<Option<String>>(27)
-                        ?
-                        .unwrap_or_default()),
-                    response_headers: row.try_get_by_index::<Option<serde_json::Value>>(28)
-                        ?,
+                    request_headers: Some(
+                        row.try_get_by_index::<Option<serde_json::Value>>(25)?
+                            .unwrap_or(serde_json::Value::Null),
+                    ),
+                    request_body: Some(
+                        row.try_get_by_index::<Option<serde_json::Value>>(26)?
+                            .unwrap_or(serde_json::Value::Null),
+                    ),
+                    response_body: Some(
+                        row.try_get_by_index::<Option<String>>(27)?
+                            .unwrap_or_default(),
+                    ),
+                    response_headers: row.try_get_by_index::<Option<serde_json::Value>>(28)?,
                 };
 
                 // 检查是否有 token 用量（ltu.id 不为 NULL）
-                let usage_id: Option<Uuid> = row.try_get_by_index::<Option<Uuid>>(29)
-                    ?;
+                let usage_id: Option<Uuid> = row.try_get_by_index::<Option<Uuid>>(29)?;
 
                 let usage = if let Some(uid) = usage_id {
-                    let usage_ts_col: chrono::DateTime<FixedOffset> = row
-                        .try_get_by_index(41)
-                        ?;
-                    let usage_created_col: chrono::DateTime<FixedOffset> = row
-                        .try_get_by_index(51)
-                        ?;
+                    let usage_ts_col: chrono::DateTime<FixedOffset> = row.try_get_by_index(41)?;
+                    let usage_created_col: chrono::DateTime<FixedOffset> =
+                        row.try_get_by_index(51)?;
 
                     Some(LogTokenUsage {
                         id: uid,
-                        log_id: row.try_get_by_index::<Option<Uuid>>(30)
-                            ?
+                        log_id: row
+                            .try_get_by_index::<Option<Uuid>>(30)?
                             .unwrap_or(entry.id),
-                        input_tokens: row.try_get_by_index::<i32>(31)
-                            ?,
-                        output_tokens: row.try_get_by_index::<i32>(32)
-                            ?,
-                        cache_creation_input_tokens: row.try_get_by_index::<i32>(33)
-                            ?,
-                        cache_read_input_tokens: row.try_get_by_index::<i32>(34)
-                            ?,
-                        thinking_tokens: row.try_get_by_index::<i32>(35)
-                            ?,
-                        total_tokens: row.try_get_by_index::<i32>(36)
-                            ?,
-                        raw_usage: row.try_get_by_index::<Option<serde_json::Value>>(37)
-                            ?,
-                        server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(38)
-                            ?,
-                        cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(39)
-                            ?,
-                        session_id: row.try_get_by_index::<Option<String>>(40)
-                            ?
+                        input_tokens: row.try_get_by_index::<i32>(31)?,
+                        output_tokens: row.try_get_by_index::<i32>(32)?,
+                        cache_creation_input_tokens: row.try_get_by_index::<i32>(33)?,
+                        cache_read_input_tokens: row.try_get_by_index::<i32>(34)?,
+                        thinking_tokens: row.try_get_by_index::<i32>(35)?,
+                        total_tokens: row.try_get_by_index::<i32>(36)?,
+                        raw_usage: row.try_get_by_index::<Option<serde_json::Value>>(37)?,
+                        server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(38)?,
+                        cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(39)?,
+                        session_id: row
+                            .try_get_by_index::<Option<String>>(40)?
                             .unwrap_or_default(),
                         timestamp: usage_ts_col,
-                        user_id: row.try_get_by_index::<Option<Uuid>>(42)
-                            ?,
-                        access_point_id: row.try_get_by_index::<Option<Uuid>>(43)
-                            ?,
-                        provider_id: row.try_get_by_index::<Option<Uuid>>(44)
-                            ?,
-                        account_id: row.try_get_by_index::<Option<Uuid>>(45)
-                            ?,
-                        model_original: row.try_get_by_index::<Option<String>>(46)
-                            ?,
-                        model_mapped: row.try_get_by_index::<Option<String>>(47)
-                            ?,
-                        conversation_source: row.try_get_by_index::<Option<String>>(48)
-                            ?,
-                        agent_id: row.try_get_by_index::<Option<String>>(49)
-                            ?,
-                        agent_type: row.try_get_by_index::<Option<String>>(50)
-                            ?,
+                        user_id: row.try_get_by_index::<Option<Uuid>>(42)?,
+                        access_point_id: row.try_get_by_index::<Option<Uuid>>(43)?,
+                        provider_id: row.try_get_by_index::<Option<Uuid>>(44)?,
+                        account_id: row.try_get_by_index::<Option<Uuid>>(45)?,
+                        model_original: row.try_get_by_index::<Option<String>>(46)?,
+                        model_mapped: row.try_get_by_index::<Option<String>>(47)?,
+                        conversation_source: row.try_get_by_index::<Option<String>>(48)?,
+                        agent_id: row.try_get_by_index::<Option<String>>(49)?,
+                        agent_type: row.try_get_by_index::<Option<String>>(50)?,
                         created_at: usage_created_col,
                     })
                 } else {
@@ -784,9 +633,7 @@ impl LogRepository for SeaOrmLogRepository {
 
     async fn count_total(&self) -> Result<u64, AppError> {
         let db = &*self.db;
-        let count = Entity::find()
-            .count(db)
-            .await?;
+        let count = Entity::find().count(db).await?;
         Ok(count)
     }
 
@@ -810,20 +657,14 @@ impl LogRepository for SeaOrmLogRepository {
             [start.to_rfc3339().into(), end.to_rfc3339().into()],
         );
 
-        let results = db
-            .query_all_raw(stmt)
-            .await?;
+        let results = db.query_all_raw(stmt).await?;
 
         let mut data = Vec::new();
         for row in &results {
-            let day_str: String = row
-                .try_get_by_index(0)
-                ?;
+            let day_str: String = row.try_get_by_index(0)?;
             let day = NaiveDate::parse_from_str(&day_str, "%Y-%m-%d")
                 .map_err(|e| AppError::Internal(format!("日期解析失败: {}", e)))?;
-            let count: i64 = row
-                .try_get_by_index(1)
-                ?;
+            let count: i64 = row.try_get_by_index(1)?;
             data.push((day, count as u64));
         }
 
@@ -844,18 +685,12 @@ impl LogRepository for SeaOrmLogRepository {
         let stmt =
             Statement::from_sql_and_values(DbBackend::Postgres, sql, [(limit as i64).into()]);
 
-        let results = db
-            .query_all_raw(stmt)
-            .await?;
+        let results = db.query_all_raw(stmt).await?;
 
         let mut data = Vec::new();
         for row in &results {
-            let id: Uuid = row
-                .try_get_by_index(0)
-                ?;
-            let count: i64 = row
-                .try_get_by_index(1)
-                ?;
+            let id: Uuid = row.try_get_by_index(0)?;
+            let count: i64 = row.try_get_by_index(1)?;
             data.push((id, count as u64));
         }
 
@@ -876,18 +711,12 @@ impl LogRepository for SeaOrmLogRepository {
         let stmt =
             Statement::from_sql_and_values(DbBackend::Postgres, sql, [(limit as i64).into()]);
 
-        let results = db
-            .query_all_raw(stmt)
-            .await?;
+        let results = db.query_all_raw(stmt).await?;
 
         let mut data = Vec::new();
         for row in &results {
-            let model: String = row
-                .try_get_by_index(0)
-                ?;
-            let count: i64 = row
-                .try_get_by_index(1)
-                ?;
+            let model: String = row.try_get_by_index(0)?;
+            let count: i64 = row.try_get_by_index(1)?;
             data.push((model, count as u64));
         }
 
@@ -904,15 +733,12 @@ impl LogRepository for SeaOrmLogRepository {
 
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, []);
 
-        let results = db
-            .query_all_raw(stmt)
-            .await?;
+        let results = db.query_all_raw(stmt).await?;
 
         let count: i64 = results
             .first()
             .ok_or_else(|| AppError::Internal("查询结果为空".to_string()))?
-            .try_get_by_index(0)
-            ?;
+            .try_get_by_index(0)?;
 
         Ok(count as u64)
     }

@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+};
 
-use crate::domain::provider::Provider;
 use crate::domain::provider::repository::ProviderRepository;
+use crate::domain::provider::Provider;
 use crate::domain::provider::{ProviderActiveModel, ProviderColumn, ProviderEntity};
 use crate::domain::shared::Status;
 use crate::shared::error::AppError;
@@ -43,7 +45,10 @@ impl ProviderRepository for SeaOrmProviderRepository {
 
     async fn save(&self, provider: &Provider) -> Result<Provider, AppError> {
         let db = &*self.db;
-        let exists = ProviderEntity::find_by_id(provider.id).one(db).await?.is_some();
+        let exists = ProviderEntity::find_by_id(provider.id)
+            .one(db)
+            .await?
+            .is_some();
 
         let active_model: ProviderActiveModel = provider.clone().into();
 

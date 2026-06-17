@@ -5,15 +5,13 @@ use uuid::Uuid;
 use super::dto::{
     AccessPointResponse, CreateAccessPointRequest, ModelMappingDto, UpdateAccessPointRequest,
 };
-use crate::domain::access_point::{AccessPoint, AccessPointEx};
+use crate::domain::access_point::model_mapping::{normalize_match_type, MatchType, ModelMapping};
 use crate::domain::access_point::repository::AccessPointRepository;
+use crate::domain::access_point::ShortCode;
+use crate::domain::access_point::{AccessPoint, AccessPointEx};
 use crate::domain::provider::repository::AccountRepository;
 use crate::domain::provider::repository::ProviderRepository;
 use crate::domain::shared::AccessPointType;
-use crate::domain::access_point::model_mapping::{
-    normalize_match_type, MatchType, ModelMapping,
-};
-use crate::domain::access_point::ShortCode;
 use crate::domain::shared::Status;
 use crate::shared::error::AppError;
 
@@ -155,10 +153,7 @@ impl AccessPointService {
             };
         }
 
-        let saved = self
-            .access_point_repo
-            .save(&access_point)
-            .await?;
+        let saved = self.access_point_repo.save(&access_point).await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -237,12 +232,10 @@ impl AccessPointService {
             };
         }
 
-        ap.updated_at = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
+        ap.updated_at = chrono::Utc::now()
+            .with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
-        let saved = self
-            .access_point_repo
-            .save(&ap)
-            .await?;
+        let saved = self.access_point_repo.save(&ap).await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -294,18 +287,13 @@ impl AccessPointService {
     }
 
     pub async fn list_all(&self) -> Result<Vec<AccessPointResponse>, AppError> {
-        let points = self
-            .access_point_repo
-            .find_all()
-            .await?;
+        let points = self.access_point_repo.find_all().await?;
 
         Ok(points.iter().map(Self::to_response).collect())
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
-        self.access_point_repo
-            .delete(id)
-            .await?;
+        self.access_point_repo.delete(id).await?;
 
         Ok(())
     }

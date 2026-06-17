@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use super::dto::{CreateApiKeyResponse, UserApiKeyResponse};
 use crate::domain::log::AuditLog;
-use crate::domain::user::UserApiKey;
 use crate::domain::log::AuditLogRepository;
+use crate::domain::user::UserApiKey;
 use crate::domain::user::UserApiKeyRepository;
 use crate::shared::error::AppError;
 
@@ -83,10 +83,7 @@ impl UserApiKeyService {
 
         let entity = UserApiKey::new(user_id, key_hash, key_prefix, trimmed);
 
-        let saved = self
-            .api_key_repo
-            .save(&entity)
-            .await?;
+        let saved = self.api_key_repo.save(&entity).await?;
 
         // 记录审计日志
         let details = serde_json::json!({
@@ -100,9 +97,7 @@ impl UserApiKeyService {
             Some(saved.id),
             Some(details),
         );
-        self.audit_log_repo
-            .save(&audit)
-            .await?;
+        self.audit_log_repo.save(&audit).await?;
 
         Ok(CreateApiKeyResponse {
             id: saved.id,
@@ -116,10 +111,7 @@ impl UserApiKeyService {
 
     /// 查询指定用户的所有 API key（脱敏，不返回完整 key）
     pub async fn list_by_user(&self, user_id: Uuid) -> Result<Vec<UserApiKeyResponse>, AppError> {
-        let keys = self
-            .api_key_repo
-            .find_all_by_user(user_id)
-            .await?;
+        let keys = self.api_key_repo.find_all_by_user(user_id).await?;
 
         Ok(keys.into_iter().map(|k| Self::to_response(&k)).collect())
     }
@@ -158,9 +150,7 @@ impl UserApiKeyService {
         key: &UserApiKey,
         operator_user_id: Option<Uuid>,
     ) -> Result<(), AppError> {
-        self.api_key_repo
-            .revoke(key_id)
-            .await?;
+        self.api_key_repo.revoke(key_id).await?;
 
         let details = serde_json::json!({
             "key_prefix": key.key_prefix,
@@ -172,9 +162,7 @@ impl UserApiKeyService {
             Some(key_id),
             Some(details),
         );
-        self.audit_log_repo
-            .save(&audit)
-            .await?;
+        self.audit_log_repo.save(&audit).await?;
 
         Ok(())
     }
@@ -204,10 +192,7 @@ impl UserApiKeyService {
         let mut updated = key;
         updated.description = trimmed;
 
-        let saved = self
-            .api_key_repo
-            .save(&updated)
-            .await?;
+        let saved = self.api_key_repo.save(&updated).await?;
 
         Ok(Self::to_response(&saved))
     }
@@ -230,10 +215,7 @@ impl UserApiKeyService {
         }
 
         // 更新最后使用时间（忽略失败，不阻塞请求）
-        self.api_key_repo
-            .update_last_used(api_key.id)
-            .await
-            .ok();
+        self.api_key_repo.update_last_used(api_key.id).await.ok();
 
         Ok(api_key.user_id)
     }

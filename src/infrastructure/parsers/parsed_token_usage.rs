@@ -72,7 +72,11 @@ fn process_usage_event(
 
     if let Ok(json) = serde_json::from_str::<Value>(&data) {
         let kind = event_type
-            .or_else(|| json.get("type").and_then(Value::as_str).map(ToOwned::to_owned))
+            .or_else(|| {
+                json.get("type")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned)
+            })
             .unwrap_or_default();
 
         if kind == "message_delta" {
@@ -104,8 +108,5 @@ fn extract_usage_fields(raw_usage: &Value) -> ParsedTokenUsage {
 }
 
 fn int_field(value: &Value, key: &str) -> i32 {
-    value
-        .get(key)
-        .and_then(Value::as_i64)
-        .unwrap_or_default() as i32
+    value.get(key).and_then(Value::as_i64).unwrap_or_default() as i32
 }

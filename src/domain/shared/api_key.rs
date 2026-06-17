@@ -16,12 +16,20 @@ impl ApiKey {
 
     pub fn suffix(&self) -> String {
         let len = self.0.len();
-        if len <= 6 { self.0.clone() } else { self.0[len - 6..].to_string() }
+        if len <= 6 {
+            self.0.clone()
+        } else {
+            self.0[len - 6..].to_string()
+        }
     }
 
-    pub fn as_str(&self) -> &str { &self.0 }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 
-    pub fn into_inner(self) -> String { self.0 }
+    pub fn into_inner(self) -> String {
+        self.0
+    }
 }
 
 impl fmt::Display for ApiKey {
@@ -31,11 +39,15 @@ impl fmt::Display for ApiKey {
 }
 
 impl From<String> for ApiKey {
-    fn from(key: String) -> Self { ApiKey::new(key) }
+    fn from(key: String) -> Self {
+        ApiKey::new(key)
+    }
 }
 
 impl AsRef<str> for ApiKey {
-    fn as_ref(&self) -> &str { &self.0 }
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
 }
 
 #[cfg(test)]

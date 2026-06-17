@@ -105,9 +105,6 @@ async fn revoke_user_api_key(
     State(state): State<AppState>,
     Path((_user_id, key_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    state
-        .user_api_key_service
-        .admin_revoke(key_id)
-        .await?;
+    state.user_api_key_service.admin_revoke(key_id).await?;
     Ok(Json(serde_json::json!({"message": "API key 已撤销"})))
 }

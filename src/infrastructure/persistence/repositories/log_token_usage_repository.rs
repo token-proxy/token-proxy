@@ -4,9 +4,9 @@ use async_trait::async_trait;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
+use crate::domain::log::token_usage::{ActiveModel, Column, Entity};
 use crate::domain::log::LogTokenUsage;
 use crate::domain::log::LogTokenUsageRepository;
-use crate::domain::log::token_usage::{ActiveModel, Column, Entity};
 use crate::shared::error::AppError;
 
 pub struct SeaOrmLogTokenUsageRepository {

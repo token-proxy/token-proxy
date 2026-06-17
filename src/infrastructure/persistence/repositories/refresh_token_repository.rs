@@ -6,7 +6,10 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
 };
 
-use crate::domain::user::refresh_token::{ActiveModel as RefreshTokenActiveModel, Column as RefreshTokenColumn, Entity as RefreshTokenEntity};
+use crate::domain::user::refresh_token::{
+    ActiveModel as RefreshTokenActiveModel, Column as RefreshTokenColumn,
+    Entity as RefreshTokenEntity,
+};
 use crate::domain::user::RefreshToken;
 use crate::domain::user::RefreshTokenRepository;
 use crate::shared::error::AppError;
@@ -47,7 +50,10 @@ impl RefreshTokenRepository for SeaOrmRefreshTokenRepository {
 
     async fn save(&self, token: &RefreshToken) -> Result<RefreshToken, AppError> {
         let db = &*self.db;
-        let exists = RefreshTokenEntity::find_by_id(token.id).one(db).await?.is_some();
+        let exists = RefreshTokenEntity::find_by_id(token.id)
+            .one(db)
+            .await?
+            .is_some();
 
         let active_model: RefreshTokenActiveModel = token.clone().into();
 

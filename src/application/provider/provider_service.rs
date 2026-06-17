@@ -3,14 +3,12 @@ use std::time::Duration;
 
 use uuid::Uuid;
 
-use super::dto::{
-    CreateProviderRequest, ProviderResponse, ProviderSummary, UpdateProviderRequest,
-};
+use super::dto::{CreateProviderRequest, ProviderResponse, ProviderSummary, UpdateProviderRequest};
 use crate::domain::log::AuditLog;
-use crate::domain::provider::Provider;
-use crate::domain::provider::repository::AccountRepository;
 use crate::domain::log::AuditLogRepository;
+use crate::domain::provider::repository::AccountRepository;
 use crate::domain::provider::repository::ProviderRepository;
+use crate::domain::provider::Provider;
 use crate::domain::shared::EncryptionService;
 use crate::domain::shared::Status;
 use crate::shared::error::AppError;
@@ -74,15 +72,8 @@ impl ProviderService {
         req: CreateProviderRequest,
         user_id: Option<Uuid>,
     ) -> Result<ProviderResponse, AppError> {
-        let provider = Provider::new(
-            req.name,
-            req.openai_base_url,
-            req.anthropic_base_url,
-        )?;
-        let saved = self
-            .provider_repo
-            .save(&provider)
-            .await?;
+        let provider = Provider::new(req.name, req.openai_base_url, req.anthropic_base_url)?;
+        let saved = self.provider_repo.save(&provider).await?;
 
         // 记录审计日志
         self.log_audit(
@@ -137,10 +128,7 @@ impl ProviderService {
             }
         }
 
-        let saved = self
-            .provider_repo
-            .save(&provider)
-            .await?;
+        let saved = self.provider_repo.save(&provider).await?;
 
         let account_count = self
             .account_repo
@@ -195,10 +183,7 @@ impl ProviderService {
     }
 
     pub async fn list_all(&self) -> Result<Vec<ProviderResponse>, AppError> {
-        let providers = self
-            .provider_repo
-            .find_all()
-            .await?;
+        let providers = self.provider_repo.find_all().await?;
 
         let mut results = Vec::with_capacity(providers.len());
         for provider in &providers {
@@ -215,10 +200,7 @@ impl ProviderService {
     }
 
     pub async fn delete(&self, id: Uuid, user_id: Option<Uuid>) -> Result<(), AppError> {
-        let accounts = self
-            .account_repo
-            .find_by_provider_id(id)
-            .await?;
+        let accounts = self.account_repo.find_by_provider_id(id).await?;
 
         if !accounts.is_empty() {
             return Err(AppError::Conflict(format!(
@@ -234,9 +216,7 @@ impl ProviderService {
             .await?
             .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", id)))?;
 
-        self.provider_repo
-            .delete(id)
-            .await?;
+        self.provider_repo.delete(id).await?;
 
         // 记录审计日志
         self.log_audit(
@@ -305,10 +285,7 @@ impl ProviderService {
         // 3. 合并去重
         provider.merge_models(new_models);
 
-        let saved = self
-            .provider_repo
-            .save(&provider)
-            .await?;
+        let saved = self.provider_repo.save(&provider).await?;
 
         Ok(saved.models.into())
     }
@@ -336,10 +313,7 @@ impl ProviderService {
             account.api_key_suffix
         );
 
-        let encrypted_key = self
-            .account_repo
-            .get_encrypted_api_key(account.id)
-            .await?;
+        let encrypted_key = self.account_repo.get_encrypted_api_key(account.id).await?;
 
         if encrypted_key.is_empty() {
             tracing::error!(

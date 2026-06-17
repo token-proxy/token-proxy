@@ -89,8 +89,16 @@ fn parse_parenthesized(input: &str) -> (Option<String>, Option<String>) {
             let channel = channel.trim();
             let platform = platform.trim();
             (
-                if channel.is_empty() { None } else { Some(channel.to_string()) },
-                if platform.is_empty() { None } else { Some(platform.to_string()) },
+                if channel.is_empty() {
+                    None
+                } else {
+                    Some(channel.to_string())
+                },
+                if platform.is_empty() {
+                    None
+                } else {
+                    Some(platform.to_string())
+                },
             )
         }
         None => {

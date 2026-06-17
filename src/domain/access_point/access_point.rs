@@ -65,10 +65,7 @@ impl Model {
         }
     }
 
-    pub fn resolve_model(
-        &self,
-        requested_model: &str,
-    ) -> String {
+    pub fn resolve_model(&self, requested_model: &str) -> String {
         let mapped = if requested_model.is_empty() {
             None
         } else {
@@ -203,9 +200,7 @@ impl ModelEx {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::access_point::model_mapping::{
-        ModelMapping, UNMATCHED_MODEL_SENTINEL,
-    };
+    use crate::domain::access_point::model_mapping::{ModelMapping, UNMATCHED_MODEL_SENTINEL};
 
     fn test_access_point() -> Model {
         Model::new(
