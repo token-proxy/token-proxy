@@ -1,4 +1,4 @@
-use serde_json::Value;
+use axum::http::HeaderMap;
 
 #[derive(Debug, Clone, Default)]
 pub struct ClaudeCodeContext {
@@ -9,7 +9,7 @@ pub struct ClaudeCodeContext {
     pub agent_id: Option<String>,
 }
 
-pub fn parse_headers(headers: &Value) -> ClaudeCodeContext {
+pub fn parse_headers(headers: &HeaderMap) -> ClaudeCodeContext {
     let client_session_id = header_value(headers, "x-claude-code-session-id");
     let agent_id = header_value(headers, "x-claude-code-agent-id");
     let conversation_source = if agent_id.is_some() {
@@ -29,13 +29,10 @@ pub fn parse_headers(headers: &Value) -> ClaudeCodeContext {
     }
 }
 
-fn header_value(headers: &Value, key: &str) -> Option<String> {
+fn header_value(headers: &HeaderMap, key: &str) -> Option<String> {
     headers
-        .as_object()
-        .and_then(|obj| {
-            obj.iter()
-                .find(|(k, _)| k.eq_ignore_ascii_case(key))
-                .and_then(|(_, v)| v.as_str().map(ToOwned::to_owned))
-        })
+        .get(key)
+        .and_then(|v| v.to_str().ok())
         .filter(|v| !v.is_empty())
+        .map(ToOwned::to_owned)
 }

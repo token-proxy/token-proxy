@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::HeaderMap;
 use bytes::Bytes;
 use reqwest::Client;
 
@@ -8,9 +8,9 @@ use crate::shared::error::AppError;
 
 /// 上游 API 代理客户端
 ///
-/// 纯 HTTP 执行器，不关心协议细节。
-/// 接收预构造好的 URL、headers 和 body，直接发送请求并返回响应。
-/// 协议特定的头构造由上层 `ProxyPipeline` 通过 `ApiProtocol` trait 完成。
+/// 纯 HTTP 执行器，不关心 API 格式细节。
+/// 接收预构造好的 URL、headers 和 body，直接发送请求并返回原始 `reqwest::Response`。
+/// 调用方自行决定如何消费响应体（`.bytes()` 一次性读取 或 `.bytes_stream()` 逐块流式读取）。
 pub struct ProxyClient {
     client: Client,
 }
@@ -33,51 +33,17 @@ impl ProxyClient {
         ProxyClient { client }
     }
 
-    /// 非流式转发请求
+    /// 转发请求到上游，返回原始响应
     ///
-    /// 返回响应状态码、响应头和响应体。
+    /// 不做任何响应体处理——调用方根据 `is_streaming` 决定：
+    /// - 非流式：调用 `.bytes().await` 一次性读取
+    /// - 流式：调用 `.bytes_stream()` 逐块转发
     pub async fn forward(
         &self,
         url: &str,
         headers: HeaderMap,
         body: Bytes,
-    ) -> Result<(StatusCode, HeaderMap, Bytes), AppError> {
-        let response = self
-            .build_request(url, headers, body)
-            .send()
-            .await
-            .map_err(|e| AppError::Upstream(format!("上游请求失败: {}", e)))?;
-
-        let status = response.status();
-        let resp_headers = response.headers().clone();
-        let resp_body = response
-            .bytes()
-            .await
-            .map_err(|e| AppError::Upstream(format!("读取上游响应失败: {}", e)))?;
-
-        Ok((status, resp_headers, resp_body))
-    }
-
-    /// 流式转发请求，返回原始 `reqwest::Response` 以便逐块读取
-    pub async fn forward_streaming(
-        &self,
-        url: &str,
-        headers: HeaderMap,
-        body: Bytes,
     ) -> Result<reqwest::Response, AppError> {
-        self.build_request(url, headers, body)
-            .send()
-            .await
-            .map_err(|e| AppError::Upstream(format!("上游流式请求失败: {}", e)))
-    }
-
-    /// 构建请求（共享逻辑）
-    fn build_request(
-        &self,
-        url: &str,
-        headers: HeaderMap,
-        body: Bytes,
-    ) -> reqwest::RequestBuilder {
         let mut req_builder = self.client.post(url).body(body);
 
         for (key, value) in headers.iter() {
@@ -85,6 +51,9 @@ impl ProxyClient {
         }
 
         req_builder
+            .send()
+            .await
+            .map_err(|e| AppError::Upstream(format!("上游请求失败: {}", e)))
     }
 }
 

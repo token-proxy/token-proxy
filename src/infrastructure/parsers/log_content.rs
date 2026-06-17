@@ -1,10 +1,20 @@
 use serde_json::Value;
 
-/// 从 SSE 响应中解析 token 用量
+/// 从响应中解析 token 用量
 ///
-/// 扫描 SSE 事件流寻找 message_delta 事件，提取 usage JSON。
-/// token 计数是客观数据提取，不涉及内容解释。
+/// 先尝试 SSE 流式格式（扫描 event:/data: 行寻找 message_delta 事件），
+/// 如果未找到则回退到非流式 JSON 格式（检查顶层 `usage` 字段）。
 pub(crate) fn parse_usage_from_response(response_body: &str) -> Option<ParsedTokenUsage> {
+    // 先尝试 SSE 格式
+    if let Some(usage) = parse_sse_usage(response_body) {
+        return Some(usage);
+    }
+
+    // 回退：非流式 JSON 格式
+    parse_non_streaming_usage(response_body)
+}
+
+fn parse_sse_usage(response_body: &str) -> Option<ParsedTokenUsage> {
     let mut event_type = None;
     let mut data_lines = Vec::new();
 
@@ -29,6 +39,13 @@ pub(crate) fn parse_usage_from_response(response_body: &str) -> Option<ParsedTok
     }
 
     None
+}
+
+/// 非流式 JSON 响应格式，检查顶层 `usage` 字段
+fn parse_non_streaming_usage(response_body: &str) -> Option<ParsedTokenUsage> {
+    let json: Value = serde_json::from_str(response_body).ok()?;
+    let usage = json.get("usage")?;
+    Some(extract_usage_fields(usage))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -60,26 +77,30 @@ fn process_usage_event(
 
         if kind == "message_delta" {
             if let Some(raw_usage) = json.get("usage") {
-                let input = int_field(&raw_usage, "input_tokens");
-                let output = int_field(&raw_usage, "output_tokens");
-                let cache_creation = int_field(&raw_usage, "cache_creation_input_tokens");
-                let cache_read = int_field(&raw_usage, "cache_read_input_tokens");
-                let thinking = int_field(&raw_usage, "thinking_tokens");
-
-                return Some(ParsedTokenUsage {
-                    input_tokens: input,
-                    output_tokens: output,
-                    cache_creation_input_tokens: cache_creation,
-                    cache_read_input_tokens: cache_read,
-                    thinking_tokens: thinking,
-                    total_tokens: input + output + cache_creation + cache_read + thinking,
-                    raw_usage: raw_usage.clone(),
-                });
+                return Some(extract_usage_fields(raw_usage));
             }
         }
     }
 
     None
+}
+
+fn extract_usage_fields(raw_usage: &Value) -> ParsedTokenUsage {
+    let input = int_field(raw_usage, "input_tokens");
+    let output = int_field(raw_usage, "output_tokens");
+    let cache_creation = int_field(raw_usage, "cache_creation_input_tokens");
+    let cache_read = int_field(raw_usage, "cache_read_input_tokens");
+    let thinking = int_field(raw_usage, "thinking_tokens");
+
+    ParsedTokenUsage {
+        input_tokens: input,
+        output_tokens: output,
+        cache_creation_input_tokens: cache_creation,
+        cache_read_input_tokens: cache_read,
+        thinking_tokens: thinking,
+        total_tokens: input + output + cache_creation + cache_read + thinking,
+        raw_usage: raw_usage.clone(),
+    }
 }
 
 fn int_field(value: &Value, key: &str) -> i32 {

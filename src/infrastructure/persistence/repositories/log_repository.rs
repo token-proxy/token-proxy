@@ -194,10 +194,10 @@ impl LogRepository for SeaOrmLogRepository {
                 lm.model_original, lm.model_mapped,
                 lm.status_code, lm.duration_ms, lm.error_message,
                 lm.request_index,
-                lm.client_session_id, lm.client_app, lm.client_user_agent,
+                lm.client_app, lm.client_user_agent,
                 lm.conversation_source,
                 lm.agent_id,
-                lm.has_error, lm.raw_content_available,
+                lm.has_error, lm.raw_content_available, lm.is_interrupted,
                 lm.client_name, lm.client_version,
                 lm.client_channel, lm.client_platform, lm.api_type,
                 ltu.input_tokens, ltu.output_tokens, ltu.total_tokens
@@ -352,25 +352,25 @@ impl LogRepository for SeaOrmLogRepository {
                         request_index: row
                             .try_get_by_index::<i32>(12)
                             ?,
-                        client_session_id: row
+                        client_app: row
                             .try_get_by_index::<Option<String>>(13)
                             ?,
-                        client_app: row
+                        client_user_agent: row
                             .try_get_by_index::<Option<String>>(14)
                             ?,
-                        client_user_agent: row
-                            .try_get_by_index::<Option<String>>(15)
-                            ?,
                         conversation_source: row
-                            .try_get_by_index::<String>(16)
+                            .try_get_by_index::<String>(15)
                             ?,
                         agent_id: row
-                            .try_get_by_index::<Option<String>>(17)
+                            .try_get_by_index::<Option<String>>(16)
                             ?,
                         has_error: row
-                            .try_get_by_index::<bool>(18)
+                            .try_get_by_index::<bool>(17)
                             ?,
                         raw_content_available: row
+                            .try_get_by_index::<bool>(18)
+                            ?,
+                        is_interrupted: row
                             .try_get_by_index::<bool>(19)
                             ?,
                         client_name: row
@@ -607,13 +607,13 @@ impl LogRepository for SeaOrmLogRepository {
                 lm.model_original, lm.model_mapped,
                 lm.status_code, lm.duration_ms, lm.error_message,
                 lm.request_index,
-                lm.client_session_id, lm.client_app, lm.client_user_agent,
+                lm.client_app, lm.client_user_agent,
                 lm.conversation_source,
                 lm.agent_id,
-                lm.has_error, lm.raw_content_available,
+                lm.has_error, lm.raw_content_available, lm.is_interrupted,
                 lm.client_name, lm.client_version,
                 lm.client_channel, lm.client_platform, lm.api_type,
-                lc.request_headers, lc.request_body, lc.response_body,
+                lc.request_headers, lc.request_body, lc.response_body, lc.response_headers,
                 ltu.id as usage_id, ltu.log_id as usage_log_id,
                 ltu.input_tokens, ltu.output_tokens,
                 ltu.cache_creation_input_tokens, ltu.cache_read_input_tokens,
@@ -670,19 +670,19 @@ impl LogRepository for SeaOrmLogRepository {
                         ?,
                     request_index: row.try_get_by_index::<i32>(12)
                         ?,
-                    client_session_id: row.try_get_by_index::<Option<String>>(13)
+                    client_app: row.try_get_by_index::<Option<String>>(13)
                         ?,
-                    client_app: row.try_get_by_index::<Option<String>>(14)
+                    client_user_agent: row.try_get_by_index::<Option<String>>(14)
                         ?,
-                    client_user_agent: row.try_get_by_index::<Option<String>>(15)
+                    conversation_source: row.try_get_by_index::<String>(15)
                         ?,
-                    conversation_source: row.try_get_by_index::<String>(16)
+                    agent_id: row.try_get_by_index::<Option<String>>(16)
                         ?,
-                    agent_id: row.try_get_by_index::<Option<String>>(17)
+                    has_error: row.try_get_by_index::<bool>(17)
                         ?,
-                    has_error: row.try_get_by_index::<bool>(18)
+                    raw_content_available: row.try_get_by_index::<bool>(18)
                         ?,
-                    raw_content_available: row.try_get_by_index::<bool>(19)
+                    is_interrupted: row.try_get_by_index::<bool>(19)
                         ?,
                     client_name: row.try_get_by_index::<Option<String>>(20)
                         ?,
@@ -707,64 +707,66 @@ impl LogRepository for SeaOrmLogRepository {
                     response_body: Some(row.try_get_by_index::<Option<String>>(27)
                         ?
                         .unwrap_or_default()),
+                    response_headers: row.try_get_by_index::<Option<serde_json::Value>>(28)
+                        ?,
                 };
 
                 // 检查是否有 token 用量（ltu.id 不为 NULL）
-                let usage_id: Option<Uuid> = row.try_get_by_index::<Option<Uuid>>(28)
+                let usage_id: Option<Uuid> = row.try_get_by_index::<Option<Uuid>>(29)
                     ?;
 
                 let usage = if let Some(uid) = usage_id {
                     let usage_ts_col: chrono::DateTime<FixedOffset> = row
-                        .try_get_by_index(40)
+                        .try_get_by_index(41)
                         ?;
                     let usage_created_col: chrono::DateTime<FixedOffset> = row
-                        .try_get_by_index(50)
+                        .try_get_by_index(51)
                         ?;
 
                     Some(LogTokenUsage {
                         id: uid,
-                        log_id: row.try_get_by_index::<Option<Uuid>>(29)
+                        log_id: row.try_get_by_index::<Option<Uuid>>(30)
                             ?
                             .unwrap_or(entry.id),
-                        input_tokens: row.try_get_by_index::<i32>(30)
+                        input_tokens: row.try_get_by_index::<i32>(31)
                             ?,
-                        output_tokens: row.try_get_by_index::<i32>(31)
+                        output_tokens: row.try_get_by_index::<i32>(32)
                             ?,
-                        cache_creation_input_tokens: row.try_get_by_index::<i32>(32)
+                        cache_creation_input_tokens: row.try_get_by_index::<i32>(33)
                             ?,
-                        cache_read_input_tokens: row.try_get_by_index::<i32>(33)
+                        cache_read_input_tokens: row.try_get_by_index::<i32>(34)
                             ?,
-                        thinking_tokens: row.try_get_by_index::<i32>(34)
+                        thinking_tokens: row.try_get_by_index::<i32>(35)
                             ?,
-                        total_tokens: row.try_get_by_index::<i32>(35)
+                        total_tokens: row.try_get_by_index::<i32>(36)
                             ?,
-                        raw_usage: row.try_get_by_index::<Option<serde_json::Value>>(36)
+                        raw_usage: row.try_get_by_index::<Option<serde_json::Value>>(37)
                             ?,
-                        server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(37)
+                        server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(38)
                             ?,
-                        cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(38)
+                        cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(39)
                             ?,
-                        session_id: row.try_get_by_index::<Option<String>>(39)
+                        session_id: row.try_get_by_index::<Option<String>>(40)
                             ?
                             .unwrap_or_default(),
                         timestamp: usage_ts_col,
-                        user_id: row.try_get_by_index::<Option<Uuid>>(41)
+                        user_id: row.try_get_by_index::<Option<Uuid>>(42)
                             ?,
-                        access_point_id: row.try_get_by_index::<Option<Uuid>>(42)
+                        access_point_id: row.try_get_by_index::<Option<Uuid>>(43)
                             ?,
-                        provider_id: row.try_get_by_index::<Option<Uuid>>(43)
+                        provider_id: row.try_get_by_index::<Option<Uuid>>(44)
                             ?,
-                        account_id: row.try_get_by_index::<Option<Uuid>>(44)
+                        account_id: row.try_get_by_index::<Option<Uuid>>(45)
                             ?,
-                        model_original: row.try_get_by_index::<Option<String>>(45)
+                        model_original: row.try_get_by_index::<Option<String>>(46)
                             ?,
-                        model_mapped: row.try_get_by_index::<Option<String>>(46)
+                        model_mapped: row.try_get_by_index::<Option<String>>(47)
                             ?,
-                        conversation_source: row.try_get_by_index::<Option<String>>(47)
+                        conversation_source: row.try_get_by_index::<Option<String>>(48)
                             ?,
-                        agent_id: row.try_get_by_index::<Option<String>>(48)
+                        agent_id: row.try_get_by_index::<Option<String>>(49)
                             ?,
-                        agent_type: row.try_get_by_index::<Option<String>>(49)
+                        agent_type: row.try_get_by_index::<Option<String>>(50)
                             ?,
                         created_at: usage_created_col,
                     })

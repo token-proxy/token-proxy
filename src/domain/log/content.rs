@@ -10,6 +10,7 @@ pub struct Model {
     pub request_headers: Option<Json>,
     pub request_body: Option<Json>,
     pub response_body: Option<String>,
+    pub response_headers: Option<Json>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -193,13 +193,13 @@ impl MigrationTrait for Migration {
                     duration_ms                INTEGER,
                     error_message              TEXT,
                     request_index              INTEGER NOT NULL DEFAULT 0,
-                    client_session_id          VARCHAR(255),
                     client_app                 VARCHAR(64),
                     client_user_agent          TEXT,
                     conversation_source        VARCHAR(32) NOT NULL DEFAULT 'unknown',
                     agent_id                   VARCHAR(255),
                     has_error                  BOOLEAN NOT NULL DEFAULT FALSE,
                     raw_content_available      BOOLEAN NOT NULL DEFAULT TRUE,
+                    is_interrupted             BOOLEAN NOT NULL DEFAULT FALSE,
                     client_name                VARCHAR(100),
                     client_version             VARCHAR(50),
                     client_channel             VARCHAR(50),
@@ -226,6 +226,7 @@ impl MigrationTrait for Migration {
                     .col(json(LogContents::RequestHeaders))
                     .col(json(LogContents::RequestBody))
                     .col(text(LogContents::ResponseBody))
+                    .col(json(LogContents::ResponseHeaders))
                     .primary_key(Index::create().col(LogContents::LogId))
                     .to_owned(),
             )
@@ -369,8 +370,6 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute_unprepared(
                 r#"
-                CREATE INDEX IF NOT EXISTS idx_log_metadata_client_session_id
-                    ON log_metadata (client_session_id);
                 CREATE INDEX IF NOT EXISTS idx_log_metadata_agent_id
                     ON log_metadata (session_id, agent_id);
                 CREATE INDEX IF NOT EXISTS idx_log_metadata_session_request
@@ -562,7 +561,6 @@ enum LogMetadata {
     DurationMs,
     ErrorMessage,
     RequestIndex,
-    ClientSessionId,
     ClientApp,
     ClientUserAgent,
     ConversationSource,
@@ -578,6 +576,7 @@ enum LogContents {
     RequestHeaders,
     RequestBody,
     ResponseBody,
+    ResponseHeaders,
 }
 
 #[derive(DeriveIden)]

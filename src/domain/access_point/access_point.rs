@@ -3,8 +3,7 @@ use sea_orm::entity::prelude::*;
 use crate::domain::access_point::model_mapping::ModelMappingCollection;
 use crate::domain::access_point::short_code::ShortCode;
 use crate::domain::shared::status::Status;
-use crate::domain::shared::AccessPointType;
-use crate::domain::shared::EncryptionService;
+use crate::domain::shared::{AccessPointType, EncryptionService, RequestSnapshot};
 use crate::shared::error::AppError;
 use chrono::{DateTime, FixedOffset, Utc};
 use uuid::Uuid;
@@ -126,6 +125,29 @@ impl ModelEx {
             self.default_model.as_deref(),
             requested_model,
         )
+    }
+
+    /// 将入站请求快照变换为上游请求快照
+    ///
+    /// 执行模型映射替换和请求头变换。
+    /// 返回的 `RequestSnapshot` 可直接用于上游转发。
+    pub fn transform_request_snapshot(
+        &self,
+        inbound: &RequestSnapshot,
+        upstream_key: &str,
+    ) -> Result<RequestSnapshot, AppError> {
+        let original_model = inbound.model().to_string();
+        let mapped_model = self.resolve_model(&original_model);
+
+        let body = if mapped_model != original_model {
+            inbound.replace_model_in_body(&mapped_model)
+        } else {
+            inbound.body().clone()
+        };
+
+        let headers = inbound.transform_headers(upstream_key);
+
+        Ok(inbound.with_parts(headers, body, mapped_model))
     }
 
     pub fn validate_usable(&self) -> Result<(), AppError> {
