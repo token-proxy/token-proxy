@@ -5,7 +5,7 @@
 ## 目录结构总览
 
 ```
-├── src/                    # 后端 Rust 核心代码 (101 个 .rs 文件)
+├── src/                    # 后端 Rust 核心代码 (144 个 .rs 文件)
 ├── src-dashboard/          # 前端管理面板 SPA (45 个 .ts/.tsx 源文件)
 ├── public/                 # 前端静态资源 (favicon, icons)
 ├── index.html              # 前端 HTML 入口 (Vite)
@@ -54,7 +54,7 @@ src/
 │   ├── auth/               # JWT 认证 + argon2 密码哈希
 │   └── http_client/        # reqwest 代理转发客户端
 ├── presentation/           # 展示层
-│   ├── routes/             # 8 组 axum 路由处理器
+│   ├── routes/             # 8 组 axum 路由处理器 + stats 统计查询 dto
 │   └── middleware/         # JWT 认证中间件
 ├── shared/                 # 共享模块
 │   ├── error.rs            # AppError (9 种错误变体)
@@ -145,8 +145,12 @@ application/
 │   └── account_dto.rs      # Account 增改查 DTO (不含完整 Key)
 ├── proxy/                  # 跨聚合代理转发用例
 │   ├── mod.rs
-│   ├── pipeline.rs         # 核心代理转发管道 (含 Bearer API key 认证, ProcessedRequest 编排)
-│   └── log_anti_corruption.rs # LogContext 防腐层 (隔离日志格式细节, 含 LogTaskContext + InterruptGuard)
+│   ├── proxy_pipeline.rs   # 核心代理转发管道 (聚合根模式: 加载 AccessPointEx → validate_usable → decrypt_upstream_key → ProcessedRequest.prepare → handle)
+│   └── acl/                # 防腐层 (Anti-Corruption Layer)
+│       ├── mod.rs
+│       ├── log_context.rs  # LogContext: 从 ProcessedRequest + AccessPointEx 提取日志参数
+│       ├── log_task_context.rs # LogTaskContext + spawn_log_task (异步写日志)
+│       └── proxy_logger.rs # ProxyLogger: 贯穿代理请求生命周期的日志积累器, Drop 自动检测中断
 ├── user/                   # User 聚合用例
 │   ├── mod.rs
 │   ├── service.rs          # 用户管理用例 (含密码哈希 + profile 更新 + 密码修改)
@@ -159,9 +163,9 @@ application/
 - 每个聚合目录内聚 service 和 dto，通过 `super::dto::` 相对路径引用同目录 DTO
 - 外部引用使用绝对路径 `crate::application::<聚合>::dto::*`
 - auth/ 和 proxy/ 是跨聚合编排服务，不归属于单一聚合
-- 防腐层（Anti-Corruption Layer）置于所属编排服务的子目录内，如 `proxy/log_anti_corruption.rs`
+- 防腐层（Anti-Corruption Layer）置于所属编排服务的子目录内，如 `proxy/acl/`
 
-**防腐层模式**：`proxy/log_anti_corruption.rs` 是 DDD 防腐层（Anti-Corruption Layer）的典型实现，位于应用层的 proxy 子目录中。`LogContext` 从 `ProcessedRequest` 和 `AccessPointEx` 中一次性提取所有日志参数，隔离代理转发核心逻辑与日志基础设施的细节。防腐层提供 `build_log_entry()`、`into_log_task_context()`、`into_interrupt_guard()` 等方法，将日志数据组装逻辑集中在防腐层内部。`pipeline.rs` 不再直接构造 `LogEntry` 或管理 `InterruptGuard` 字段——两者均通过 `LogContext` 委托给防腐层处理。`spawn_log_task` 和 `InterruptGuard` 也由防腐层导出，保证代理转发逻辑不被日志格式侵蚀。
+**防腐层模式**：`proxy/acl/` 目录是 DDD 防腐层的典型实现。`LogContext` 从 `ProcessedRequest` 和 `AccessPointEx` 中一次性提取所有日志参数，隔离代理转发核心逻辑与日志基础设施的细节。`ProxyLogger` 是日志积累器，贯穿一次代理转发的完整生命周期，有数据就推入，生命周期结束时统一 `flush` 到数据库。中断检测由 `ProxyLogger::Drop` 隐式处理——`async_stream` 闭包被 drop 时触发 `is_interrupted = true` 标记，无需单独的 `InterruptGuard`。
 
 **AppState** 是全局共享状态，通过 axum 的 `with_state()` 注入到所有路由处理器，包含 Config、数据库连接、所有 Service 引用、JWT 服务和代理客户端。
 
@@ -173,21 +177,30 @@ application/
 infrastructure/
 ├── persistence/            # SeaORM 数据持久化
 │   ├── partition_manager.rs # PartitionManager: 应用层分区自动管理
-│   └── repositories/       # Repository 实现 (7 个, 含 refresh token 过期清理 delete_expired)
+│   └── repositories/       # Repository 实现 (8 个, 含 refresh token 过期清理 delete_expired)
 │       ├── provider_repository.rs        # SeaOrmProviderRepository
 │       ├── account_repository.rs         # SeaOrmAccountRepository
 │       ├── user_repository.rs            # SeaOrmUserRepository
 │       ├── access_point_repository.rs    # SeaOrmAccessPointRepository
 │       ├── refresh_token_repository.rs   # SeaOrmRefreshTokenRepository
 │       ├── log_repository.rs             # SeaOrmLogRepository
+│       ├── log_token_usage_repository.rs # SeaOrmLogTokenUsageRepository
+│       ├── audit_log_repository.rs       # SeaOrmAuditLogRepository
 │       └── user_api_key_repository.rs    # SeaOrmUserApiKeyRepository
 ├── encryption/             # 加密实现
-│   └── aes256_gcm.rs       # Aes256GcmEncryptionService
+│   └── aes256_gcm_encryption_service.rs # Aes256GcmEncryptionService
 ├── auth/                   # 认证实现
-│   ├── jwt.rs              # JwtService (jsonwebtoken, 含 refresh_expiry_secs 访问器供 AuthService 正确计算 refresh_token 过期时间)
-│   └── password.rs         # argon2 密码哈希
+│   ├── jwt_service.rs      # JwtService (jsonwebtoken, 含 refresh_expiry_secs 访问器)
+│   ├── password.rs         # argon2 密码哈希
+│   └── claims.rs           # JWT Claims 定义
+├── parsers/                # 响应体解析器
+│   ├── claude_code_context.rs # Claude Code 请求头解析 (session_id/agent_id)
+│   ├── client_info.rs      # User-Agent 客户端信息解析
+│   ├── parsed_token_usage.rs # Token 用量提取 (从 SSE message_delta)
+│   └── mod.rs
 └── http_client/            # HTTP 客户端
-    └── proxy_client.rs     # ProxyClient (reqwest 连接池)
+    ├── processed_request.rs # ProcessedRequest: 入站→上游请求变换
+    └── proxy_client.rs     # ProxyClient (reqwest 连接池, 纯 HTTP 执行器)
 ```
 
 所有 Repository 实现以 `SeaOrm` 为前缀（如 `SeaOrmProviderRepository`），并在 `main.rs` 中通过 `Arc<dyn Trait>` 向上转型后注入应用层。
@@ -207,7 +220,11 @@ presentation/
 │   ├── me_routes.rs        # GET/PUT /api/users/me/* (个人 profile/密码/API key)
 │   ├── access_point_routes.rs # CRUD /api/access-points
 │   ├── proxy_routes.rs     # POST /ap/{short_code}/v1/messages (强制 API key 认证)
-│   └── log_routes.rs       # GET /api/logs, /api/logs/sessions, /api/logs/sessions/:id
+│   ├── log_routes.rs       # GET /api/logs, /api/logs/sessions, /api/logs/sessions/:id
+│   ├── stats_routes.rs     # GET /api/stats/* 统计查询
+│   └── stats/              # 统计查询 DTO
+│       ├── mod.rs
+│       └── dto/            # overview / trends / top_models / top_access_points
 └── middleware/             # 中间件
     └── jwt_auth.rs         # JWT 认证中间件 + CurrentUser extractor
 ```
@@ -392,36 +409,39 @@ migration/
 ## 代理转发流程
 
 ```
-客户端请求 (携带 Authorization: Bearer <user_api_key>)
+POST /ap/{short_code}/v1/messages  (Authorization: Bearer <user_api_key>)
     │
-    ▼
-POST /ap/{short_code}/v1/messages
+    ├── 0. 用户 API key 认证: SHA-256 hex → 查找 UserApiKey → 验证 enabled, 更新 last_used_at
     │
-    ▼
-0. 提取 Authorization 头 → 计算 SHA-256 hex → 查找 UserApiKey (验证 enabled, 更新 last_used_at)
+    ├── 1. find_by_short_code(short_code) → AccessPointEx (含 Provider + Account)
     │
-    ▼
-1. find_by_short_code(short_code) → AccessPointEx (含已加载的 Provider 和 Account)
+    ├── 2. ap_ex.validate_usable() → 校验自身 + Provider + Account 三个状态
     │
-    ▼
-2. ap_ex.validate_usable() → 校验自身 + Provider + Account 三个状态
+    ├── 3. ap_ex.base_url() → 通过 api_type 从 Provider 获取上游 URL
     │
-    ▼
-3. ap_ex.base_url() → 通过 api_type 从 Provider 获取上游 URL
+    ├── 4. ap_ex.decrypt_upstream_key(encryption_svc) → 解密 Account API Key
     │
-    ▼
-4. ap_ex.decrypt_upstream_key(encryption_svc) → 解密 Account API Key
+    ├── 5. ProcessedRequest::prepare → 解析入站请求 + 模型映射 + 请求变换
     │
-    ▼
-5. ap_ex.resolve_model(requested_model) → 模型映射 (精确 > 前缀 > __unmatched__) + Provider.default_model 兜底 → 替换请求体中的 model 字段
+    ├── 6. 构建 LogContext (注入 ProcessedRequest + AccessPointEx)
     │
-    ▼
-6. 构建新的上游请求 → 发送到上游 LLM API
-    ├── 非流式: 完整响应 → 返回
-    └── SSE 流式: 逐块转发 → 逐块返回
+    ├── 7. 发送上游请求 (ProxyClient.forward)
+    │       │
+    │       ├── 响应头透传: 仅过滤 hop-by-hop 头, 其余全部透传
+    │       │
+    │       └── 构造 ProxyLogger (积累器模式, 注入 LogContext + 响应元数据)
+    │               │
+    │               ├── SSE (content-type: text/event-stream):
+    │               │     async_stream 逐块转发 → ProxyLogger.append_body → 客户端断开时 Drop 自动标记中断
+    │               │
+    │               └── 非 SSE:
+    │                     一次性读取 → ProxyLogger.set_body
     │
-    ▼
-7. 异步写入日志 (log_metadata + log_contents + log_conversation_events + log_token_usage, 不阻塞响应)
+    └── 8. ProxyLogger.flush → tokio::spawn 异步写入数据库
+            record_proxy_log 三阶段独立错误处理:
+              阶段 1: 元数据 (失败 return)
+              阶段 2: 原始内容 (失败 logging::error + 继续)
+              阶段 3: Token 用量 (解析不到 warn, 写入失败 error)
 ```
 
 ## 核心架构原则
@@ -498,7 +518,7 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 维度 | 状态 |
 |------|------|
 | Phase 1 MVP | 已完成 |
-| 后端 | 101 个 .rs 文件, cargo check 零错误零警告 |
+| 后端 | 144 个 .rs 文件, cargo check 零错误零警告 |
 | 前端 | 45 个 .ts/.tsx 源文件, tsc --noEmit 零错误 |
 | Schema 迁移 | 3 个迁移文件 (初始表 + user_api_keys + provider_default_model) |
 | Docker 构建 | 多阶段构建就绪 |
@@ -522,3 +542,4 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 2026-06-03 | 领域层聚合重构: 将 domain/ 层从按技术类别（entities/value_objects/repositories/services）重组为按聚合边界（access_point/provider/user/log/shared）组织。AccessPoint 引入 ModelEx 聚合根，Repository 的 `find_by_short_code` 返回已加载 Provider 和 Account 关联的完整聚合。ProxyPipeline 删除 `select_base_url` 和 `decrypt_account_key` 方法，全部操作委托 AccessPointEx 行为方法（base_url、resolve_model、validate_usable、decrypt_upstream_key）。Provider 新增 `base_url_for` 方法。AccessPointType 移至 shared 解决循环依赖。account_id 退化为纯 FK 列（不定义 belongs_to 关系）。Relation 定义保持 DeriveRelation 枚举语法（SeaORM 2.0-rc.38 兼容性） |
 | 2026-06-17 | 应用层按聚合重构: 将 application/ 层从按技术类别（services/ + dto/）重组为按聚合组织（access_point/auth/log/provider/proxy/user），与领域层聚合命名对齐。auth/ 和 proxy/ 作为跨聚合编排服务独立归置。删除已废弃的 `domain/shared/api_protocol.rs`，替换为 `RequestSnapshot` 值对象（内聚 to HeaderMap 变换、模型提取、流检测、会话提取行为）。删除已废弃的 `infrastructure/protocols/` 目录。引入目录组织原则（相对/绝对路径规则） |
 | 2026-06-17 | Proxy 防腐层重构: 新增 `log_anti_corruption.rs` 实现 LogContext 防腐层，从 ProcessedRequest 和 AccessPointEx 中一次性提取所有日志参数。pipeline.rs 将日志数据提取、LogEntry 构造、LogTaskContext 组装和 InterruptGuard 创建全部委托给防腐层处理。InterruptGuard 从 7 个独立字段简化为持有 LogContext。遵循 DDD 防腐层模式，保证代理转发逻辑不被日志格式细节侵蚀 |
+| 2026-06-17 | 透明代理 + ProxyLogger 日志架构重写: 确立透明代理原则——上游响应原样透传，仅过滤 hop-by-hop 头；传输方式判断由请求体 `stream` 字段改为响应头 `content-type`；日志架构从双路径（InterruptGuard + spawn_log_task）简化为 ProxyLogger 积累器模式（统一 flush，Drop 自动检测中断）；删除 `interrupt_guard.rs` 和 `ProcessedRequest.is_streaming`；`record_proxy_log` 强化三阶段独立错误处理；同步更新基础设施层目录结构（新增 parsers/、http_client/ 拆为 processed_request + proxy_client）为实际文件布局 |
