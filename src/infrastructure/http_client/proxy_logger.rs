@@ -38,7 +38,10 @@ impl ProxyLogger {
         resp_headers: HeaderMap,
         log_service: Arc<LogService>,
     ) -> Self {
+        let timestamp = chrono::Utc::now().fixed_offset();
+
         let data = ProxyLogData {
+            timestamp,
             session_id: processed.session_id,
             user_id,
             access_point_id: access_point.id,

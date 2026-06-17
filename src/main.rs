@@ -12,6 +12,7 @@ use token_proxy::application::log::LogService;
 use token_proxy::application::provider::AccountService;
 use token_proxy::application::provider::ProviderService;
 use token_proxy::application::proxy::ProxyPipeline;
+use token_proxy::application::system::SettingsService;
 use token_proxy::application::user::UserApiKeyService;
 use token_proxy::application::user::UserService;
 use token_proxy::application::AppState;
@@ -23,6 +24,7 @@ use token_proxy::domain::log::LogTokenUsageRepository;
 use token_proxy::domain::provider::repository::AccountRepository;
 use token_proxy::domain::provider::repository::ProviderRepository;
 use token_proxy::domain::shared::EncryptionService;
+use token_proxy::domain::system::SystemSettingsRepository;
 use token_proxy::domain::user::RefreshTokenRepository;
 use token_proxy::domain::user::UserApiKeyRepository;
 use token_proxy::domain::user::UserRepository;
@@ -36,6 +38,7 @@ use token_proxy::infrastructure::persistence::repositories::SeaOrmLogRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmLogTokenUsageRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmProviderRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmRefreshTokenRepository;
+use token_proxy::infrastructure::persistence::repositories::SeaOrmSystemSettingsRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmUserApiKeyRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmUserRepository;
 use token_proxy::infrastructure::persistence::PartitionManager;
@@ -109,11 +112,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let partition_manager = Arc::new(PartitionManager::new(
         db.clone(),
         config.partition_premake_months,
-        config.partition_retention_months,
     ));
 
-    // 启动时同步执行分区维护
-    match partition_manager.run_maintenance().await {
+    // 启动时同步执行分区维护（使用环境变量默认保留月数）
+    let initial_retention = config.partition_retention_months;
+    match partition_manager.run_maintenance(initial_retention).await {
         Ok(result) => {
             if !result.created.is_empty() {
                 tracing::info!("创建分区: {:?}", result.created);
@@ -127,30 +130,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing::error!("分区初始化失败: {}", e);
         }
     }
-
-    // 启动后台定时分区维护任务
-    let pm = partition_manager.clone();
-    let check_interval = std::time::Duration::from_secs(config.partition_check_interval_secs);
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(check_interval);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            interval.tick().await;
-            match pm.run_maintenance_with_lock().await {
-                Ok(result) => {
-                    if !result.created.is_empty() {
-                        tracing::info!("创建分区: {:?}", result.created);
-                    }
-                    if !result.dropped.is_empty() {
-                        tracing::info!("清理分区: {:?}", result.dropped);
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("分区维护失败: {}", e);
-                }
-            }
-        }
-    });
 
     // ─── 创建 Infrastructure 组件 ───
 
@@ -212,6 +191,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let audit_log_repo: Arc<dyn AuditLogRepository> =
         Arc::new(SeaOrmAuditLogRepository::new(db.clone()));
 
+    let system_settings_repo: Arc<dyn SystemSettingsRepository> =
+        Arc::new(SeaOrmSystemSettingsRepository::new(db.clone()));
+
     let user_api_key_repo: Arc<dyn UserApiKeyRepository> =
         Arc::new(SeaOrmUserApiKeyRepository::new(db.clone()));
 
@@ -263,6 +245,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         audit_log_repo.clone(),
     ));
 
+    let settings_service = Arc::new(SettingsService::new(
+        system_settings_repo.clone(),
+        audit_log_repo.clone(),
+    ));
+
+    // 启动后台定时分区维护任务
+    let pm = partition_manager.clone();
+    let ss_repo = system_settings_repo.clone();
+    let check_interval = std::time::Duration::from_secs(config.partition_check_interval_secs);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(check_interval);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            let retention = ss_repo
+                .get()
+                .await
+                .map(|s| s.log_retention_months)
+                .unwrap_or(12);
+            match pm.run_maintenance_with_lock(retention).await {
+                Ok(result) => {
+                    if !result.created.is_empty() {
+                        tracing::info!("创建分区: {:?}", result.created);
+                    }
+                    if !result.dropped.is_empty() {
+                        tracing::info!("清理分区: {:?}", result.dropped);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("分区维护失败: {}", e);
+                }
+            }
+        }
+    });
+
     // ─── 首次启动：创建默认 admin 用户 ───
 
     let users = user_repo
@@ -311,6 +328,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         log_repo,
         log_token_usage_repo,
         audit_log_repo,
+        system_settings_repo,
+        settings_service,
         jwt_service,
         proxy_client,
     };

@@ -1,4 +1,12 @@
+use chrono::{Datelike, Utc};
 use sea_orm_migration::{prelude::*, schema::*};
+
+fn add_months(year: i32, month: u32, n: i32) -> (i32, u32) {
+    let total_months = (year * 12 + month as i32 - 1) + n;
+    let y = total_months.div_euclid(12);
+    let m = (total_months.rem_euclid(12) + 1) as u32;
+    (y, m)
+}
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -187,62 +195,74 @@ impl MigrationTrait for Migration {
             .await?;
 
         // 8. log_metadata 分区表（主表 + 种子分区）
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
-                CREATE TABLE IF NOT EXISTS log_metadata (
-                    id                         UUID NOT NULL,
-                    timestamp                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    session_id                 VARCHAR(255) NOT NULL DEFAULT '',
-                    user_id                    UUID,
-                    access_point_id            UUID,
-                    provider_id                UUID,
-                    account_id                 UUID,
-                    model_original             VARCHAR(255),
-                    model_mapped               VARCHAR(255),
-                    status_code                SMALLINT,
-                    duration_ms                INTEGER,
-                    error_message              TEXT,
-                    request_index              INTEGER NOT NULL DEFAULT 0,
-                    client_app                 VARCHAR(64),
-                    client_user_agent          TEXT,
-                    conversation_source        VARCHAR(32) NOT NULL DEFAULT 'unknown',
-                    agent_id                   VARCHAR(255),
-                    has_error                  BOOLEAN NOT NULL DEFAULT FALSE,
-                    raw_content_available      BOOLEAN NOT NULL DEFAULT TRUE,
-                    is_interrupted             BOOLEAN NOT NULL DEFAULT FALSE,
-                    client_name                VARCHAR(100),
-                    client_version             VARCHAR(50),
-                    client_channel             VARCHAR(50),
-                    client_platform            VARCHAR(50),
-                    api_type                   VARCHAR(50) NOT NULL DEFAULT 'anthropic',
-                    PRIMARY KEY (id, timestamp)
-                ) PARTITION BY RANGE (timestamp);
+        let now = Utc::now().naive_utc().date();
+        let (seed_y, seed_m) = (now.year(), now.month());
+        let (next_y, next_m) = add_months(seed_y, seed_m, 1);
+        let partition_name = format!("log_metadata_{:04}_{:02}", seed_y, seed_m);
+        let from_str = format!("{:04}-{:02}-01", seed_y, seed_m);
+        let to_str = format!("{:04}-{:02}-01", next_y, next_m);
 
-                -- 创建当月分区（种子分区，后续由应用层 PartitionManager 管理）
-                CREATE TABLE IF NOT EXISTS log_metadata_2026_05
-                    PARTITION OF log_metadata
-                    FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
-                "#,
-            )
-            .await?;
+        let sql = format!(
+            r#"
+            CREATE TABLE IF NOT EXISTS log_metadata (
+                id                         UUID NOT NULL,
+                timestamp                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                session_id                 VARCHAR(255) NOT NULL DEFAULT '',
+                user_id                    UUID,
+                access_point_id            UUID,
+                provider_id                UUID,
+                account_id                 UUID,
+                model_original             VARCHAR(255),
+                model_mapped               VARCHAR(255),
+                status_code                SMALLINT,
+                duration_ms                INTEGER,
+                error_message              TEXT,
+                request_index              INTEGER NOT NULL DEFAULT 0,
+                client_app                 VARCHAR(64),
+                client_user_agent          TEXT,
+                conversation_source        VARCHAR(32) NOT NULL DEFAULT 'unknown',
+                agent_id                   VARCHAR(255),
+                has_error                  BOOLEAN NOT NULL DEFAULT FALSE,
+                raw_content_available      BOOLEAN NOT NULL DEFAULT TRUE,
+                is_interrupted             BOOLEAN NOT NULL DEFAULT FALSE,
+                client_name                VARCHAR(100),
+                client_version             VARCHAR(50),
+                client_channel             VARCHAR(50),
+                client_platform            VARCHAR(50),
+                api_type                   VARCHAR(50) NOT NULL DEFAULT 'anthropic',
+                PRIMARY KEY (id, timestamp)
+            ) PARTITION BY RANGE (timestamp);
 
-        // 8. log_contents 表
-        manager
-            .create_table(
-                Table::create()
-                    .table(LogContents::Table)
-                    .if_not_exists()
-                    .col(uuid(LogContents::LogId).not_null())
-                    .col(json(LogContents::RequestHeaders))
-                    .col(json(LogContents::RequestBody))
-                    .col(text(LogContents::ResponseBody))
-                    .col(json(LogContents::ResponseHeaders))
-                    .primary_key(Index::create().col(LogContents::LogId))
-                    .to_owned(),
-            )
-            .await?;
+            CREATE TABLE IF NOT EXISTS {partition_name}
+                PARTITION OF log_metadata
+                FOR VALUES FROM ('{from_str}') TO ('{to_str}');
+            "#
+        );
+
+        manager.get_connection().execute_unprepared(&sql).await?;
+
+        // 8. log_contents 分区表（主表 + 种子分区）
+        let lc_partition_name = format!("log_contents_{:04}_{:02}", seed_y, seed_m);
+
+        let lc_sql = format!(
+            r#"
+            CREATE TABLE log_contents (
+                log_id           UUID NOT NULL,
+                timestamp        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                request_headers  JSON,
+                request_body     JSON,
+                response_body    TEXT,
+                response_headers JSON,
+                PRIMARY KEY (log_id, timestamp)
+            ) PARTITION BY RANGE (timestamp);
+
+            CREATE TABLE {lc_partition_name}
+                PARTITION OF log_contents
+                FOR VALUES FROM ('{from_str}') TO ('{to_str}');
+            "#
+        );
+
+        manager.get_connection().execute_unprepared(&lc_sql).await?;
 
         // 9. log_token_usage 表
         manager
@@ -294,6 +314,21 @@ impl MigrationTrait for Migration {
                         timestamp_with_time_zone(AuditLogs::Timestamp).default(Expr::cust("NOW()")),
                     )
                     .to_owned(),
+            )
+            .await?;
+
+        // 11. system_settings 表（单行表，id 恒为 1）
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    id                      SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                    log_retention_months    SMALLINT NOT NULL DEFAULT 12
+                        CHECK (log_retention_months BETWEEN 1 AND 36),
+                    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                "#,
             )
             .await?;
 
@@ -410,40 +445,13 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 11. 物化视图
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
-                CREATE MATERIALIZED VIEW IF NOT EXISTS daily_request_stats AS
-                SELECT
-                    date_trunc('day', timestamp) AS day,
-                    user_id,
-                    access_point_id,
-                    provider_id,
-                    account_id,
-                    model_original,
-                    COUNT(*)                                   AS request_count,
-                    AVG(duration_ms)::INTEGER                  AS avg_duration_ms,
-                    COUNT(*) FILTER (WHERE status_code >= 400) AS error_count
-                FROM log_metadata
-                WHERE timestamp >= NOW() - INTERVAL '365 days'
-                GROUP BY 1, 2, 3, 4, 5, 6
-                WITH DATA;
-
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_stats_unique
-                    ON daily_request_stats (day, user_id, access_point_id, provider_id, account_id, model_original);
-                "#,
-            )
-            .await?;
-
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
             .get_connection()
-            .execute_unprepared("DROP MATERIALIZED VIEW IF EXISTS daily_request_stats CASCADE")
+            .execute_unprepared("DROP TABLE IF EXISTS system_settings")
             .await?;
 
         manager
@@ -580,9 +588,11 @@ enum LogMetadata {
 }
 
 #[derive(DeriveIden)]
+#[allow(dead_code)]
 enum LogContents {
     Table,
     LogId,
+    Timestamp,
     RequestHeaders,
     RequestBody,
     ResponseBody,

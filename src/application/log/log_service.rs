@@ -93,7 +93,7 @@ impl LogService {
 
         let entry = LogMetadata {
             id: Uuid::new_v4(),
-            timestamp: chrono::Utc::now().fixed_offset(),
+            timestamp: data.timestamp,
             session_id: data.session_id.clone(),
             user_id: Some(data.user_id),
             access_point_id: Some(data.access_point_id),
@@ -131,6 +131,7 @@ impl LogService {
         // ── 阶段 2：保存原始内容（阶段 1 已成功，允许此阶段失败）──
         let content = LogContent {
             log_id: saved.id,
+            timestamp: data.timestamp,
             request_headers: Some(request_headers_json),
             request_body: Some(data.request_body),
             response_body: Some(data.response_body.clone()),

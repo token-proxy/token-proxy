@@ -43,7 +43,7 @@ impl Config {
             .map_err(|_| "PARTITION_CHECK_INTERVAL_SECS 必须是有效的秒数".to_string())?;
 
         let partition_premake_months = std::env::var("PARTITION_PREMAKE_MONTHS")
-            .unwrap_or_else(|_| "3".to_string())
+            .unwrap_or_else(|_| "1".to_string())
             .parse::<u32>()
             .map_err(|_| "PARTITION_PREMAKE_MONTHS 必须是有效数字".to_string())?;
 

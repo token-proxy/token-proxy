@@ -398,13 +398,11 @@ migration/
 | access_points | 接入点 | short_code (唯一), api_type, provider_id, account_id |
 | refresh_tokens | JWT 刷新令牌 | user_id (FK), token_hash, expires_at, revoked; 过期记录由 tokio 后台任务每小时物理清理 |
 | log_metadata | 代理日志元数据 (按月分区) | session_id, model_original, model_mapped, status_code, duration_ms |
-| log_contents | 代理日志内容 | log_id, request_headers, request_body, response_body |
+| log_contents | 代理日志内容 (按月分区) | log_id, timestamp, request_headers, request_body, response_body |
 | audit_logs | 操作审计日志 | user_id, action, target_type, target_id, details |
 | user_api_keys | 用户 API key (SHA-256 哈希存储) | user_id (FK), key_hash (唯一), key_prefix, description, last_used_at, status, created_at |
 
-**物化视图**: `daily_request_stats` — 按天聚合统计，含请求量、平均耗时、错误数。
-
-**分区策略**: `log_metadata` 表按月 `RANGE (timestamp)` 分区，由应用层 `PartitionManager` 自动管理（创建 / 清理），通过 `pg_try_advisory_xact_lock` 保证多副本安全。
+**分区策略**: `log_metadata` 和 `log_contents` 表按月 `RANGE (timestamp)` 分区，由应用层 `PartitionManager` 自动管理（创建 / 清理），通过 `pg_try_advisory_xact_lock` 保证多副本安全。`log_token_usage` 不做分区，永久保留用于分析。
 
 ## 代理转发流程
 

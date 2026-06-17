@@ -7,8 +7,7 @@ import api from '../api.ts';
 const { Title } = Typography;
 
 interface Settings {
-  log_retention_days: number;
-  stats_retention_days: number;
+  log_retention_months: number;
 }
 
 export default function SettingsPage(): ReactNode {
@@ -61,18 +60,11 @@ export default function SettingsPage(): ReactNode {
             style={{ maxWidth: 480 }}
           >
             <Form.InputNumber
-              field="log_retention_days"
-              label="日志数据保留天数"
-              extraText="日志元数据和内容（含请求/响应体）的保留期限"
-              min={7}
-              max={365}
-            />
-            <Form.InputNumber
-              field="stats_retention_days"
-              label="统计数据保留天数"
-              extraText="物化视图聚合统计数据的保留期限"
-              min={30}
-              max={730}
+              field="log_retention_months"
+              label="日志数据保留月数"
+              extraText="按月分区存储，到期自动清理（包含日志元数据和请求/响应体）"
+              min={1}
+              max={36}
             />
             <Button type="primary" htmlType="submit" loading={saving} style={{ marginTop: 16 }}>
               保存

@@ -1,4 +1,5 @@
 use axum::http::HeaderMap;
+use chrono::{DateTime, FixedOffset};
 use uuid::Uuid;
 
 /// 代理日志数据 DTO — ProxyLogger → LogService 之间的数据契约
@@ -8,6 +9,8 @@ use uuid::Uuid;
 /// LogService 拿到后自行构造 LogMetadata / LogContent / LogTokenUsage。
 #[derive(Clone)]
 pub struct ProxyLogData {
+    // 请求时间戳（构造时一次性生成，metadata 和 contents 共用）
+    pub timestamp: DateTime<FixedOffset>,
     // 请求标识
     pub session_id: String,
     pub user_id: Uuid,

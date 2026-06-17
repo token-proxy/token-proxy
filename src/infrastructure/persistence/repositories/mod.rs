@@ -5,6 +5,7 @@ pub mod log_repository;
 pub mod log_token_usage_repository;
 pub mod provider_repository;
 pub mod refresh_token_repository;
+pub mod system_settings_repository;
 pub mod user_api_key_repository;
 pub mod user_repository;
 
@@ -15,5 +16,6 @@ pub use log_repository::SeaOrmLogRepository;
 pub use log_token_usage_repository::SeaOrmLogTokenUsageRepository;
 pub use provider_repository::SeaOrmProviderRepository;
 pub use refresh_token_repository::SeaOrmRefreshTokenRepository;
+pub use system_settings_repository::SeaOrmSystemSettingsRepository;
 pub use user_api_key_repository::SeaOrmUserApiKeyRepository;
 pub use user_repository::SeaOrmUserRepository;

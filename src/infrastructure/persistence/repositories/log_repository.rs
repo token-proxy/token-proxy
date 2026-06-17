@@ -126,8 +126,12 @@ impl LogRepository for SeaOrmLogRepository {
     }
 
     async fn find_content_by_log_id(&self, log_id: Uuid) -> Result<Option<LogContent>, AppError> {
+        use crate::domain::log::content::Column;
         let db = &*self.db;
-        let model = ContentEntity::find_by_id(log_id).one(db).await?;
+        let model = ContentEntity::find()
+            .filter(Column::LogId.eq(log_id))
+            .one(db)
+            .await?;
 
         match model {
             Some(m) => Ok(Some(m)),
@@ -136,9 +140,13 @@ impl LogRepository for SeaOrmLogRepository {
     }
 
     async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+        use crate::domain::log::content::Column;
         let db = &*self.db;
         // 先删除关联的 log_content（如果有）
-        let _ = ContentEntity::delete_by_id(id).exec(db).await;
+        let _ = ContentEntity::delete_many()
+            .filter(Column::LogId.eq(id))
+            .exec(db)
+            .await;
         // 再删除 log_metadata
         Entity::delete_by_id(id).exec(db).await?;
         Ok(())
@@ -567,6 +575,7 @@ impl LogRepository for SeaOrmLogRepository {
 
                 let content = LogContent {
                     log_id: entry.id,
+                    timestamp: entry.timestamp,
                     request_headers: Some(
                         row.try_get_by_index::<Option<serde_json::Value>>(25)?
                             .unwrap_or(serde_json::Value::Null),

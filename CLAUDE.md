@@ -64,13 +64,11 @@ src/
 | access_points | 接入点 (短码、api_type、模型映射、跨聚合引用 Provider+Account) |
 | refresh_tokens | JWT 刷新令牌 |
 | log_metadata | 代理日志元数据和可展示摘要 (PartitionManager 按月分区) |
-| log_contents | 代理日志原始内容 (请求头、请求体、响应体, 按需查看) |
-| log_conversation_events | 会话详情事件流 (用户消息、thinking、tool_use、Agent 调用等) |
-| log_token_usage | token 用量统计 (input/output/cache/thinking/total) |
+| log_contents | 代理日志原始内容 (按月分区, 请求头/请求体/响应体, 按需查看) |
+| log_token_usage | token 用量统计 (永久保留, input/output/cache/thinking/total) |
 | audit_logs | 操作审计日志 |
 
-- 物化视图: `daily_request_stats` (按天聚合统计, 含请求量/平均耗时/错误数)
-- 迁移: 3 个文件 (初始 Schema + user_api_keys 表 + provider_default_model 列)
+- 迁移: 5 个文件 (初始 Schema + user_api_keys 表 + provider_default_model 列 + system_settings 表 + log_contents 分区化)
 
 ## 关键决策
 
@@ -82,7 +80,7 @@ src/
 - **加密**: AES-256-GCM (ENCRYPTION_KEY 环境变量 64 hex chars = 32 字节)
 - **密码**: argon2id
 - **分区**: PartitionManager 应用层管理, 按月 `RANGE (timestamp)`, 依赖原生 PostgreSQL 分区, 支持多副本 advisory lock 防冲突
-- **代理**: SSE 流式逐块转发 + 异步日志写入; 写日志时同步解析 Claude Code 请求头、请求体、SSE 响应、thinking、tool_use 和 usage, 将可展示摘要写入 `log_metadata`, 将会话事件写入 `log_conversation_events`, 将 token 统计写入 `log_token_usage`, 原始请求 / 响应仅保存在 `log_contents` 中按需查看
+- **代理**: SSE 流式逐块转发 + 异步日志写入; 写日志时同步解析 Claude Code 请求头、请求体、SSE 响应、thinking、tool_use 和 usage, 将可展示摘要写入 `log_metadata`, 将 token 统计写入 `log_token_usage`, 原始请求 / 响应保存在 `log_contents` 中按需查看
 - **代理日志统一积累**: `ProxyLogger`（`infrastructure/http_client/`）贯穿整个代理生命周期。构造时从 `ProcessedRequest` + `AccessPointEx` 提取字段，填充 `ProxyLogData` DTO（防腐职责）；运行时通过 `append_body`/`set_body` 积累响应体；结束时调用 `flush()` 将完成的 DTO 交给 `LogService::record_proxy_log()`。无论流式/非流式/客户端断开，最终都统一走这条路径。Drop 中自动标记 `is_interrupted` 并触发 flush
 - **响应头透明化**: 代理转发仅过滤 hop-by-hop 头 (`transfer-encoding`, `connection`, `keep-alive` 等)，其余上游响应头全部透传给客户端。不再硬编码 `content-type: text/event-stream` 等预设值
 - **运输方式由响应决定**: 流式/非流式的判断依据上游响应头 `content-type` 是否包含 `text/event-stream`，替代此前基于请求特征 (`processed.is_streaming`) 的预设
@@ -198,7 +196,7 @@ aggr.resolve(x, y)
 - 迁移文件在 `src/migrations/` 目录下, 使用 `sea-orm-migration`
 - 分区管理由 `src/infrastructure/persistence/partition_manager.rs` 的 PartitionManager 处理, 通过 pg_inherits 系统表管理分区
 - `log_metadata` 分区表的 `PRIMARY KEY` 必须包含 `timestamp`
-- 日志默认展示不得依赖 `log_contents`; `log_metadata` 和 `log_conversation_events` 必须足够支撑请求日志列表和会话详情页, `log_contents` 仅用于原始明细弹窗
+- 日志默认展示不得依赖 `log_contents`; `log_metadata` 必须足够支撑请求日志列表, `log_contents` 仅用于原始明细弹窗（按需加载）
 - `__unmatched__` 哨兵是模型映射中的特殊 source_model, 使用 `prefix` 匹配类型, 用于为所有未精确/前缀匹配的请求模型指定目标模型, 每个接入点最多一个。接入点创建时, Drawer 自动预填一条 `__unmatched__ -> __default_model__` 映射。保存接入点时过滤映射, target_model 必须属于 Provider.models 或等于 `__default_model__` 哨兵
 - `api_type` 枚举的实际范围在 `AccessPointType` 值对象中定义, 新增类型需要同步修改 Rust 枚举 + 数据库列约束 + 前端 Select 选项
 - `domain/` 按聚合组织为 5 个子目录: access_point/ provider/ user/ log/ shared/。每个聚合目录包含其所有实体、值对象和 Repository trait。跨聚合共享类型放在 shared/。不再使用 entities/、value_objects/、repositories/、services/ 技术类别目录

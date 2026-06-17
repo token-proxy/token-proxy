@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub log_id: Uuid,
+    pub timestamp: DateTimeWithTimeZone,
     pub request_headers: Option<Json>,
     pub request_body: Option<Json>,
     pub response_body: Option<String>,

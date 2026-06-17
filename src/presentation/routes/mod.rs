@@ -11,6 +11,7 @@ pub mod log_routes;
 pub mod me_routes;
 pub mod provider_routes;
 pub mod proxy_routes;
+pub mod settings_routes;
 pub mod stats;
 pub mod stats_routes;
 pub mod user_routes;
@@ -40,6 +41,7 @@ pub fn build(state: AppState) -> Router {
         .merge(access_point_routes::routes())
         .merge(log_routes::routes())
         .merge(stats_routes::routes())
+        .merge(settings_routes::routes())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             jwt_auth::auth_middleware,
