@@ -1,16 +1,15 @@
 use std::sync::Arc;
 
-
 use uuid::Uuid;
 
 use super::dto::{
     LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse,
     SessionContentItemResponse, SessionSummaryResponse, TokenUsageResponse,
 };
-use crate::domain::log::{LogContent, LogEntry, LogTokenUsage};
 use crate::domain::access_point::repository::AccessPointRepository;
-use crate::domain::log::{LogQuery, LogRepository, SessionQuery};
 use crate::domain::log::LogTokenUsageRepository;
+use crate::domain::log::{LogContent, LogEntry, LogTokenUsage};
+use crate::domain::log::{LogQuery, LogRepository, SessionQuery};
 use crate::domain::user::UserRepository;
 use crate::infrastructure::parsers::{claude_code_context, client_info, parsed_token_usage};
 use crate::shared::error::AppError;
@@ -58,19 +57,13 @@ impl LogService {
 
     /// 创建日志条目（仅元数据），返回日志 ID
     pub async fn create_log_entry(&self, entry: &LogEntry) -> Result<Uuid, AppError> {
-        let saved = self
-            .log_repo
-            .save(entry)
-            .await?;
+        let saved = self.log_repo.save(entry).await?;
         Ok(saved.id)
     }
 
     /// 保存日志内容（请求/响应体）
     pub async fn save_log_content(&self, content: &LogContent) -> Result<(), AppError> {
-        self.log_repo
-            .save_content(content)
-            .await
-
+        self.log_repo.save_content(content).await
     }
 
     /// 记录代理日志的核心入口
@@ -105,7 +98,7 @@ impl LogService {
         entry.conversation_source = header_context.conversation_source;
         entry.agent_id = header_context.agent_id;
 
-        // 保存元数据
+        // ── 阶段 1：保存元数据（主表，失败则后续无意义）──
         let saved = self.log_repo.save(&entry).await?;
 
         // 请求头脱敏 + 序列化为 JSON
@@ -114,7 +107,7 @@ impl LogService {
         // 响应头序列化为 JSON（不需要脱敏，上游 LLM API 不含敏感信息）
         let response_headers_json = response_headers_to_json(&response_headers);
 
-        // 保存原始内容
+        // ── 阶段 2：保存原始内容（阶段 1 已成功，允许此阶段失败）──
         let content = LogContent {
             log_id: saved.id,
             request_headers: Some(request_headers_json),
@@ -122,12 +115,15 @@ impl LogService {
             response_body: Some(response_body.clone()),
             response_headers: Some(response_headers_json),
         };
-        self.log_repo.save_content(&content).await?;
+        if let Err(e) = self.log_repo.save_content(&content).await {
+            tracing::error!(error = %e, "日志内容写入失败");
+            // 不 return，元数据已存，继续 token 解析
+        }
 
-        // 提取 token 用量
-        if let Some(usage_data) = parsed_token_usage::parse_usage_from_response(&response_body) {
-            self.token_usage_repo
-                .save(&LogTokenUsage {
+        // ── 阶段 3：提取 token 用量（独立步骤，失败不影响日志完整性）──
+        match parsed_token_usage::parse_usage_from_response(&response_body) {
+            Some(usage_data) => {
+                let token_entry = LogTokenUsage {
                     id: Uuid::new_v4(),
                     log_id: saved.id,
                     session_id: saved.session_id,
@@ -151,8 +147,18 @@ impl LogService {
                     server_tool_usage: None,
                     cache_creation: None,
                     created_at: chrono::Utc::now().fixed_offset(),
-                })
-                .await?;
+                };
+                if let Err(e) = self.token_usage_repo.save(&token_entry).await {
+                    tracing::error!(error = %e, "Token 用量写入失败");
+                }
+            }
+            None => {
+                tracing::warn!(
+                    status_code = ?entry.status_code,
+                    body_len = response_body.len(),
+                    "未从响应体中解析到 token 用量"
+                );
+            }
         }
 
         Ok(saved.id)
@@ -227,15 +233,9 @@ impl LogService {
 
     /// 获取日志详情（含请求/响应内容）
     pub async fn get_log_detail(&self, id: Uuid) -> Result<Option<LogDetailResponse>, AppError> {
-        let entry = self
-            .log_repo
-            .find_by_id(id)
-            .await?;
+        let entry = self.log_repo.find_by_id(id).await?;
 
-        let content = self
-            .log_repo
-            .find_content_by_log_id(id)
-            .await?;
+        let content = self.log_repo.find_content_by_log_id(id).await?;
 
         match entry {
             Some(entry) => {
@@ -267,10 +267,7 @@ impl LogService {
         &self,
         id: Uuid,
     ) -> Result<Option<LogDetailFullResponse>, AppError> {
-        let result = self
-            .log_repo
-            .find_log_detail_full(id)
-            .await?;
+        let result = self.log_repo.find_log_detail_full(id).await?;
 
         match result {
             Some((entry, content, usage)) => {
@@ -325,7 +322,9 @@ impl LogService {
                     token_cache_creation_input_tokens: usage
                         .as_ref()
                         .map(|u| u.cache_creation_input_tokens),
-                    token_cache_read_input_tokens: usage.as_ref().map(|u| u.cache_read_input_tokens),
+                    token_cache_read_input_tokens: usage
+                        .as_ref()
+                        .map(|u| u.cache_read_input_tokens),
                     token_thinking_tokens: usage.as_ref().map(|u| u.thinking_tokens),
                     token_total_tokens: usage.as_ref().map(|u| u.total_tokens),
                     token_raw_usage: usage.as_ref().and_then(|u| u.raw_usage.clone()),
@@ -345,8 +344,18 @@ impl LogService {
         let mut items = Vec::with_capacity(logs.len());
 
         for entry in logs {
-            let content = self.log_repo.find_content_by_log_id(entry.id).await.ok().flatten();
-            let usage = self.token_usage_repo.find_by_log_id(entry.id).await.ok().flatten();
+            let content = self
+                .log_repo
+                .find_content_by_log_id(entry.id)
+                .await
+                .ok()
+                .flatten();
+            let usage = self
+                .token_usage_repo
+                .find_by_log_id(entry.id)
+                .await
+                .ok()
+                .flatten();
 
             if let Some(c) = content {
                 items.push(SessionContentItemResponse {

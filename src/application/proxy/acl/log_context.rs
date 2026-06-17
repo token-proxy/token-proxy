@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use axum::http::HeaderMap;
 use uuid::Uuid;
@@ -9,7 +9,6 @@ use crate::domain::access_point::AccessPointEx;
 use crate::domain::log::LogEntry;
 use crate::infrastructure::http_client::ProcessedRequest;
 
-use super::interrupt_guard::InterruptGuard;
 use super::log_task_context::LogTaskContext;
 
 /// 防腐层：封装 ProcessedRequest + AccessPointEx → 日志参数的转换
@@ -88,28 +87,6 @@ impl LogContext {
             request_body: self.request_body,
             response_text,
             resp_headers,
-        }
-    }
-
-    /// 创建客户端断开检测守卫（流式场景使用）
-    pub fn into_interrupt_guard(
-        self,
-        log_service: Arc<LogService>,
-        status_code: u16,
-        start: Instant,
-        buffer: Arc<std::sync::Mutex<String>>,
-        resp_headers: HeaderMap,
-        runtime: tokio::runtime::Handle,
-    ) -> InterruptGuard {
-        InterruptGuard {
-            completed: false,
-            log_service,
-            log_ctx: self,
-            status_code,
-            start,
-            buffer,
-            resp_headers,
-            runtime,
         }
     }
 }

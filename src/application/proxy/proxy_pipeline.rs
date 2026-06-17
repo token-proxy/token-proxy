@@ -7,7 +7,7 @@ use futures::StreamExt;
 use uuid::Uuid;
 
 use super::acl::log_context::LogContext;
-use super::acl::log_task_context::spawn_log_task;
+use super::acl::ProxyLogger;
 use crate::application::log::LogService;
 use crate::domain::access_point::repository::AccessPointRepository;
 use crate::domain::access_point::AccessPointEx;
@@ -59,15 +59,12 @@ impl ProxyPipeline {
 
         access_point.validate_usable()?;
 
-        let upstream_key = access_point.decrypt_upstream_key(&*self.encryption_service).await?;
+        let upstream_key = access_point
+            .decrypt_upstream_key(&*self.encryption_service)
+            .await?;
 
-        let processed = ProcessedRequest::prepare(
-            &access_point,
-            &upstream_key,
-            remainder,
-            headers,
-            &body,
-        )?;
+        let processed =
+            ProcessedRequest::prepare(&access_point, &upstream_key, remainder, headers, &body)?;
 
         self.handle(processed, &access_point, user_id).await
     }
@@ -97,34 +94,51 @@ impl ProxyPipeline {
         let status = upstream_resp.status();
         let resp_headers = upstream_resp.headers().clone();
 
-        if processed.is_streaming {
-            let log_service = self.log_service.clone();
-            let log_buffer = Arc::new(std::sync::Mutex::new(String::new()));
-            let log_buffer_clone = log_buffer.clone();
-            let runtime = tokio::runtime::Handle::current();
+        // ── 构建响应 —— 过滤 hop-by-hop 头，其余全部透传 ──
+        let hop_by_hop = [
+            "transfer-encoding",
+            "connection",
+            "keep-alive",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "upgrade",
+        ];
+        let mut response_builder = axum::response::Response::builder().status(status);
+        for (key, value) in resp_headers.iter() {
+            let key_lower = key.as_str().to_lowercase();
+            if !hop_by_hop.contains(&key_lower.as_str()) {
+                response_builder = response_builder.header(key, value.clone());
+            }
+        }
 
+        // ── 运输方式由响应头决定，不用请求特征预设 ──
+        let is_sse = resp_headers
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.contains("text/event-stream"))
+            .unwrap_or(false);
+
+        let runtime = tokio::runtime::Handle::current();
+        let logger = ProxyLogger::new(
+            log_ctx,
+            status.as_u16(),
+            start,
+            resp_headers,
+            self.log_service.clone(),
+            runtime,
+        );
+
+        if is_sse {
             let byte_stream = upstream_resp.bytes_stream();
-
-            let log_ctx_for_guard = log_ctx.clone();
-            let resp_headers_for_response = resp_headers.clone();
-            let resp_headers_for_guard = resp_headers.clone();
 
             let stream = async_stream::stream! {
                 tokio::pin!(byte_stream);
-
-                let mut guard = log_ctx_for_guard.into_interrupt_guard(
-                    log_service.clone(),
-                    status.as_u16(),
-                    start,
-                    log_buffer_clone,
-                    resp_headers_for_guard,
-                    runtime.clone(),
-                );
-
+                // logger 在闭包内：客户端断开时闭包被 drop → logger 被 drop → 自动标记 is_interrupted
+                let mut logger = logger;
                 while let Some(chunk) = byte_stream.next().await {
                     match chunk {
                         Ok(bytes) => {
-                            guard.buffer.lock().unwrap().push_str(&String::from_utf8_lossy(&bytes));
+                            logger.append_body(&bytes);
                             yield Ok(bytes);
                         }
                         Err(e) => {
@@ -132,63 +146,21 @@ impl ProxyPipeline {
                         }
                     }
                 }
-
-                guard.completed = true;
-                let buf = std::mem::take(&mut *guard.buffer.lock().unwrap());
-                if !buf.is_empty() {
-                    let elapsed = start.elapsed();
-                    spawn_log_task(log_ctx.into_log_task_context(
-                        log_service,
-                        status.as_u16(),
-                        elapsed,
-                        buf,
-                        resp_headers,
-                    ));
-                }
+                logger.flush();
             };
-
-            let mut response_builder = axum::response::Response::builder()
-                .status(status)
-                .header("content-type", "text/event-stream")
-                .header("cache-control", "no-cache")
-                .header("connection", "keep-alive");
-
-            for (key, value) in resp_headers_for_response.iter() {
-                let key_str = key.as_str().to_lowercase();
-                if key_str != "transfer-encoding"
-                    && key_str != "content-type"
-                    && key_str != "content-length"
-                {
-                    response_builder = response_builder.header(key, value.clone());
-                }
-            }
 
             response_builder
                 .body(axum::body::Body::from_stream(stream))
-                .map_err(|e| AppError::Internal(format!("构建流式响应失败: {}", e)))
+                .map_err(|e| AppError::Internal(format!("构建响应失败: {}", e)))
         } else {
             let resp_body = upstream_resp
                 .bytes()
                 .await
                 .map_err(|e| AppError::Upstream(format!("读取上游响应失败: {}", e)))?;
 
-            let elapsed = start.elapsed();
-            let resp_headers_for_response = resp_headers.clone();
-            spawn_log_task(log_ctx.into_log_task_context(
-                self.log_service.clone(),
-                status.as_u16(),
-                elapsed,
-                String::from_utf8_lossy(&resp_body).to_string(),
-                resp_headers,
-            ));
-
-            let mut response_builder = axum::response::Response::builder().status(status);
-            for (key, value) in resp_headers_for_response.iter() {
-                let key_str = key.as_str().to_lowercase();
-                if key_str != "transfer-encoding" {
-                    response_builder = response_builder.header(key, value.clone());
-                }
-            }
+            let mut logger = logger;
+            logger.set_body(&resp_body);
+            logger.flush();
 
             response_builder
                 .body(axum::body::Body::from(resp_body))

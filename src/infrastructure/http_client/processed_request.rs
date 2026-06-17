@@ -13,7 +13,6 @@ pub struct ProcessedRequest {
     pub upstream_url: String,
     pub inbound: RequestSnapshot,
     pub outbound: RequestSnapshot,
-    pub is_streaming: bool,
     pub session_id: String,
 }
 
@@ -31,7 +30,6 @@ impl ProcessedRequest {
 
         let inbound = RequestSnapshot::parse(&access_point.api_type, headers, body.to_string())?;
 
-        let is_streaming = inbound.is_streaming();
         let session_id = inbound.session_id();
 
         let outbound = access_point.transform_request_snapshot(&inbound, upstream_key)?;
@@ -40,7 +38,6 @@ impl ProcessedRequest {
             upstream_url,
             inbound,
             outbound,
-            is_streaming,
             session_id,
         })
     }
