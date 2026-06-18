@@ -106,7 +106,6 @@ impl LogService {
             duration_ms: Some(data.duration_ms),
             is_interrupted: data.is_interrupted,
             error_message: data.error_message.clone(),
-            request_index: 0,
             client_app: header_context.client_app,
             client_user_agent: header_context.client_user_agent,
             conversation_source: header_context.conversation_source,
@@ -328,7 +327,6 @@ impl LogService {
                     status_code: entry.status_code.unwrap_or(0) as i32,
                     duration_ms: entry.duration_ms.unwrap_or(0),
                     error_message: entry.error_message,
-                    request_index: entry.request_index,
                     conversation_source: entry.conversation_source,
                     agent_id: entry.agent_id,
                     client_name: entry.client_name,
@@ -336,6 +334,7 @@ impl LogService {
                     client_channel: entry.client_channel,
                     client_platform: entry.client_platform,
                     request_headers: content.request_headers.unwrap_or(serde_json::Value::Null),
+                    response_headers: content.response_headers.unwrap_or(serde_json::Value::Null),
                     request_body: content.request_body.unwrap_or(serde_json::Value::Null),
                     response_body: content.response_body.unwrap_or_default(),
                     token_input_tokens: usage.as_ref().map(|u| u.input_tokens),
@@ -381,7 +380,6 @@ impl LogService {
             if let Some(c) = content {
                 items.push(SessionContentItemResponse {
                     log_id: entry.id,
-                    request_index: entry.request_index,
                     timestamp: entry.timestamp.with_timezone(&chrono::Utc),
                     conversation_source: entry.conversation_source.clone(),
                     agent_id: entry.agent_id.clone(),

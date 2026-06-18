@@ -1,13 +1,11 @@
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Button, Typography, Toast,
-} from '@douyinfe/semi-ui';
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Button, Toast, Typography } from '@douyinfe/semi-ui';
 import { IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import api from '../api.ts';
-import SessionListView from '../components/SessionListView.tsx';
-import SessionDetailView from '../components/SessionDetailView.tsx';
+import SessionListView from '@components/session/SessionListView';
+import SessionDetailView from '@components/session/SessionDetailView';
 import type {
   AccessPointItem,
   ConversationEvent,
@@ -22,12 +20,12 @@ import type {
 import { buildConversationEvents } from '../utils/parseLogs.ts';
 import { buildQueryString, toIsoString } from '../utils/query.ts';
 
-const { Title } = Typography;
+const {Title} = Typography;
 
 // ─── 组件 ───
 
 export default function SessionLogPage(): ReactNode {
-  const { sessionId } = useParams<{ sessionId: string }>();
+  const {sessionId} = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
 
   // 参考数据，用于查找映射
@@ -122,7 +120,6 @@ export default function SessionLogPage(): ReactNode {
           {
             log_id: item.log_id,
             timestamp: item.timestamp,
-            request_index: item.request_index,
             conversation_source: item.conversation_source,
             agent_id: item.agent_id ?? undefined,
           },
@@ -196,7 +193,7 @@ export default function SessionLogPage(): ReactNode {
         endTime: value[1] ? toIsoString(value[1]) : undefined,
       }));
     } else {
-      setFilters((prev) => ({ ...prev, startTime: undefined, endTime: undefined }));
+      setFilters((prev) => ({...prev, startTime: undefined, endTime: undefined}));
     }
   };
 
@@ -221,7 +218,6 @@ export default function SessionLogPage(): ReactNode {
 
   if (sessionId) {
     const sortedEvents = [...sessionEvents].sort((a, b) => {
-      if (a.request_index !== b.request_index) return a.request_index - b.request_index;
       if (a.event_index !== b.event_index) return a.event_index - b.event_index;
       const timeCmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
       if (timeCmp !== 0) return timeCmp;
@@ -252,10 +248,10 @@ export default function SessionLogPage(): ReactNode {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <Title heading={3} style={{ margin: 0 }}>会话日志</Title>
+      <div style={{display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16}}>
+        <Title heading={3} style={{margin: 0}}>会话日志</Title>
         <Button
-          icon={<IconRefresh />}
+          icon={<IconRefresh/>}
           loading={sessionsLoading}
           onClick={() => fetchSessions()}
         >
@@ -275,9 +271,9 @@ export default function SessionLogPage(): ReactNode {
         pageSize={pageSize}
         filters={filters}
         onDateChange={handleDateChange}
-        onUserChange={(userId) => setFilters((prev) => ({ ...prev, userId }))}
+        onUserChange={(userId) => setFilters((prev) => ({...prev, userId}))}
         onAccessPointChange={(accessPointId) =>
-          setFilters((prev) => ({ ...prev, accessPointId }))
+          setFilters((prev) => ({...prev, accessPointId}))
         }
         onReset={handleResetFilters}
         onPageChange={handlePageChange}

@@ -1,10 +1,8 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import {
-  Card, Form, Button, Toast, Typography, Spin,
-} from '@douyinfe/semi-ui';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { Button, Card, Form, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import api from '../api.ts';
 
-const { Title } = Typography;
+const {Title} = Typography;
 
 interface Settings {
   log_retention_months: number;
@@ -46,18 +44,18 @@ export default function SettingsPage(): ReactNode {
 
   return (
     <div>
-      <Title heading={3} style={{ marginBottom: 24 }}>系统设置</Title>
+      <Title heading={3} style={{marginBottom: 24}}>系统设置</Title>
 
       <Card>
         {loading && !settings ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
-            <Spin />
+          <div style={{display: 'flex', justifyContent: 'center', padding: 40}}>
+            <Spin/>
           </div>
         ) : (
           <Form
             onSubmit={handleSave}
             initValues={settings || undefined}
-            style={{ maxWidth: 480 }}
+            style={{maxWidth: 480}}
           >
             <Form.InputNumber
               field="log_retention_months"
@@ -66,7 +64,7 @@ export default function SettingsPage(): ReactNode {
               min={1}
               max={36}
             />
-            <Button type="primary" htmlType="submit" loading={saving} style={{ marginTop: 16 }}>
+            <Button type="primary" htmlType="submit" loading={saving} style={{marginTop: 16}}>
               保存
             </Button>
           </Form>

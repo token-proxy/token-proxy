@@ -19,7 +19,6 @@ pub struct Model {
     pub status_code: Option<i16>,
     pub duration_ms: Option<i32>,
     pub error_message: Option<String>,
-    pub request_index: i32,
     pub client_app: Option<String>,
     pub client_user_agent: Option<String>,
     pub conversation_source: String,

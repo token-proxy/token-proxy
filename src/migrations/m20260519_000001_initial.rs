@@ -217,7 +217,6 @@ impl MigrationTrait for Migration {
                 status_code                SMALLINT,
                 duration_ms                INTEGER,
                 error_message              TEXT,
-                request_index              INTEGER NOT NULL DEFAULT 0,
                 client_app                 VARCHAR(64),
                 client_user_agent          TEXT,
                 conversation_source        VARCHAR(32) NOT NULL DEFAULT 'unknown',
@@ -419,8 +418,6 @@ impl MigrationTrait for Migration {
                 r#"
                 CREATE INDEX IF NOT EXISTS idx_log_metadata_agent_id
                     ON log_metadata (session_id, agent_id);
-                CREATE INDEX IF NOT EXISTS idx_log_metadata_session_request
-                    ON log_metadata (session_id, request_index);
                 CREATE INDEX IF NOT EXISTS idx_log_metadata_source
                     ON log_metadata (conversation_source);
                 CREATE INDEX IF NOT EXISTS idx_log_token_usage_session
@@ -578,7 +575,6 @@ enum LogMetadata {
     StatusCode,
     DurationMs,
     ErrorMessage,
-    RequestIndex,
     ClientApp,
     ClientUserAgent,
     ConversationSource,

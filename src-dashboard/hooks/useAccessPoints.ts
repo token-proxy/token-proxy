@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Toast } from '@douyinfe/semi-ui';
 import api from '../api.ts';
-import { type AccessPoint, type AccessPointFormData, type AccountOption, type ModelMapping, type ProviderOption } from '../types/accessPoint.ts';
+import {
+  type AccessPoint,
+  type AccessPointFormData,
+  type AccountOption,
+  type ModelMapping,
+  type ProviderOption,
+} from '../types/accessPoint.ts';
 
 const EMPTY_FORM: AccessPointFormData = {
   name: '',
@@ -151,7 +157,7 @@ export default function useAccessPoints() {
     setOperation(accessPoint.id, true);
     const nextStatus = accessPoint.status === 'enabled' ? 'disabled' : 'enabled';
     try {
-      await api.put(`/api/access-points/${accessPoint.id}`, { status: nextStatus });
+      await api.put(`/api/access-points/${accessPoint.id}`, {status: nextStatus});
       Toast.success(`接入点已${nextStatus === 'enabled' ? '启用' : '禁用'}`);
       loadAccessPoints();
     } catch (err) {

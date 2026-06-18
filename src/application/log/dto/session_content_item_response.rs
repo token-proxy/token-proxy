@@ -8,7 +8,6 @@ use super::token_usage_response::TokenUsageResponse;
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionContentItemResponse {
     pub log_id: Uuid,
-    pub request_index: i32,
     pub timestamp: DateTime<Utc>,
     pub conversation_source: String,
     pub agent_id: Option<String>,

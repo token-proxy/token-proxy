@@ -42,8 +42,21 @@ export function formatDate(dateStr: string): string {
   });
 }
 
-export function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toLocaleString();
+export function formatNumber(num: number, useChineseStyle = true): string {
+  if (useChineseStyle) {
+    // 先转为字符串，处理可能传入的 number
+    const str = String(num);
+    // 使用正则分离：符号、整数部分、小数部分
+    const match = str.match(/^([+-]?)(\d*)\.?(\d*)$/);
+    if (!match) return str; // 理论上不会发生
+    const [, sign, intPart, decPart] = match;
+    // 如果整数部分为空（例如 .5），补为 "0"
+    const int = intPart || '0';
+    // 在整数部分从右往左每四位插入逗号
+    const formattedInt = int.replace(/\B(?=(\d{4})+(?!\d))/g, ',');
+    // 拼接符号、整数、小数（如果有）
+    return sign + formattedInt + (decPart ? '.' + decPart : '');
+  } else {
+    return num.toLocaleString('en-US');
+  }
 }

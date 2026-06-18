@@ -75,7 +75,6 @@ export interface ConversationEvent {
   id: string;
   log_id: string;
   timestamp: string;
-  request_index: number;
   event_index: number;
   source: string;
   role: string;
@@ -123,7 +122,6 @@ export interface LogDetailFull {
   status_code: number;
   duration_ms: number;
   error_message?: string | null;
-  request_index: number;
   conversation_source: string;
   agent_id?: string | null;
   // 客户端信息
@@ -133,6 +131,7 @@ export interface LogDetailFull {
   client_platform?: string | null;
   // 请求 + 响应原始内容（前端自行解析）
   request_headers: Record<string, unknown> | null;
+  response_headers: Record<string, unknown> | null;
   request_body: Record<string, unknown> | null;
   response_body: string;
   // Token 用量
@@ -148,7 +147,6 @@ export interface LogDetailFull {
 /** 会话原始内容项（前端基于此构建事件流） */
 export interface SessionContentItem {
   log_id: string;
-  request_index: number;
   timestamp: string;
   conversation_source: string;
   agent_id?: string | null;

@@ -181,7 +181,6 @@ impl LogRepository for SeaOrmLogRepository {
                 lm.access_point_id, lm.provider_id, lm.account_id,
                 lm.model_original, lm.model_mapped,
                 lm.status_code, lm.duration_ms, lm.error_message,
-                lm.request_index,
                 lm.client_app, lm.client_user_agent,
                 lm.conversation_source,
                 lm.agent_id,
@@ -311,23 +310,22 @@ impl LogRepository for SeaOrmLogRepository {
                         status_code: row.try_get_by_index::<Option<i16>>(9)?,
                         duration_ms: row.try_get_by_index::<Option<i32>>(10)?,
                         error_message: row.try_get_by_index::<Option<String>>(11)?,
-                        request_index: row.try_get_by_index::<i32>(12)?,
-                        client_app: row.try_get_by_index::<Option<String>>(13)?,
-                        client_user_agent: row.try_get_by_index::<Option<String>>(14)?,
-                        conversation_source: row.try_get_by_index::<String>(15)?,
-                        agent_id: row.try_get_by_index::<Option<String>>(16)?,
-                        has_error: row.try_get_by_index::<bool>(17)?,
-                        raw_content_available: row.try_get_by_index::<bool>(18)?,
-                        is_interrupted: row.try_get_by_index::<bool>(19)?,
-                        client_name: row.try_get_by_index::<Option<String>>(20)?,
-                        client_version: row.try_get_by_index::<Option<String>>(21)?,
-                        client_channel: row.try_get_by_index::<Option<String>>(22)?,
-                        client_platform: row.try_get_by_index::<Option<String>>(23)?,
-                        api_type: row.try_get_by_index::<String>(24)?,
+                        client_app: row.try_get_by_index::<Option<String>>(12)?,
+                        client_user_agent: row.try_get_by_index::<Option<String>>(13)?,
+                        conversation_source: row.try_get_by_index::<String>(14)?,
+                        agent_id: row.try_get_by_index::<Option<String>>(15)?,
+                        has_error: row.try_get_by_index::<bool>(16)?,
+                        raw_content_available: row.try_get_by_index::<bool>(17)?,
+                        is_interrupted: row.try_get_by_index::<bool>(18)?,
+                        client_name: row.try_get_by_index::<Option<String>>(19)?,
+                        client_version: row.try_get_by_index::<Option<String>>(20)?,
+                        client_channel: row.try_get_by_index::<Option<String>>(21)?,
+                        client_platform: row.try_get_by_index::<Option<String>>(22)?,
+                        api_type: row.try_get_by_index::<String>(23)?,
                     },
-                    input_tokens: row.try_get_by_index::<Option<i32>>(25)?,
-                    output_tokens: row.try_get_by_index::<Option<i32>>(26)?,
-                    total_tokens: row.try_get_by_index::<Option<i32>>(27)?,
+                    input_tokens: row.try_get_by_index::<Option<i32>>(24)?,
+                    output_tokens: row.try_get_by_index::<Option<i32>>(25)?,
+                    total_tokens: row.try_get_by_index::<Option<i32>>(26)?,
                 })
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -511,7 +509,6 @@ impl LogRepository for SeaOrmLogRepository {
                 lm.access_point_id, lm.provider_id, lm.account_id,
                 lm.model_original, lm.model_mapped,
                 lm.status_code, lm.duration_ms, lm.error_message,
-                lm.request_index,
                 lm.client_app, lm.client_user_agent,
                 lm.conversation_source,
                 lm.agent_id,
@@ -558,74 +555,73 @@ impl LogRepository for SeaOrmLogRepository {
                     status_code: row.try_get_by_index::<Option<i16>>(9)?,
                     duration_ms: row.try_get_by_index::<Option<i32>>(10)?,
                     error_message: row.try_get_by_index::<Option<String>>(11)?,
-                    request_index: row.try_get_by_index::<i32>(12)?,
-                    client_app: row.try_get_by_index::<Option<String>>(13)?,
-                    client_user_agent: row.try_get_by_index::<Option<String>>(14)?,
-                    conversation_source: row.try_get_by_index::<String>(15)?,
-                    agent_id: row.try_get_by_index::<Option<String>>(16)?,
-                    has_error: row.try_get_by_index::<bool>(17)?,
-                    raw_content_available: row.try_get_by_index::<bool>(18)?,
-                    is_interrupted: row.try_get_by_index::<bool>(19)?,
-                    client_name: row.try_get_by_index::<Option<String>>(20)?,
-                    client_version: row.try_get_by_index::<Option<String>>(21)?,
-                    client_channel: row.try_get_by_index::<Option<String>>(22)?,
-                    client_platform: row.try_get_by_index::<Option<String>>(23)?,
-                    api_type: row.try_get_by_index::<String>(24)?,
+                    client_app: row.try_get_by_index::<Option<String>>(12)?,
+                    client_user_agent: row.try_get_by_index::<Option<String>>(13)?,
+                    conversation_source: row.try_get_by_index::<String>(14)?,
+                    agent_id: row.try_get_by_index::<Option<String>>(15)?,
+                    has_error: row.try_get_by_index::<bool>(16)?,
+                    raw_content_available: row.try_get_by_index::<bool>(17)?,
+                    is_interrupted: row.try_get_by_index::<bool>(18)?,
+                    client_name: row.try_get_by_index::<Option<String>>(19)?,
+                    client_version: row.try_get_by_index::<Option<String>>(20)?,
+                    client_channel: row.try_get_by_index::<Option<String>>(21)?,
+                    client_platform: row.try_get_by_index::<Option<String>>(22)?,
+                    api_type: row.try_get_by_index::<String>(23)?,
                 };
 
                 let content = LogContent {
                     log_id: entry.id,
                     timestamp: entry.timestamp,
                     request_headers: Some(
-                        row.try_get_by_index::<Option<serde_json::Value>>(25)?
+                        row.try_get_by_index::<Option<serde_json::Value>>(24)?
                             .unwrap_or(serde_json::Value::Null),
                     ),
                     request_body: Some(
-                        row.try_get_by_index::<Option<serde_json::Value>>(26)?
+                        row.try_get_by_index::<Option<serde_json::Value>>(25)?
                             .unwrap_or(serde_json::Value::Null),
                     ),
                     response_body: Some(
-                        row.try_get_by_index::<Option<String>>(27)?
+                        row.try_get_by_index::<Option<String>>(26)?
                             .unwrap_or_default(),
                     ),
-                    response_headers: row.try_get_by_index::<Option<serde_json::Value>>(28)?,
+                    response_headers: row.try_get_by_index::<Option<serde_json::Value>>(27)?,
                 };
 
                 // 检查是否有 token 用量（ltu.id 不为 NULL）
-                let usage_id: Option<Uuid> = row.try_get_by_index::<Option<Uuid>>(29)?;
+                let usage_id: Option<Uuid> = row.try_get_by_index::<Option<Uuid>>(28)?;
 
                 let usage = if let Some(uid) = usage_id {
-                    let usage_ts_col: chrono::DateTime<FixedOffset> = row.try_get_by_index(41)?;
+                    let usage_ts_col: chrono::DateTime<FixedOffset> = row.try_get_by_index(40)?;
                     let usage_created_col: chrono::DateTime<FixedOffset> =
-                        row.try_get_by_index(51)?;
+                        row.try_get_by_index(50)?;
 
                     Some(LogTokenUsage {
                         id: uid,
                         log_id: row
-                            .try_get_by_index::<Option<Uuid>>(30)?
+                            .try_get_by_index::<Option<Uuid>>(29)?
                             .unwrap_or(entry.id),
-                        input_tokens: row.try_get_by_index::<i32>(31)?,
-                        output_tokens: row.try_get_by_index::<i32>(32)?,
-                        cache_creation_input_tokens: row.try_get_by_index::<i32>(33)?,
-                        cache_read_input_tokens: row.try_get_by_index::<i32>(34)?,
-                        thinking_tokens: row.try_get_by_index::<i32>(35)?,
-                        total_tokens: row.try_get_by_index::<i32>(36)?,
-                        raw_usage: row.try_get_by_index::<Option<serde_json::Value>>(37)?,
-                        server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(38)?,
-                        cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(39)?,
+                        input_tokens: row.try_get_by_index::<i32>(30)?,
+                        output_tokens: row.try_get_by_index::<i32>(31)?,
+                        cache_creation_input_tokens: row.try_get_by_index::<i32>(32)?,
+                        cache_read_input_tokens: row.try_get_by_index::<i32>(33)?,
+                        thinking_tokens: row.try_get_by_index::<i32>(34)?,
+                        total_tokens: row.try_get_by_index::<i32>(35)?,
+                        raw_usage: row.try_get_by_index::<Option<serde_json::Value>>(36)?,
+                        server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(37)?,
+                        cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(38)?,
                         session_id: row
-                            .try_get_by_index::<Option<String>>(40)?
+                            .try_get_by_index::<Option<String>>(39)?
                             .unwrap_or_default(),
                         timestamp: usage_ts_col,
-                        user_id: row.try_get_by_index::<Option<Uuid>>(42)?,
-                        access_point_id: row.try_get_by_index::<Option<Uuid>>(43)?,
-                        provider_id: row.try_get_by_index::<Option<Uuid>>(44)?,
-                        account_id: row.try_get_by_index::<Option<Uuid>>(45)?,
-                        model_original: row.try_get_by_index::<Option<String>>(46)?,
-                        model_mapped: row.try_get_by_index::<Option<String>>(47)?,
-                        conversation_source: row.try_get_by_index::<Option<String>>(48)?,
-                        agent_id: row.try_get_by_index::<Option<String>>(49)?,
-                        agent_type: row.try_get_by_index::<Option<String>>(50)?,
+                        user_id: row.try_get_by_index::<Option<Uuid>>(41)?,
+                        access_point_id: row.try_get_by_index::<Option<Uuid>>(42)?,
+                        provider_id: row.try_get_by_index::<Option<Uuid>>(43)?,
+                        account_id: row.try_get_by_index::<Option<Uuid>>(44)?,
+                        model_original: row.try_get_by_index::<Option<String>>(45)?,
+                        model_mapped: row.try_get_by_index::<Option<String>>(46)?,
+                        conversation_source: row.try_get_by_index::<Option<String>>(47)?,
+                        agent_id: row.try_get_by_index::<Option<String>>(48)?,
+                        agent_type: row.try_get_by_index::<Option<String>>(49)?,
                         created_at: usage_created_col,
                     })
                 } else {

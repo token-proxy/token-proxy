@@ -1,12 +1,12 @@
-import { useState, useEffect, type ReactNode } from 'react';
-import { Card, Row, Col, Table, Typography } from '@douyinfe/semi-ui';
+import { type ReactNode, useEffect, useState } from 'react';
+import { Card, Col, Row, Table, Typography } from '@douyinfe/semi-ui';
 import api from '../api';
-import StatCard from '../components/StatCard.tsx';
-import TrendChart from '../components/TrendChart.tsx';
+import StatCard from '@components/dashboard/StatCard';
+import TrendChart from '@components/dashboard/TrendChart';
 import type { OverviewData, TopAccessPoint, TopModel, TrendItem } from '../types/dashboard.ts';
 import { formatNumber } from '../utils/format.ts';
 
-const { Title } = Typography;
+const {Title} = Typography;
 
 // --- API 不可用时的 Mock 兜底数据 ---
 
@@ -22,29 +22,29 @@ const MOCK_OVERVIEW: OverviewData = {
 };
 
 const MOCK_TRENDS: TrendItem[] = [
-  { date: '05-13', count: 3200 },
-  { date: '05-14', count: 4100 },
-  { date: '05-15', count: 3800 },
-  { date: '05-16', count: 5200 },
-  { date: '05-17', count: 4900 },
-  { date: '05-18', count: 6100 },
-  { date: '05-19', count: 5800 },
+  {date: '05-13', count: 3200},
+  {date: '05-14', count: 4100},
+  {date: '05-15', count: 3800},
+  {date: '05-16', count: 5200},
+  {date: '05-17', count: 4900},
+  {date: '05-18', count: 6100},
+  {date: '05-19', count: 5800},
 ];
 
 const MOCK_TOP_ACCESS_POINTS: TopAccessPoint[] = [
-  { short_code: 'gp4', name: 'GPT-4 接入点', count: 45200 },
-  { short_code: 'cla3', name: 'Claude 3 接入点', count: 32100 },
-  { short_code: 'gemini', name: 'Gemini 接入点', count: 19800 },
-  { short_code: 'glm4', name: 'GLM-4 接入点', count: 12400 },
-  { short_code: 'qwen', name: '通义千问接入点', count: 8900 },
+  {short_code: 'gp4', name: 'GPT-4 接入点', count: 45200},
+  {short_code: 'cla3', name: 'Claude 3 接入点', count: 32100},
+  {short_code: 'gemini', name: 'Gemini 接入点', count: 19800},
+  {short_code: 'glm4', name: 'GLM-4 接入点', count: 12400},
+  {short_code: 'qwen', name: '通义千问接入点', count: 8900},
 ];
 
 const MOCK_TOP_MODELS: TopModel[] = [
-  { model: 'gpt-4-turbo', count: 28500 },
-  { model: 'gpt-3.5-turbo', count: 22100 },
-  { model: 'claude-3-opus-20240229', count: 15300 },
-  { model: 'claude-3-sonnet-20240229', count: 12100 },
-  { model: 'gemini-1.5-pro', count: 9800 },
+  {model: 'gpt-4-turbo', count: 28500},
+  {model: 'gpt-3.5-turbo', count: 22100},
+  {model: 'claude-3-opus-20240229', count: 15300},
+  {model: 'claude-3-sonnet-20240229', count: 12100},
+  {model: 'gemini-1.5-pro', count: 9800},
 ];
 
 // --- Top-N 表格列定义 ---
@@ -56,8 +56,8 @@ const ACCESS_POINT_COLUMNS = [
     align: 'center' as const,
     render: (_: unknown, __: unknown, idx: number) => idx + 1,
   },
-  { title: '短码', dataIndex: 'short_code' },
-  { title: '名称', dataIndex: 'name' },
+  {title: '短码', dataIndex: 'short_code'},
+  {title: '名称', dataIndex: 'name'},
   {
     title: '请求量',
     dataIndex: 'count',
@@ -73,7 +73,7 @@ const MODEL_COLUMNS = [
     align: 'center' as const,
     render: (_: unknown, __: unknown, idx: number) => idx + 1,
   },
-  { title: '模型', dataIndex: 'model' },
+  {title: '模型', dataIndex: 'model'},
   {
     title: '使用次数',
     dataIndex: 'count',
@@ -125,7 +125,7 @@ export default function DashboardPage(): ReactNode {
 
   return (
     <div>
-      <Title heading={3} style={{ marginBottom: 24 }}>
+      <Title heading={3} style={{marginBottom: 24}}>
         Dashboard
       </Title>
 
@@ -171,16 +171,16 @@ export default function DashboardPage(): ReactNode {
       </Row>
 
       {/* ---- 趋势图 ---- */}
-      <div style={{ marginTop: 24 }}>
-        <TrendChart data={trends} loading={loading} />
+      <div style={{marginTop: 24}}>
+        <TrendChart data={trends} loading={loading}/>
       </div>
 
       {/* ---- Top-N 表格 ---- */}
-      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+      <Row gutter={[16, 16]} style={{marginTop: 24}}>
         <Col xs={24} lg={12}>
           <Card
             title="Top 5 接入点"
-            style={{ backgroundColor: 'var(--semi-color-bg-0)' }}
+            style={{backgroundColor: 'var(--semi-color-bg-0)'}}
           >
             <Table
               columns={ACCESS_POINT_COLUMNS}
@@ -195,7 +195,7 @@ export default function DashboardPage(): ReactNode {
         <Col xs={24} lg={12}>
           <Card
             title="Top 5 模型"
-            style={{ backgroundColor: 'var(--semi-color-bg-0)' }}
+            style={{backgroundColor: 'var(--semi-color-bg-0)'}}
           >
             <Table
               columns={MODEL_COLUMNS}

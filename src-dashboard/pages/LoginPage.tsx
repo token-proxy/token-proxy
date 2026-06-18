@@ -1,9 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Card, Form, Button, Toast, Typography } from '@douyinfe/semi-ui';
-import ThemeToggle from '../components/ThemeToggle';
+import { Button, Card, Form, Toast, Typography } from '@douyinfe/semi-ui';
+import ThemeToggle from '@components/common/ThemeToggle';
 
-const { Title } = Typography;
+const {Title} = Typography;
 
 interface LoginFormValues {
   username: string;
@@ -16,7 +16,7 @@ export default function LoginPage(): ReactNode {
   const [submitting, setSubmitting] = useState(false);
 
   if (token) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/dashboard" replace/>;
   }
 
   const handleSubmit = async (values: LoginFormValues) => {
@@ -25,7 +25,7 @@ export default function LoginPage(): ReactNode {
     try {
       const res = await fetch('/api/tokens', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(values),
       });
 
@@ -42,7 +42,7 @@ export default function LoginPage(): ReactNode {
       localStorage.setItem('display_name', data.display_name ?? values.username);
 
       Toast.success('登录成功');
-      navigate('/dashboard', { replace: true });
+      navigate('/dashboard', {replace: true});
     } catch {
       Toast.error('网络错误');
     } finally {
@@ -58,28 +58,28 @@ export default function LoginPage(): ReactNode {
       minHeight: '100vh',
       background: 'var(--semi-color-fill-0)',
     }}>
-      <Card style={{ width: 400, padding: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
-          <Title heading={3} style={{ margin: 0 }}>
+      <Card style={{width: 400, padding: 24}}>
+        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32}}>
+          <Title heading={3} style={{margin: 0}}>
             Token Proxy
           </Title>
-          <ThemeToggle size="small" />
+          <ThemeToggle size="small"/>
         </div>
         <Form onSubmit={handleSubmit}>
           <Form.Input
             field="username"
             label="账号"
             placeholder="请输入账号"
-            rules={[{ required: true, message: '请输入账号' }]}
+            rules={[{required: true, message: '请输入账号'}]}
           />
           <Form.Input
             field="password"
             label="密码"
             type="password"
             placeholder="请输入密码"
-            rules={[{ required: true, message: '请输入密码' }]}
+            rules={[{required: true, message: '请输入密码'}]}
           />
-          <Button type="primary" htmlType="submit" loading={submitting} block style={{ marginTop: 16 }}>
+          <Button type="primary" htmlType="submit" loading={submitting} block style={{marginTop: 16}}>
             登录
           </Button>
         </Form>

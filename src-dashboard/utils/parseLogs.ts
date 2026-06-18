@@ -21,7 +21,6 @@ export interface ConversationEvent {
   id: string;
   log_id: string;
   timestamp: string;
-  request_index: number;
   event_index: number;
   source: string;
   role: 'user' | 'assistant';
@@ -228,6 +227,157 @@ export function extractAgentTypeFromSSE(responseBody: string): string | null {
   return null;
 }
 
+// ─── 结构化 content block 解析 ───
+
+export interface ContentBlockInfo {
+  index: number;
+  block_type: 'thinking' | 'text' | 'tool_use';
+  /** thinking block 的 thinking 内容 */
+  thinking?: string;
+  /** text block 的文本内容 */
+  text?: string;
+  /** tool_use block 的工具名 */
+  tool_name?: string;
+  /** tool_use block 的调用 ID */
+  tool_use_id?: string;
+  /** tool_use block 的输入参数 JSON */
+  input?: Record<string, unknown>;
+}
+
+export interface MessageStartInfo {
+  model?: string;
+  message_id?: string;
+  usage?: Record<string, unknown>;
+}
+
+export interface MessageDeltaInfo {
+  stop_reason?: string;
+  usage?: Record<string, unknown>;
+}
+
+export interface StructuredSSEResult {
+  /** message_start 事件提取的信息 */
+  message_start?: MessageStartInfo;
+  /** 按 index 排序的 content blocks */
+  content_blocks: ContentBlockInfo[];
+  /** message_delta 事件提取的信息 */
+  message_delta?: MessageDeltaInfo;
+}
+
+/**
+ * 将 SSE 响应体字符串解析为结构化 content blocks
+ *
+ * 逐行解析 SSE → 按 index 分组将 delta 拼接为完整 content block
+ * → 输出结构化 blocks 数组，同时提取 message_start / message_delta 信息。
+ */
+export function parseStructuredBlocks(responseBody: string): StructuredSSEResult {
+  const events = parseSSE(responseBody);
+  const result: StructuredSSEResult = {
+    content_blocks: [],
+  };
+
+  // 1. 提取 message_start
+  for (const ev of events) {
+    if (ev.kind === 'message_start') {
+      const msg = ev.data.message as Record<string, unknown> | undefined;
+      result.message_start = {
+        model: typeof msg?.model === 'string' ? msg.model : undefined,
+        message_id: typeof msg?.id === 'string' ? msg.id : undefined,
+        usage: msg?.usage as Record<string, unknown> | undefined,
+      };
+      break;
+    }
+  }
+
+  // 2. 按 index 分组 content blocks
+  const blocks = new Map<number, ContentBlockInfo>();
+  const textParts = new Map<number, string[]>();
+  const thinkingParts = new Map<number, string[]>();
+  const inputJsonParts = new Map<number, string[]>();
+
+  for (const ev of events) {
+    const idx = ev.index ?? 0;
+
+    if (ev.kind === 'content_block_start') {
+      const block = ev.data.content_block as Record<string, unknown> | undefined;
+      const blockType = String(block?.type ?? '');
+      if (blockType === 'thinking' || blockType === 'text' || blockType === 'tool_use') {
+        blocks.set(idx, {
+          index: idx,
+          block_type: blockType,
+          tool_name: typeof block?.name === 'string' ? block.name : undefined,
+          tool_use_id: typeof block?.id === 'string' ? block.id : undefined,
+        });
+      }
+      if (!textParts.has(idx)) textParts.set(idx, []);
+      if (!thinkingParts.has(idx)) thinkingParts.set(idx, []);
+      if (!inputJsonParts.has(idx)) inputJsonParts.set(idx, []);
+    }
+
+    if (ev.kind === 'content_block_delta') {
+      const delta = ev.data.delta as Record<string, unknown> | undefined;
+      if (!textParts.has(idx)) textParts.set(idx, []);
+      if (!thinkingParts.has(idx)) thinkingParts.set(idx, []);
+      if (!inputJsonParts.has(idx)) inputJsonParts.set(idx, []);
+
+      if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
+        textParts.get(idx)!.push(delta.text);
+      }
+      if (delta?.type === 'thinking_delta' && typeof delta.thinking === 'string') {
+        thinkingParts.get(idx)!.push(delta.thinking);
+      }
+      if (delta?.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
+        inputJsonParts.get(idx)!.push(delta.partial_json);
+      }
+    }
+  }
+
+  // 3. 合并 delta 到 blocks
+  for (const [idx, block] of blocks) {
+    const textJoined = textParts.get(idx)?.join('') ?? '';
+    const thinkingJoined = thinkingParts.get(idx)?.join('') ?? '';
+    const inputParts = inputJsonParts.get(idx);
+
+    if (textJoined) block.text = textJoined;
+    if (thinkingJoined) block.thinking = thinkingJoined;
+
+    if (block.block_type === 'tool_use' && inputParts && inputParts.length > 0) {
+      const fullJson = inputParts.join('');
+      try {
+        block.input = JSON.parse(fullJson) as Record<string, unknown>;
+      } catch {
+        // 部分 JSON，用对象模式尝试近似解析
+        try {
+          // 掉尾部的截断字符
+          const trimmed = fullJson.replace(/,\s*$/, '').replace(/[^}]\s*$/, '');
+          block.input = JSON.parse(trimmed + (trimmed.endsWith('}') ? '' : '}')) as Record<string, unknown>;
+        } catch {
+          // 无法解析，保留原始字符串
+          block.input = {partial_json: fullJson};
+        }
+      }
+    }
+  }
+
+  // 4. 按 index 排序输出
+  const sortedIndices = Array.from(blocks.keys()).sort((a, b) => a - b);
+  result.content_blocks = sortedIndices.map((idx) => blocks.get(idx)!);
+
+  // 5. 提取 message_delta
+  for (const ev of events) {
+    if (ev.kind === 'message_delta') {
+      const delta = ev.data.delta as Record<string, unknown> | undefined;
+      result.message_delta = {
+        stop_reason: typeof delta?.stop_reason === 'string' ? delta.stop_reason : undefined,
+        usage: ev.data.usage as Record<string, unknown> | undefined,
+      };
+      break;
+    }
+  }
+
+  return result;
+}
+
 // ─── 会话事件构建 ───
 
 /** 每个 log 生成一个 crypto.randomUUID */
@@ -241,7 +391,6 @@ function uid(): string {
 interface BuildEventsMeta {
   log_id: string;
   timestamp: string;
-  request_index: number;
   agent_id?: string;
   agent_type?: string;
   conversation_source: string;
@@ -262,7 +411,6 @@ export function buildConversationEvents(
       id: uid(),
       log_id: meta.log_id,
       timestamp: meta.timestamp,
-      request_index: meta.request_index,
       event_index: eventIndex++,
       source: meta.conversation_source,
       role: 'user',
@@ -335,7 +483,6 @@ export function buildConversationEvents(
         id: uid(),
         log_id: meta.log_id,
         timestamp: meta.timestamp,
-        request_index: meta.request_index,
         event_index: eventIndex++,
         source: meta.conversation_source,
         role: 'assistant',
@@ -352,7 +499,6 @@ export function buildConversationEvents(
         id: uid(),
         log_id: meta.log_id,
         timestamp: meta.timestamp,
-        request_index: meta.request_index,
         event_index: eventIndex++,
         source: meta.conversation_source,
         role: 'assistant',
@@ -375,7 +521,6 @@ export function buildConversationEvents(
         id: uid(),
         log_id: meta.log_id,
         timestamp: meta.timestamp,
-        request_index: meta.request_index,
         event_index: eventIndex++,
         source: meta.conversation_source,
         role: 'assistant',

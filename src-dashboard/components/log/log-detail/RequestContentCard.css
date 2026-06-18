@@ -1,0 +1,42 @@
+/* 手风琴区块 */
+.accordion-section {
+  border: 1px solid var(--semi-color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.accordion-section:not(:last-child) {
+  margin-bottom: 8px;
+}
+
+/* 手风琴标题栏 */
+.accordion-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--semi-color-fill-0);
+  transition: background 0.15s;
+}
+
+.accordion-header:hover {
+  background: var(--semi-color-fill-1);
+}
+
+.accordion-header:focus-visible {
+  outline: 2px solid var(--semi-color-primary);
+  outline-offset: -2px;
+}
+
+/* 手风琴标题文字 */
+.accordion-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
+
+/* 手风琴内容区 */
+.accordion-body {
+  padding: 12px 14px;
+}

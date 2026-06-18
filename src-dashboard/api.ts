@@ -34,8 +34,8 @@ async function doRefresh(): Promise<string> {
 
   const res = await fetch('/api/tokens:refresh', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({refresh_token: refreshToken}),
   });
 
   if (!res.ok) {
@@ -84,7 +84,7 @@ async function buildHeaders(extra?: HeadersInit): Promise<HeadersInit> {
   const token = await ensureFreshToken();
   return {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(token ? {Authorization: `Bearer ${token}`} : {}),
     ...(extra ?? {}),
   };
 }
@@ -95,7 +95,7 @@ async function request<T>(
   retried = false,
 ): Promise<T> {
   const headers = await buildHeaders(options.headers);
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, {...options, headers});
 
   // 401 兜底：体检漏判（如时钟漂移、服务端密钥轮换）时再尝试刷新一次
   if (res.status === 401 && !retried) {
@@ -138,7 +138,7 @@ const api = {
   },
 
   async delete(url: string): Promise<void> {
-    await request<void>(url, { method: 'DELETE' });
+    await request<void>(url, {method: 'DELETE'});
   },
 };
 

@@ -293,35 +293,42 @@ shared/
 │   ├── styles.css                  # 额外样式
 │   ├── api.ts                      # API 通信层 (fetch 封装)
 │   ├── assets/                     # 静态资源
-│   ├── components/                 # 通用组件
-│   │   ├── ThemeToggle.tsx          # 主题切换 (light/dark/system)
-│   │   ├── AccessPointDrawer.tsx    # 接入点创建/编辑表单 (含 api_type、Provider 选择并显示默认模型; 将 Provider.models + Provider.default_model 传递给 ModelMappingEditor 作为目标模型候选列表)
-│   │   ├── AccessPointTable.tsx     # 接入点列表表格
-│   │   ├── ModelMappingEditor.tsx   # 模型映射编辑器 (源模型 Select 用 Semi Tag 前缀显示"精准匹配/模式匹配", 预设含 __unmatched__(prefix) 和 Claude 家族(prefix), 支持 allowCreate 自定义; 目标模型 Select 包含 Provider.models + Provider.default_model + 附加的"默认模型"选项 (DEFAULT_MODEL 哨兵值), 禁止创建; 导出 matchTypeForSource 和 UNMATCHED_MODEL 供外部使用)
-│   │   ├── StatusToggle.tsx         # 状态切换开关
-│   │   ├── StatCard.tsx             # 统计卡片
-│   │   ├── TrendChart.tsx           # 趋势图表
-│   │   ├── LogFilterBar.tsx         # 日志过滤栏
-│   │   ├── SessionInfoHeader.tsx    # 会话信息头部
-│   │   ├── LogDetailModal.tsx       # 日志详情弹窗
-│   │   ├── RawContentModal.tsx      # 原始内容查看弹窗
-│   │   ├── ChatBubbleView.tsx       # 聊天气泡视图
-│   │   ├── RequestLogTable.tsx      # 请求日志表格 (列定义 + Table 渲染, 从 RequestLogPage 提取)
-│   │   ├── SessionListView.tsx      # 会话列表视图 (过滤栏 + 分页表格, 从 SessionLogPage 提取)
-│   │   ├── SessionDetailView.tsx    # 会话详情视图 (事件流 + 事件摘要表格 + 原始内容弹窗, 从 SessionLogPage 提取)
-│   │   ├── CopyableIdText.tsx       # 可复制 ID 文本组件 (等宽字体 + 点击复制)
-│   │   ├── BasicInfoCard.tsx        # 基础信息卡片
-│   │   ├── CodeHighlight.tsx        # 代码高亮组件
-│   │   ├── CollapsibleCard.tsx      # 可折叠卡片
-│   │   ├── MarkdownRender.tsx       # Markdown 渲染组件
-│   │   ├── RawResponseView.tsx      # 原始响应查看组件
-│   │   ├── RequestContentCard.tsx   # 请求内容卡片
-│   │   ├── RequestHeadersCard.tsx   # 请求头卡片
-│   │   ├── ResponseContentCard.tsx  # 响应内容卡片
-│   │   ├── TokenUsageCard.tsx       # Token 用量卡片
-│   │   ├── charts/                  # 图表组件子目录
-│   │   ├── log-viewer/              # 日志查看器组件子目录
-│   │   └── timeline/                # 时间线组件子目录
+│   ├── components/                 # 组件 (按功能分组子目录, 通过 @components 路径别名引用)
+│   │   ├── common/                 # 通用 UI 组件 (7 个, 跨领域复用)
+│   │   │   ├── CollapsibleCard.tsx      # 可折叠卡片 (header 区域可点击折叠/展开)
+│   │   │   ├── CodeHighlight.tsx        # 代码高亮组件
+│   │   │   ├── CopyableIdText.tsx       # 可复制 ID 文本 (等宽字体 + 点击复制)
+│   │   │   ├── ExpandableContentBlock.tsx # 可展开/收起的长内容块
+│   │   │   ├── MarkdownRender.tsx       # Markdown 渲染组件
+│   │   │   ├── StatusToggle.tsx         # 状态切换开关 (跨领域复用)
+│   │   │   └── ThemeToggle.tsx          # 主题切换 (light/dark/system)
+│   │   ├── access-point/           # 接入点管理组件 (3 个)
+│   │   │   ├── AccessPointDrawer.tsx    # 接入点创建/编辑表单 (含 api_type、Provider 选择并显示默认模型, 自动预填 __unmatched__ -> __default_model__ 映射)
+│   │   │   ├── AccessPointTable.tsx     # 接入点列表表格
+│   │   │   └── ModelMappingEditor.tsx   # 模型映射编辑器
+│   │   ├── provider/               # Provider 管理组件 (1 个)
+│   │   │   └── AccountManager.tsx       # Account 表格 + 添加/编辑 SideSheet (从 ProviderManagement 提取)
+│   │   ├── log/                    # 日志相关组件 (4 个)
+│   │   │   ├── LogFilterBar.tsx         # 日志过滤栏
+│   │   │   ├── RequestLogTable.tsx      # 请求日志表格 (列定义 + Table 渲染)
+│   │   │   ├── RawResponseView.tsx      # 原始响应查看组件
+│   │   │   └── log-detail/              # 日志详情卡片组 (6 个, 强内聚子组)
+│   │   │       ├── BasicInfoCard.tsx        # 基础信息卡片
+│   │   │       ├── TokenUsageCard.tsx       # Token 用量卡片
+│   │   │       ├── HeadersCard.tsx   # 请求头卡片
+│   │   │       ├── RequestContentCard.tsx   # 请求内容卡片
+│   │   │       ├── ResponseContentCard.tsx  # 响应内容卡片
+│   │   │       └── ResponseHeadersCard.tsx  # 响应头卡片
+│   │   ├── session/                # 会话查看组件 (4 个)
+│   │   │   ├── SessionListView.tsx      # 会话列表视图 (过滤栏 + 分页表格)
+│   │   │   ├── SessionDetailView.tsx    # 会话详情视图 (事件流 + 事件摘要表格)
+│   │   │   ├── ClaudeSessionTimeline.tsx # 会话事件流时间线
+│   │   │   └── RawContentModal.tsx      # 原始内容查看弹窗
+│   │   ├── dashboard/              # 仪表盘组件 (2 个)
+│   │   │   ├── StatCard.tsx             # 统计卡片
+│   │   │   └── TrendChart.tsx           # 趋势图表
+│   │   └── user/                   # 用户管理组件 (1 个)
+│   │       └── ApiKeyManager.tsx        # API Key 表格 + 创建/编辑/吊销 Modal (从 ProfilePage 提取)
 │   ├── hooks/                      # 自定义 hooks
 │   │   ├── useTheme.ts             # 主题管理 (ThemeProvider + useTheme, 三种模式)
 │   │   └── useAccessPoints.ts      # 接入点数据管理 (Provider/Account 加载; 创建/编辑时过滤 target_model 不在 Provider.models + Provider.default_model + DEFAULT_MODEL 哨兵的映射; 删除/切换状态/复制 URL)
@@ -526,6 +533,7 @@ docker compose up -d    # 启动 PostgreSQL + App
 
 | 日期 | 变更说明 |
 |------|---------|
+| 2026-06-18 | 前端组件目录重组: 将 `src-dashboard/components/` 中 25 个平铺组件按功能分组为 common/、access-point/、provider/、log/、session/、dashboard/、user/ 7 个子目录; log-detail/ 作为 log/ 的内聚子组。删除旧空目录 (charts/、log-viewer/、timeline/)。提取 2 个新组件 (AccountManager、ApiKeyManager)。配置 `@components` Vite 路径别名, 所有组件间 import 统一使用别名格式 |
 | 2026-05-19 | 初始化架构文档，记录 DDD 四层架构、代理转发流程、安全设计和项目状态 |
 | 2026-05-20 | 应用层分区管理替代 pg_partman：新增 PartitionManager，迁移移除 pg_partman 依赖改为原生分区语法 + 种子分区，Config 新增 3 个分区配置项，main.rs 新增分区初始化和后台定时任务 |
 | 2026-05-24 | 调整代理 Header 构造语义：`ProxyClient` 独立构建上游请求，入站 `authorization` 只用于用户 API key 认证，上游 provider 认证由账号 API key 单独生成；同时实现 `decrypt_account_key` 解密逻辑（从 stub 变为完整实现） |

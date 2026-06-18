@@ -1,12 +1,4 @@
-import {
-  createContext,
-  createElement,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
+import { createContext, createElement, type ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type EffectiveTheme = 'light' | 'dark';
@@ -47,7 +39,7 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-export function ThemeProvider({ children }: { children: ReactNode }): ReactNode {
+export function ThemeProvider({children}: { children: ReactNode }): ReactNode {
   const [mode, setMode] = useState<ThemeMode>(getStoredMode);
   const [, forceUpdate] = useState(0);
 
@@ -81,11 +73,11 @@ export function ThemeProvider({ children }: { children: ReactNode }): ReactNode 
   };
 
   const value = useMemo(
-    () => ({ mode, effectiveTheme, setMode: setThemeMode }),
+    () => ({mode, effectiveTheme, setMode: setThemeMode}),
     [mode, effectiveTheme],
   );
 
-  return createElement(ThemeContext.Provider, { value }, children);
+  return createElement(ThemeContext.Provider, {value}, children);
 }
 
 export function useTheme(): ThemeContextValue {

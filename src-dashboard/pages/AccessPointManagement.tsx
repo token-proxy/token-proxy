@@ -1,11 +1,11 @@
-import { useState, type ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Button, Typography } from '@douyinfe/semi-ui';
-import AccessPointDrawer from '../components/AccessPointDrawer.tsx';
-import AccessPointTable from '../components/AccessPointTable.tsx';
+import AccessPointDrawer from '@components/access-point/AccessPointDrawer';
+import AccessPointTable from '@components/access-point/AccessPointTable';
 import useAccessPoints from '../hooks/useAccessPoints.ts';
 import { type AccessPoint, type AccessPointFormData, type ModelMapping } from '../types/accessPoint.ts';
 
-const { Title } = Typography;
+const {Title} = Typography;
 
 export default function AccessPointManagement(): ReactNode {
   const {
@@ -61,7 +61,7 @@ export default function AccessPointManagement(): ReactNode {
   };
 
   const handleProviderChange = async (providerId: string) => {
-    setFormData({ ...formData, provider_id: providerId, account_id: undefined });
+    setFormData({...formData, provider_id: providerId, account_id: undefined});
     loadAccountsByProvider(providerId);
 
     try {
@@ -90,7 +90,7 @@ export default function AccessPointManagement(): ReactNode {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
         <Title heading={3}>接入点管理</Title>
         <Button type="primary" onClick={openCreateDrawer}>创建接入点</Button>
       </div>

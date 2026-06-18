@@ -132,7 +132,7 @@ src/
 - 如: `服务监听地址: {}`, `接入点 '{}' 未找到`
 - 错误消息使用中文, 技术标识符/日志字段使用英文
 - 后端: 94 个 Rust 源文件, 遵循 Rust 2021 edition 惯例
-- 前端: 45 个 TypeScript 源文件, 遵循 TypeScript 6 严格模式
+- 前端: 52 个 TypeScript 源文件, 遵循 TypeScript 6 严格模式
 
 ### 后端 (Rust)
 
@@ -144,6 +144,8 @@ src/
 ### 前端 (React + Semi Design)
 
 - 页面组件集中在 `src-dashboard/pages/`, 负责数据加载和视图切换; 表格/详情等具体渲染逻辑提取到 `src-dashboard/components/` 中
+- 组件按功能分组组织: `common/` (通用 UI)、`access-point/` (接入点管理)、`provider/` (Provider 管理)、`log/` (请求日志, 含 `log-detail/` 子目录)、`session/` (会话查看)、`dashboard/` (仪表盘)、`user/` (用户管理)
+- 路径别名: `@components` 映射到 `src-dashboard/components/` (配于 `vite.config.ts` + `tsconfig.app.json`), 跨目录组件引用统一使用 `@components/...` 格式, 不带 `.tsx` 后缀
 - 使用 `@douyinfe/semi-ui` 组件库
 - 路由: react-router-dom v7 (BrowserRouter + Routes + AdminLayout)
 - 路由结构: `/login`, `/dashboard`, `/providers`, `/access-points`, `/sessions`, `/logs`, `/users`, `/settings`, `/settings/profile`
@@ -156,6 +158,8 @@ src/
 - **ModelMappingEditor**: 接入点表单中的模型映射编辑器, 仅保留一个"添加映射"按钮。源模型使用 Semi Select, 支持搜索和 allowCreate; 选项以 Semi Tag 前缀显示匹配类型 (`精准匹配`/`模式匹配`); 源模型选项包括: `__unmatched__`(模式匹配)、Claude Opus/Sonnet/Haiku 预设(模式匹配)、以及 Provider 的 models 列表(精准匹配)。`__unmatched__` 和 Claude 家族源模型保存为 `prefix` 匹配类型, 普通值/自定义输入值保存为 `exact` 匹配类型。目标模型使用 Semi Select, 选项包含 Provider.models 和 `__default_model__` 哨兵, 不允许 allowCreate; 选择 `__default_model__` 时 UI 显示为"默认模型 (实际模型)", 动态解析 Provider 当前 default_model 并展示; 当源模型为 `__unmatched__` 时, 目标模型自动填充为 `__default_model__`
 - **AccessPointDrawer 映射管理**: 接入点创建/编辑时选择 Provider 后, 会请求 `GET /api/providers/{id}` 刷新 Provider 的 models 和 default_model 列表; 创建态选择带默认模型的 Provider 时自动预填一条 `__unmatched__ -> __default_model__` 的映射规则。保存接入点时过滤映射, target_model 必须属于 Provider.models 或等于 `__default_model__` 哨兵
 - **日志前端展示**: 请求日志列表使用 `RequestLogTable` 组件, 优先展示 `log_metadata.message_preview`, 内容超出时用 Semi Tooltip 展示 `message_full`; 会话日志页面 `SessionLogPage` 瘦身为路由壳, 负责数据加载和视图切换; 列表模式使用 `SessionListView` (筛选栏 + 表格), 详情模式使用 `SessionDetailView` (信息卡片 + `ClaudeSessionTimeline` 时间线 + 事件摘要表格 + `RawContentModal`); 默认不批量读取 `log_contents`, 点击”原始内容”时再请求 `/api/logs/{id}/raw`
+- **日志详情页卡片组件**: `LogDetailPage` 由多个语义化卡片组成——`BasicInfoCard` (基本信息, 含耗时千分位展示、模型映射 Tag 包裹)、`TokenUsageCard` (Token 用量, Descriptions row JSX Children + Divider layout=vertical 水平分组)、`HeadersCard` (请求头, Descriptions 展示)、`RequestContentCard` (请求体, 按 Anthropic Messages API 拆分为 6 个语义区块, useMemo 缓存)、`ResponseContentCard` (响应体, SSE 按 content_block 类型解析, useMemo 缓存)、`ResponseHeadersCard` (响应头, CollapsibleCard + Descriptions); 所有卡片统一使用 `CollapsibleCard` 容器, header 区域可点击折叠/展开, 复制按钮使用 stopPropagation 隔离; `StickyCollapseButton` 在底部 sticky 定位提供全局收起能力
+- **工具函数**: `format.ts` 中 `formatNumber` 对 >= 1000 的数字使用 toLocaleString 千分位; `parseLogs.ts` 中 `parseStructuredBlocks()` 按 content_block 类型解析 SSE 事件流
 
 ## 设计原则
 
@@ -195,7 +199,7 @@ aggr.resolve(x, y)
 - 所有 Repository 实现以 `SeaOrm` 为前缀 (如 `SeaOrmProviderRepository`)
 - 迁移文件在 `src/migrations/` 目录下, 使用 `sea-orm-migration`
 - 分区管理由 `src/infrastructure/persistence/partition_manager.rs` 的 PartitionManager 处理, 通过 pg_inherits 系统表管理分区
-- `log_metadata` 分区表的 `PRIMARY KEY` 必须包含 `timestamp`
+- `log_metadata` 分区表的 `PRIMARY KEY` 必须包含 `timestamp`; `request_index` 字段已从全链路移除
 - 日志默认展示不得依赖 `log_contents`; `log_metadata` 必须足够支撑请求日志列表, `log_contents` 仅用于原始明细弹窗（按需加载）
 - `__unmatched__` 哨兵是模型映射中的特殊 source_model, 使用 `prefix` 匹配类型, 用于为所有未精确/前缀匹配的请求模型指定目标模型, 每个接入点最多一个。接入点创建时, Drawer 自动预填一条 `__unmatched__ -> __default_model__` 映射。保存接入点时过滤映射, target_model 必须属于 Provider.models 或等于 `__default_model__` 哨兵
 - `api_type` 枚举的实际范围在 `AccessPointType` 值对象中定义, 新增类型需要同步修改 Rust 枚举 + 数据库列约束 + 前端 Select 选项
@@ -215,13 +219,14 @@ aggr.resolve(x, y)
 | `src/application/proxy/proxy_pipeline.rs` | 核心代理转发管道 (聚合根模式: 加载 AccessPointEx → validate_usable → decrypt_upstream_key → ProcessedRequest.prepare → 转发; 日志收集委托给 ProxyLogger) |
 | `src/infrastructure/http_client/proxy_logger.rs` | ProxyLogger: 请求级日志积累器，持有 ProxyLogData DTO，从 ProcessedRequest + AccessPointEx 提取字段（防腐），flush 时提交 DTO 给 LogService |
 | `src/infrastructure/http_client/processed_request.rs` | ProcessedRequest (编排 inbound → outbound 变换、URL 构造、session 提取) |
-| `src/application/log/log_service.rs` | 日志写入和查询服务 (从 ProxyLogData DTO 构造 LogMetadata → 写入 metadata/content/token usage 三阶段) |
+| `src/application/log/log_service.rs` | 日志写入和查询服务 (从 ProxyLogData DTO 构造 LogMetadata → 写入 metadata/content/token usage 三阶段; LogDetailFullResponse 增加 response_headers 透传, 移除 request_index) |
 | `src/application/log/dto/proxy_log_data.rs` | ProxyLogData DTO: ProxyLogger → LogService 之间的数据契约 |
+| `src/application/log/dto/log_detail_full_response.rs` | 日志完整详情响应 DTO (含 response_headers 字段) |
 | `src/infrastructure/parsers/log_content.rs` | 请求体、SSE、thinking、tool_use 和 token usage 解析器 |
 | `src/infrastructure/parsers/claude_code.rs` | Claude Code 请求头解析器 (`x-claude-code-session-id` / `x-claude-code-agent-id`) |
 | `src/application/user/api_key_service.rs` | 用户 API key 管理服务 |
 | `src/presentation/routes/me_routes.rs` | 个人设置路由 (`/api/users/me/*`) |
-| `src/migrations/m20260101_000001_initial.rs` | 初始数据库 Schema |
+| `src/migrations/m20260519_000001_initial.rs` | 初始数据库 Schema (含 log_metadata 的 request_index 字段移除) |
 | `src/migrations/m20260523_000001_user_api_keys.rs` | 用户 API key 表迁移 |
 | `src/presentation/routes/mod.rs` | 路由聚合 |
 | `src/presentation/middleware/jwt_auth.rs` | JWT 认证中间件 + CurrentUser extractor |
@@ -239,13 +244,25 @@ aggr.resolve(x, y)
 | `src-dashboard/App.tsx` | 前端路由定义 |
 | `src-dashboard/pages/ProfilePage.tsx` | 个人设置页 (个人资料/改密/API key 管理) |
 | `src-dashboard/pages/ProviderManagement.tsx` | Provider 管理页 (表格中 default_model 用 Tag 展示; 表单中 Select 位于模型列表下方; 模型列表移除当前默认模型时立即清空) |
-| `src-dashboard/components/ModelMappingEditor.tsx` | 模型映射编辑器 (单个添加按钮, 源 Select + search + allowCreate + label 显示匹配类型, 含未匹配/Claude 预设/Provider 模型, Claude 预设存 prefix 其余存 exact; 目标 Select 仅含 Provider models, 不允许 allowCreate) |
-| `src-dashboard/components/AccessPointDrawer.tsx` | 接入点创建/编辑抽屉 (选择 Provider 后有 default_model 则自动预填 `__unmatched__ -> default_model` 映射; 保存时过滤 target_model 不在 Provider.models 的映射) |
-| `src-dashboard/components/ThemeToggle.tsx` | 主题切换组件 (light/dark/system) |
-| `src-dashboard/components/ClaudeSessionTimeline.tsx` | 会话事件流展示组件 (用户消息、thinking、tool_use、Agent 调用) |
-| `src-dashboard/components/RequestLogTable.tsx` | 请求日志表格 (列定义、分页、空态) |
-| `src-dashboard/components/SessionListView.tsx` | 会话列表视图 (筛选栏 + 表格) |
-| `src-dashboard/components/SessionDetailView.tsx` | 会话详情视图 (信息卡片 + 时间线 + 事件表格 + RawContentModal) |
+| `src-dashboard/components/access-point/ModelMappingEditor.tsx` | 模型映射编辑器 (单个添加按钮, 源 Select + search + allowCreate + label 显示匹配类型, 含未匹配/Claude 预设/Provider 模型, Claude 预设存 prefix 其余存 exact; 目标 Select 仅含 Provider models, 不允许 allowCreate) |
+| `src-dashboard/components/access-point/AccessPointDrawer.tsx` | 接入点创建/编辑抽屉 (选择 Provider 后有 default_model 则自动预填 `__unmatched__ -> default_model` 映射; 保存时过滤 target_model 不在 Provider.models 的映射) |
+| `src-dashboard/components/common/ThemeToggle.tsx` | 主题切换组件 (light/dark/system) |
+| `src-dashboard/components/provider/AccountManager.tsx` | 账号密钥管理器 (Provider 详情中的 API 账号增删管) |
+| `src-dashboard/components/user/ApiKeyManager.tsx` | 用户 API key 管理器 (创建/吊销/复制) |
+| `src-dashboard/components/session/ClaudeSessionTimeline.tsx` | 会话事件流展示组件 (用户消息、thinking、tool_use、Agent 调用) |
+| `src-dashboard/components/log/RequestLogTable.tsx` | 请求日志表格 (列定义、分页、空态) |
+| `src-dashboard/components/session/SessionListView.tsx` | 会话列表视图 (筛选栏 + 表格) |
+| `src-dashboard/components/session/SessionDetailView.tsx` | 会话详情视图 (信息卡片 + 时间线 + 事件表格 + RawContentModal) |
+| `src-dashboard/components/common/CollapsibleCard.tsx` | 可折叠卡片容器 (header 可点击折叠/展开, 复制按钮 stopPropagation 隔离) |
+| `src-dashboard/components/log/log-detail/BasicInfoCard.tsx` | 日志详情基本信息卡片 (耗时千分位、模型映射 Tag 包裹) |
+| `src-dashboard/components/log/log-detail/TokenUsageCard.tsx` | Token 用量展示卡片 (Descriptions row + Divider layout=vertical) |
+| `src-dashboard/components/log/log-detail/HeadersCard.tsx` | 请求头展示卡片 (Descriptions 展示, body 从 pre 改为 Descriptions) |
+| `src-dashboard/components/log/log-detail/RequestContentCard.tsx` | 请求体展示卡片 (按 Anthropic Messages API 结构拆分为 6 个语义区块, useMemo 缓存) |
+| `src-dashboard/components/log/log-detail/ResponseContentCard.tsx` | 响应体展示卡片 (SSE 按 content_block 类型解析, useMemo 缓存) |
+| `src-dashboard/components/log/log-detail/ResponseHeadersCard.tsx` | 响应头展示卡片 (CollapsibleCard + Descriptions) |
+| `src-dashboard/components/common/StickyCollapseButton.tsx` | 底部 sticky 定位的全局收起按钮 |
+| `src-dashboard/utils/format.ts` | 工具函数 (formatNumber 千分位格式化) |
+| `src-dashboard/utils/parseLogs.ts` | SSE 解析工具 (parseStructuredBlocks 按 content_block 类型解析) |
 | `src-dashboard/hooks/useTheme.ts` | 主题 Hook + ThemeProvider |
 | `src-dashboard/hooks/useAccessPoints.ts` | 接入点管理 Hook (含 api_type 传递) |
 | `src/application/auth/service.rs` | 认证服务 (login/refresh/logout, Refresh Token Rotation, expires_at 修复) |
