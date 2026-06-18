@@ -187,7 +187,9 @@ impl LogRepository for SeaOrmLogRepository {
                 lm.has_error, lm.raw_content_available, lm.is_interrupted,
                 lm.client_name, lm.client_version,
                 lm.client_channel, lm.client_platform, lm.api_type,
-                ltu.input_tokens, ltu.output_tokens, ltu.total_tokens
+                ltu.input_tokens, ltu.output_tokens,
+                ltu.cache_creation_input_tokens, ltu.cache_read_input_tokens,
+                ltu.thinking_tokens, ltu.total_tokens
             FROM log_metadata lm
             LEFT JOIN log_token_usage ltu ON ltu.log_id = lm.id
             WHERE 1=1
@@ -325,7 +327,10 @@ impl LogRepository for SeaOrmLogRepository {
                     },
                     input_tokens: row.try_get_by_index::<Option<i32>>(24)?,
                     output_tokens: row.try_get_by_index::<Option<i32>>(25)?,
-                    total_tokens: row.try_get_by_index::<Option<i32>>(26)?,
+                    cache_creation_input_tokens: row.try_get_by_index::<Option<i32>>(26)?,
+                    cache_read_input_tokens: row.try_get_by_index::<Option<i32>>(27)?,
+                    thinking_tokens: row.try_get_by_index::<Option<i32>>(28)?,
+                    total_tokens: row.try_get_by_index::<Option<i32>>(29)?,
                 })
             })
             .collect::<Result<Vec<_>, AppError>>()?;

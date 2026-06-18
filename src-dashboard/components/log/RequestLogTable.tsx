@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { Button, Empty, Table, Tag, Tooltip } from '@douyinfe/semi-ui';
+import { Button, Empty, Table, Tag } from '@douyinfe/semi-ui';
 import CopyableIdText from '@components/common/CopyableIdText';
 import type { LogSummary } from '../../types/log.ts';
 import { formatDateTime, formatDuration, truncateMiddle } from '../../utils/format.ts';
+import TokenCell from './TokenCell.tsx';
 
 interface RequestLogTableProps {
   logs: LogSummary[];
@@ -106,28 +107,16 @@ export default function RequestLogTable({
       title: 'Token',
       key: 'token',
       width: 150,
-      render: (_: unknown, record: LogSummary) => {
-        const hasToken = record.token_input_tokens != null || record.token_output_tokens != null;
-        if (!hasToken) return <span style={{color: 'var(--semi-color-text-2)'}}>-</span>;
-        const input = record.token_input_tokens?.toLocaleString() || '0';
-        const output = record.token_output_tokens?.toLocaleString() || '0';
-        const total = record.token_total_tokens?.toLocaleString() || '0';
-        return (
-          <Tooltip
-            content={
-              <div style={{fontSize: 12, lineHeight: 1.6}}>
-                <div>输入 token：{input}</div>
-                <div>输出 token：{output}</div>
-                <div>总计：{total}</div>
-              </div>
-            }
-          >
-            <span style={{whiteSpace: 'nowrap', cursor: 'default'}}>
-              ↑{input} / ↓{output}
-            </span>
-          </Tooltip>
-        );
-      },
+      render: (_: unknown, record: LogSummary) => (
+        <TokenCell
+          input_tokens={record.token_input_tokens}
+          output_tokens={record.token_output_tokens}
+          cache_creation_input_tokens={record.token_cache_creation_input_tokens}
+          cache_read_input_tokens={record.token_cache_read_input_tokens}
+          thinking_tokens={record.token_thinking_tokens}
+          total_tokens={record.token_total_tokens}
+        />
+      ),
     },
     {
       title: '耗时',

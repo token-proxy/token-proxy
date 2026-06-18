@@ -22,5 +22,8 @@ pub struct LogSummaryResponse {
     pub api_type: String,
     pub token_input_tokens: Option<i32>,
     pub token_output_tokens: Option<i32>,
+    pub token_cache_creation_input_tokens: Option<i32>,
+    pub token_cache_read_input_tokens: Option<i32>,
+    pub token_thinking_tokens: Option<i32>,
     pub token_total_tokens: Option<i32>,
 }

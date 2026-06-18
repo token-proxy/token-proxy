@@ -23,6 +23,9 @@ pub struct LogMetadataWithTokenSummary {
     pub entry: LogMetadata,
     pub input_tokens: Option<i32>,
     pub output_tokens: Option<i32>,
+    pub cache_creation_input_tokens: Option<i32>,
+    pub cache_read_input_tokens: Option<i32>,
+    pub thinking_tokens: Option<i32>,
     pub total_tokens: Option<i32>,
 }
 

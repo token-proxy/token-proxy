@@ -42,6 +42,9 @@ export interface LogSummary {
   // Token 摘要
   token_input_tokens?: number | null;
   token_output_tokens?: number | null;
+  token_cache_creation_input_tokens?: number | null;
+  token_cache_read_input_tokens?: number | null;
+  token_thinking_tokens?: number | null;
   token_total_tokens?: number | null;
   // 客户端信息
   client_name?: string | null;

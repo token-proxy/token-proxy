@@ -239,6 +239,9 @@ impl LogService {
                 api_type: item.entry.api_type.clone(),
                 token_input_tokens: item.input_tokens,
                 token_output_tokens: item.output_tokens,
+                token_cache_creation_input_tokens: item.cache_creation_input_tokens,
+                token_cache_read_input_tokens: item.cache_read_input_tokens,
+                token_thinking_tokens: item.thinking_tokens,
                 token_total_tokens: item.total_tokens,
             })
             .collect();
