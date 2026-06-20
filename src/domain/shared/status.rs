@@ -1,3 +1,8 @@
+//! 通用状态枚举 — domain/shared/
+//!
+//! 定义 `Status` 枚举（Enabled / Disabled），
+//! 复用于接入点、服务商、API 账号、用户等所有需要启用/禁用状态的实体。
+
 use crate::shared::error::AppError;
 use sea_orm::prelude::StringLen;
 use sea_orm::DeriveActiveEnum;
@@ -6,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
+/// 通用启用/禁用状态枚举
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
 pub enum Status {

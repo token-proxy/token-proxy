@@ -1,6 +1,7 @@
 import { Modal } from '@douyinfe/semi-ui';
 import type { ReactNode } from 'react';
 
+/** RawContentModal 组件 Props */
 interface RawContentModalProps {
   title: string;
   visible: boolean;
@@ -8,6 +9,11 @@ interface RawContentModalProps {
   onClose: () => void;
 }
 
+/**
+ * RawContentModal - 原始日志内容弹窗组件
+ *
+ * 以 Modal 弹窗形式展示日志的原始请求/响应内容。
+ */
 export default function RawContentModal({
   title,
   visible,

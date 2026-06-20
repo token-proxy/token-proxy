@@ -6,6 +6,11 @@ interface ContextManagementSectionProps {
   contextManagement: unknown;
 }
 
+/**
+ * ContextManagementSection - 上下文管理展示区块
+ *
+ * 以折叠卡片形式展示请求中的 context_management 配置（支持字符串 JSON 自动解析）。
+ */
 export default function ContextManagementSection({
   contextManagement,
 }: ContextManagementSectionProps): ReactNode {

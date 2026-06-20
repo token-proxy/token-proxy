@@ -1,3 +1,7 @@
+//! 系统设置仓储接口 — domain/system/
+//!
+//! 定义 `SystemSettingsRepository` trait，提供系统设置的持久化契约。
+
 use async_trait::async_trait;
 
 use super::system_settings::SystemSettings;

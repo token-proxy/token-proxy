@@ -102,6 +102,9 @@ async fn get_session_contents(
     Ok(Json(contents))
 }
 
+/// GET /api/logs/{id}/token-usage
+///
+/// 获取指定日志的 token 用量
 async fn get_log_token_usage(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -114,6 +117,9 @@ async fn get_log_token_usage(
     Ok(Json(usage))
 }
 
+/// GET /api/logs/sessions/{id}/token-usage
+///
+/// 获取会话内所有日志的 token 用量汇总
 async fn get_session_token_usage(
     State(state): State<AppState>,
     Path(session_id): Path<String>,

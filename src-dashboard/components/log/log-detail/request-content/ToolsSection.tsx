@@ -7,6 +7,11 @@ interface ToolsSectionProps {
   tools: Array<Record<string, unknown>> | undefined;
 }
 
+/**
+ * ToolsSection - 工具定义展示区块
+ *
+ * 展示请求中的工具定义列表，支持点击展开查看具体参数描述。
+ */
 export default function ToolsSection({
   tools,
 }: ToolsSectionProps): ReactNode {

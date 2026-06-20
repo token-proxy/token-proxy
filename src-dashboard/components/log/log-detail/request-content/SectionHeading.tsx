@@ -7,6 +7,11 @@ interface SectionHeadingProps {
   children: ReactNode;
 }
 
+/**
+ * SectionHeading - 区块标题组件
+ *
+ * 提供统一的加粗标题样式。
+ */
 export default function SectionHeading({
   children,
 }: SectionHeadingProps): ReactNode {

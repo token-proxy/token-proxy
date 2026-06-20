@@ -1,3 +1,4 @@
+/** 用户简要信息 */
 export interface UserItem {
   id: string;
   username: string;
@@ -5,12 +6,14 @@ export interface UserItem {
   status: string;
 }
 
+/** 接入点简要信息 */
 export interface AccessPointItem {
   id: string;
   name: string;
   short_code: string;
 }
 
+/** 会话汇总信息 */
 export interface SessionSummary {
   session_id: string;
   user_id?: string | null;
@@ -26,12 +29,19 @@ export interface SessionSummary {
   total_tokens: number;
 }
 
+/** 日志列表项摘要 */
 export interface LogSummary {
   id: string;
   timestamp: string;
   session_id: string;
   user_id?: string | null;
   access_point_id?: string | null;
+  /** 实际使用的服务商 ID */
+  provider_id?: string | null;
+  /** 实际使用的账号 ID */
+  account_id?: string | null;
+  /** 客户端是否中途中断连接 */
+  is_interrupted: boolean;
   model_original?: string | null;
   model_mapped?: string | null;
   status_code?: number | null;
@@ -55,6 +65,7 @@ export interface LogSummary {
   api_type?: string;
 }
 
+/** 日志原始详情（用于 /api/logs/{id}/raw） */
 export interface LogDetail {
   id: string;
   timestamp: string;
@@ -93,6 +104,7 @@ export interface ConversationEvent {
   tool_result_content?: string;
 }
 
+/** Token 用量记录 */
 export interface TokenUsage {
   id: string;
   log_id: string;
@@ -159,6 +171,7 @@ export interface SessionContentItem {
   token_usage?: TokenUsage | null;
 }
 
+/** 通用分页结果 */
 export interface PaginatedResult<T> {
   items: T[];
   total: number;
@@ -166,6 +179,7 @@ export interface PaginatedResult<T> {
   page_size: number;
 }
 
+/** 会话列表筛选条件 */
 export interface SessionListFilters {
   startTime?: string;
   endTime?: string;
@@ -173,6 +187,7 @@ export interface SessionListFilters {
   accessPointId?: string;
 }
 
+/** 日志列表筛选条件 */
 export interface LogFilters {
   startTime?: string;
   endTime?: string;
@@ -180,4 +195,57 @@ export interface LogFilters {
   userId?: string;
   accessPointId?: string;
   statusCode?: number | null;
+  providerId?: string;
+  accountId?: string;
+  /** 是否中断：'true' = 已中断，'false' = 未中断，undefined = 不限 */
+  isInterrupted?: string;
+}
+
+/** 轮次级 Token 用量汇总 */
+export interface TurnTokenSummary {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  thinkingTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * 轮次内的事件块
+ *
+ * 使用联合类型表示不同类型的对话内容块，
+ * agent_call 通过 children 字段支持子代理递归嵌套。
+ */
+export type TurnBlock =
+  | { type: 'thinking'; content: string; logId: string; timestamp: string }
+  | { type: 'tool_use'; toolName: string; input: Record<string, unknown>; logId: string; timestamp: string }
+  | { type: 'tool_result'; toolUseId: string; content: string; isError: boolean; logId: string; timestamp: string }
+  | { type: 'assistant_message'; content: string; logId: string; timestamp: string }
+  | { type: 'agent_call'; agentType: string; children: TurnBlock[]; logIds: string[];
+      tokenSummary: TurnTokenSummary; logId: string; timestamp: string };
+
+/**
+ * 对话轮次
+ *
+ * 从一个非 tool_result 的用户消息开始，到助手完成回答结束。
+ * 一个轮次可能跨越多次 HTTP 请求（当存在 tool_use roundtrip 时）。
+ */
+export interface ConversationTurn {
+  /** 轮次唯一标识 */
+  id: string;
+  /** 轮次序号（从 1 开始） */
+  turnIndex: number;
+  /** 轮次开始时间 */
+  startTime: string;
+  /** 轮次结束时间 */
+  endTime: string;
+  /** 该轮次的用户消息内容 */
+  userMessage: string;
+  /** 该轮次内的所有事件块（按时间排序） */
+  blocks: TurnBlock[];
+  /** 该轮次的 Token 汇总 */
+  tokenSummary: TurnTokenSummary;
+  /** 该轮次涉及的所有 log_id */
+  logIds: string[];
 }

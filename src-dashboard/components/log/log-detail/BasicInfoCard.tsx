@@ -16,11 +16,17 @@ const SOURCE_COLORS = {
   unknown: 'grey',
 } as const;
 
+/** BasicInfoCard 组件 Props */
 interface BasicInfoCardProps {
   data: LogDetailFull;
   style?: React.CSSProperties;
 }
 
+/**
+ * BasicInfoCard - 日志基础信息卡片
+ *
+ * 展示请求 ID、时间、会话、用户、接入点、模型映射、状态码、耗时等关键信息。
+ */
 export default function BasicInfoCard({data: d, style}: BasicInfoCardProps): ReactNode {
   const items: Array<{ key: string; value: ReactNode }> = [
     {key: '请求 ID', value: <CopyableIdText value={d.id}/>},

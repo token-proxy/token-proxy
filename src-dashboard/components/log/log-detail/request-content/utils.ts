@@ -1,3 +1,4 @@
+/** 提取消息的 content 字段为统一的内容块数组 */
 export function extractContentBlocks(
   content: unknown,
 ): Array<Record<string, unknown>> {

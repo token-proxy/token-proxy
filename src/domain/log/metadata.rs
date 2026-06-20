@@ -1,3 +1,9 @@
+//! 日志元数据实体 — domain/log/
+//!
+//! 定义 `LogMetadata`（SeaORM 实体映射 `log_metadata` 表），
+//! 每月分区，记录每次代理请求的核心元数据（会话、模型、耗时、状态码等）。
+//! 列表查询基于此表，内容详情按需加载。
+
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use uuid::Uuid;

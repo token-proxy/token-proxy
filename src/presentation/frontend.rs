@@ -1,3 +1,9 @@
+//! SPA 前端静态文件服务（展示层）
+//!
+//! 使用 `rust-embed` 将构建好的前端产物嵌入二进制，
+//! 精确匹配静态文件路径，未命中时 fallback 到 `index.html`
+//! 由前端路由接管。
+
 use axum::body::Body;
 use axum::http::{header, Response, StatusCode, Uri};
 use axum::response::IntoResponse;

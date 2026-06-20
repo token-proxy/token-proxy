@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
 
+/// 日志详情响应（含请求/响应内容）
 #[derive(Debug, Clone, Serialize)]
 pub struct LogDetailResponse {
     pub id: Uuid,

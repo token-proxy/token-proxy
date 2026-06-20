@@ -1,3 +1,7 @@
+//! 日志 DTO — LogService 的请求/响应模型
+//!
+//! 包含日志查询、详情、会话摘要、token 用量等 DTO 定义。
+
 pub mod log_detail_full_response;
 pub mod log_detail_response;
 pub mod log_filter_params;

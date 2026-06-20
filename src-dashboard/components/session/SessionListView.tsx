@@ -4,10 +4,11 @@ import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import CopyableIdText from '@components/common/CopyableIdText';
 import LogFilterBar from '@components/log/LogFilterBar';
 import type { AccessPointItem, SessionListFilters, SessionSummary, UserItem } from '../../types/log.ts';
-import { formatDateTime } from '../../utils/format.ts';
+import { formatDateTime, formatNumber } from '../../utils/format.ts';
 
 const {Text} = Typography;
 
+/** SessionListView 组件 Props */
 interface SessionListViewProps {
   users: UserItem[];
   accessPoints: AccessPointItem[];
@@ -19,6 +20,8 @@ interface SessionListViewProps {
   page: number;
   pageSize: number;
   filters: SessionListFilters;
+  /** 重置按钮之前插入的内容（如刷新按钮） */
+  beforeReset?: ReactNode;
   onDateChange: DatePickerProps['onChange'];
   onUserChange: (userId: string | undefined) => void;
   onAccessPointChange: (accessPointId: string | undefined) => void;
@@ -26,6 +29,11 @@ interface SessionListViewProps {
   onPageChange: (page: number) => void;
 }
 
+/**
+ * SessionListView - 会话列表组件
+ *
+ * 展示会话摘要列表，支持筛选和分页，点击查看详情跳转到详情页。
+ */
 export default function SessionListView({
   users,
   accessPoints,
@@ -37,6 +45,7 @@ export default function SessionListView({
   page,
   pageSize,
   filters,
+  beforeReset,
   onDateChange,
   onUserChange,
   onAccessPointChange,
@@ -56,6 +65,7 @@ export default function SessionListView({
         onUserChange={onUserChange}
         onAccessPointChange={onAccessPointChange}
         onReset={onReset}
+        beforeReset={beforeReset}
       />
 
       <Table
@@ -118,17 +128,17 @@ export default function SessionListView({
                 <Tooltip
                   content={
                     <div style={{fontSize: 12, lineHeight: 1.6}}>
-                      <div>总输入: {record.total_input_tokens.toLocaleString()}</div>
-                      <div>总输出: {record.total_output_tokens.toLocaleString()}</div>
-                      <div>缓存创建: {record.total_cache_creation_input_tokens.toLocaleString()}</div>
-                      <div>缓存读取: {record.total_cache_read_input_tokens.toLocaleString()}</div>
-                      <div>思考: {record.total_thinking_tokens.toLocaleString()}</div>
-                      <div>总计: {record.total_tokens.toLocaleString()}</div>
+                      <div>总输入: {formatNumber(record.total_input_tokens)}</div>
+                      <div>总输出: {formatNumber(record.total_output_tokens)}</div>
+                      <div>缓存创建: {formatNumber(record.total_cache_creation_input_tokens)}</div>
+                      <div>缓存读取: {formatNumber(record.total_cache_read_input_tokens)}</div>
+                      <div>思考: {formatNumber(record.total_thinking_tokens)}</div>
+                      <div>总计: {formatNumber(record.total_tokens)}</div>
                     </div>
                   }
                 >
                   <span style={{whiteSpace: 'nowrap', cursor: 'default'}}>
-                    &uarr;{record.total_input_tokens.toLocaleString()} / &darr;{record.total_output_tokens.toLocaleString()}
+                    &uarr;{formatNumber(record.total_input_tokens)} / &darr;{formatNumber(record.total_output_tokens)}
                   </span>
                 </Tooltip>
               );

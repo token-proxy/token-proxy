@@ -7,6 +7,11 @@ interface SystemPromptSectionProps {
   system: Array<Record<string, unknown>> | undefined;
 }
 
+/**
+ * SystemPromptSection - 系统提示词展示区块
+ *
+ * 折叠展示请求中的 system 文本内容块，支持长内容折叠。
+ */
 export default function SystemPromptSection({
   system,
 }: SystemPromptSectionProps): ReactNode {

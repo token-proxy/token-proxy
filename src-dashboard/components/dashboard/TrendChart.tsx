@@ -4,11 +4,17 @@ import type { TrendItem } from '../../types/dashboard.ts';
 
 const {Text} = Typography;
 
+/** TrendChart 组件 Props */
 interface TrendChartProps {
   data: TrendItem[];
   loading: boolean;
 }
 
+/**
+ * TrendChart - 请求趋势柱状图组件
+ *
+ * 展示近 7 天请求量的柱状图，自动缩放柱高。
+ */
 export default function TrendChart({data, loading}: TrendChartProps): ReactNode {
   const maxCount = Math.max(...data.map((d) => d.count), 1);
   const barMaxHeight = 180;

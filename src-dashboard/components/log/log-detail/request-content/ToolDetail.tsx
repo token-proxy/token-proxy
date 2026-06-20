@@ -8,6 +8,11 @@ interface ToolDetailProps {
   tool: Record<string, unknown>;
 }
 
+/**
+ * ToolDetail - 工具详情展示组件
+ *
+ * 展示单个工具定义的描述和参数 Schema。
+ */
 export default function ToolDetail({tool}: ToolDetailProps): ReactNode {
   const description = typeof tool.description === 'string' ? tool.description : '';
   const inputSchema = tool.input_schema as

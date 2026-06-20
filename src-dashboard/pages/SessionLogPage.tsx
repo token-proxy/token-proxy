@@ -8,7 +8,7 @@ import SessionListView from '@components/session/SessionListView';
 import SessionDetailView from '@components/session/SessionDetailView';
 import type {
   AccessPointItem,
-  ConversationEvent,
+  ConversationTurn,
   LogDetail,
   PaginatedResult,
   SessionContentItem,
@@ -17,13 +17,20 @@ import type {
   TokenUsage,
   UserItem,
 } from '../types/log.ts';
-import { buildConversationEvents } from '../utils/parseLogs.ts';
+import { buildConversationTurns } from '../utils/parseLogs.ts';
 import { buildQueryString, toIsoString } from '../utils/query.ts';
 
 const {Title} = Typography;
 
 // ─── 组件 ───
 
+/**
+ * SessionLogPage - 会话日志页面
+ *
+ * 支持列表/详情两种模式：
+ * - 无 sessionId 参数时展示会话列表，支持筛选查询
+ * - 有 sessionId 参数时展示会话详情，包含对话时间线、Token 用量、事件摘要
+ */
 export default function SessionLogPage(): ReactNode {
   const {sessionId} = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -41,8 +48,7 @@ export default function SessionLogPage(): ReactNode {
   const [filters, setFilters] = useState<SessionListFilters>({});
 
   // 详情模式状态
-  const [sessionEvents, setSessionEvents] = useState<ConversationEvent[]>([]);
-  const [sessionTokenUsage, setSessionTokenUsage] = useState<TokenUsage[]>([]);
+  const [sessionTurns, setSessionTurns] = useState<ConversationTurn[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [rawModalVisible, setRawModalVisible] = useState(false);
   const [rawModalTitle, setRawModalTitle] = useState('');
@@ -53,10 +59,10 @@ export default function SessionLogPage(): ReactNode {
   useEffect(() => {
     api.get<UserItem[]>('/api/users')
       .then(setUsers)
-      .catch(() => {});
+      .catch(() => console.warn('[SessionLogPage] 加载用户参考数据失败'));
     api.get<AccessPointItem[]>('/api/access-points')
       .then(setAccessPoints)
-      .catch(() => {});
+      .catch(() => console.warn('[SessionLogPage] 加载接入点参考数据失败'));
   }, []);
 
   // ─── 查找映射 ───
@@ -90,6 +96,7 @@ export default function SessionLogPage(): ReactNode {
       setSessions(result.items);
       setTotal(result.total);
     } catch {
+      console.warn('[SessionLogPage] 加载会话列表失败');
       setSessions([]);
       setTotal(0);
     } finally {
@@ -108,53 +115,39 @@ export default function SessionLogPage(): ReactNode {
   const loadSessionDetail = useCallback(async (sid: string) => {
     setDetailLoading(true);
     try {
-      const contents = await api.get<SessionContentItem[]>(
-        `/api/logs/sessions/${encodeURIComponent(sid)}/contents`,
-      );
-      // 客户端构建 ConversationEvent[]
-      const events: ConversationEvent[] = [];
-      for (const item of contents) {
-        events.push(...buildConversationEvents(
-          item.request_body,
-          item.response_body,
-          {
-            log_id: item.log_id,
-            timestamp: item.timestamp,
-            conversation_source: item.conversation_source,
-            agent_id: item.agent_id ?? undefined,
-          },
-        ));
-      }
-      setSessionEvents(events);
+      // 1. 并行加载会话内容和 Token 用量
+      const [contents, usage] = await Promise.all([
+        api.get<SessionContentItem[]>(
+          `/api/logs/sessions/${encodeURIComponent(sid)}/contents`,
+        ),
+        api.get<TokenUsage[]>(
+          `/api/logs/sessions/${encodeURIComponent(sid)}/token-usage`,
+        ),
+      ]);
+
+      // 2. 构建 Token 用量映射
+      const usageMap: Record<string, TokenUsage> = {};
+      usage.forEach((tu) => { usageMap[tu.log_id] = tu; });
+
+      // 3. 使用 buildConversationTurns 构建轮次数据（Token 聚合在内部完成）
+      const turns = buildConversationTurns(contents, usageMap);
+      setSessionTurns(turns);
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '加载会话详情失败');
-      setSessionEvents([]);
+      setSessionTurns([]);
     } finally {
       setDetailLoading(false);
-    }
-  }, []);
-
-  const fetchSessionTokenUsage = useCallback(async (sid: string) => {
-    try {
-      const usage = await api.get<TokenUsage[]>(
-        `/api/logs/sessions/${encodeURIComponent(sid)}/token-usage`,
-      );
-      setSessionTokenUsage(usage);
-    } catch {
-      setSessionTokenUsage([]);
     }
   }, []);
 
   useEffect(() => {
     if (sessionId) {
       loadSessionDetail(sessionId);
-      fetchSessionTokenUsage(sessionId);
     }
     return () => {
-      setSessionEvents([]);
-      setSessionTokenUsage([]);
+      setSessionTurns([]);
     };
-  }, [sessionId, loadSessionDetail, fetchSessionTokenUsage]);
+  }, [sessionId, loadSessionDetail]);
 
   // ─── 弹窗辅助 ───
 
@@ -206,35 +199,16 @@ export default function SessionLogPage(): ReactNode {
     setPage(newPage);
   };
 
-  // ─── Token 用量映射 ───
-
-  const tokenUsageMap = useMemo(() => {
-    const m: Record<string, TokenUsage> = {};
-    sessionTokenUsage.forEach((tu) => { m[tu.log_id] = tu; });
-    return m;
-  }, [sessionTokenUsage]);
-
   // ─── 详情视图 ───
 
   if (sessionId) {
-    const sortedEvents = [...sessionEvents].sort((a, b) => {
-      if (a.event_index !== b.event_index) return a.event_index - b.event_index;
-      const timeCmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-      if (timeCmp !== 0) return timeCmp;
-      return a.id.localeCompare(b.id);
-    });
-
     return (
       <SessionDetailView
         sessionId={sessionId}
-        sortedEvents={sortedEvents}
-        tokenUsageMap={tokenUsageMap}
+        turns={sessionTurns}
         detailLoading={detailLoading}
         onBack={() => navigate('/sessions')}
-        onRefresh={() => {
-          loadSessionDetail(sessionId);
-          fetchSessionTokenUsage(sessionId);
-        }}
+        onRefresh={() => loadSessionDetail(sessionId)}
         onOpenRaw={openRawModal}
         rawModalVisible={rawModalVisible}
         rawModalTitle={rawModalTitle}
@@ -248,15 +222,8 @@ export default function SessionLogPage(): ReactNode {
 
   return (
     <div>
-      <div style={{display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16}}>
+      <div style={{marginBottom: 16}}>
         <Title heading={3} style={{margin: 0}}>会话日志</Title>
-        <Button
-          icon={<IconRefresh/>}
-          loading={sessionsLoading}
-          onClick={() => fetchSessions()}
-        >
-          刷新
-        </Button>
       </div>
 
       <SessionListView
@@ -270,6 +237,15 @@ export default function SessionLogPage(): ReactNode {
         page={page}
         pageSize={pageSize}
         filters={filters}
+        beforeReset={
+          <Button
+            icon={<IconRefresh/>}
+            loading={sessionsLoading}
+            onClick={() => fetchSessions()}
+          >
+            刷新
+          </Button>
+        }
         onDateChange={handleDateChange}
         onUserChange={(userId) => setFilters((prev) => ({...prev, userId}))}
         onAccessPointChange={(accessPointId) =>

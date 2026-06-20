@@ -1,3 +1,5 @@
+//! 用户 Repository 实现（基础设施层）
+
 use std::sync::Arc;
 
 use async_trait::async_trait;

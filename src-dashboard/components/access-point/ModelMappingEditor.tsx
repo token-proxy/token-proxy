@@ -2,6 +2,7 @@ import { Button, Select, Tag } from '@douyinfe/semi-ui';
 import type { ReactNode } from 'react';
 import { type ModelMapping, UNMATCHED_MODEL } from '../../types/accessPoint.ts';
 
+/** ModelMappingEditor 组件 Props */
 interface ModelMappingEditorProps {
   mappings: ModelMapping[];
   apiType?: string;
@@ -44,6 +45,11 @@ const optionLabel = (type: MappingMatchType, value: string) => (
   </span>
 );
 
+/**
+ * ModelMappingEditor - 模型映射编辑器组件
+ *
+ * 提供源模型到目标模型的映射编辑，支持 Anthropic 模型族预设。
+ */
 export default function ModelMappingEditor({
   mappings,
   apiType,

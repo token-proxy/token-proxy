@@ -6,6 +6,11 @@ interface RequestConfigSectionProps {
   requestBody: Record<string, unknown>;
 }
 
+/**
+ * RequestConfigSection - 请求配置展示区块
+ *
+ * 展示请求中的模型、最大 Token、流式、思考模式、输出配置等参数。
+ */
 export default function RequestConfigSection({
   requestBody,
 }: RequestConfigSectionProps): ReactNode {

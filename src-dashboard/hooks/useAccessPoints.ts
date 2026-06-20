@@ -5,18 +5,27 @@ import {
   type AccessPoint,
   type AccessPointFormData,
   type AccountOption,
-  type ModelMapping,
   type ProviderOption,
+  UNMATCHED_MODEL,
 } from '../types/accessPoint.ts';
 
 const EMPTY_FORM: AccessPointFormData = {
   name: '',
   short_code: '',
-  provider_id: undefined,
-  account_id: undefined,
   api_type: 'anthropic',
+  accounts: [],
+  routing_strategy: 'weighted',
+  model_routing_grid: {provider_ids: [], rows: []},
 };
 
+/**
+ * useAccessPoints - 接入点数据管理 Hook
+ *
+ * 封装接入点的增删改查、状态切换、服务商/账号加载等功能。
+ * 提供接入点列表、服务商树、账号池等数据。
+ *
+ * @returns 接入点列表、加载状态、服务商/账号数据、CRUD 操作方法、复制 URL 等工具方法
+ */
 export default function useAccessPoints() {
   const [accessPoints, setAccessPoints] = useState<AccessPoint[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,7 +64,7 @@ export default function useAccessPoints() {
       const data = await api.get<ProviderOption[]>('/api/providers');
       setProviders(data);
     } catch {
-      // providers 数据可能尚未就绪
+      console.warn('[useAccessPoints] 加载服务商列表失败，数据可能尚未就绪');
     }
   }, []);
 
@@ -71,6 +80,7 @@ export default function useAccessPoints() {
       const data = await api.get<AccountOption[]>(`/api/providers/${providerId}/accounts`);
       setAccounts(data);
     } catch {
+      console.warn('[useAccessPoints] 加载账号列表失败');
       setAccounts([]);
     } finally {
       setAccountsLoading(false);
@@ -88,48 +98,64 @@ export default function useAccessPoints() {
 
   const saveAccessPoint = async (
     formData: AccessPointFormData,
-    mappings: ModelMapping[],
-    defaultModel: string | undefined,
     editingAccessPoint: AccessPoint | null,
   ) => {
     if (!formData.name) {
       Toast.error('请输入接入点名称');
       return false;
     }
-    if (!formData.provider_id) {
-      Toast.error('请选择 Provider');
+    // 账号池验证
+    if (formData.accounts.length === 0) {
+      Toast.error('请至少添加一个账号');
       return false;
     }
-    if (!formData.account_id) {
-      Toast.error('请选择 Account');
-      return false;
+    for (const b of formData.accounts) {
+      if (!b.account_id) {
+        Toast.error('账号池中存在未选择账号的行');
+        return false;
+      }
+      if (formData.routing_strategy === 'weighted' && (b.weight == null || b.weight <= 0)) {
+        Toast.error('权重必须大于 0');
+        return false;
+      }
     }
-
-    const provider = providers.find((item) => item.id === formData.provider_id);
-    const allowedTargetModels = new Set(provider?.models ?? []);
-    const validMappings = mappings.filter(
-      (mapping) => mapping.source_model && mapping.target_model && allowedTargetModels.has(mapping.target_model),
-    );
+    // 模型路由网格验证
+    const grid = formData.model_routing_grid;
+    for (const row of grid.rows) {
+      if (!row.source_model) {
+        Toast.error('模型路由表中存在空的原始模型，请填写或删除该行');
+        return false;
+      }
+    }
+    // 未匹配行所有列不能为空
+    const unmatched = grid.rows.find((r) => r.source_model === UNMATCHED_MODEL);
+    if (unmatched) {
+      for (const pid of grid.provider_ids) {
+        if (!unmatched.targets[pid]) {
+          Toast.error('未匹配行的所有服务商列都必须填写目标模型');
+          return false;
+        }
+      }
+    }
 
     if (editingAccessPoint) {
       await api.put(`/api/access-points/${editingAccessPoint.id}`, {
         name: formData.name,
-        provider_id: formData.provider_id,
-        account_id: formData.account_id,
+        short_code: formData.short_code,
         api_type: formData.api_type,
-        model_mappings: validMappings.length > 0 ? validMappings : undefined,
-        default_model: defaultModel || '',
+        accounts: formData.accounts,
+        routing_strategy: formData.routing_strategy,
+        model_routing_grid: formData.model_routing_grid,
       });
       Toast.success('接入点已更新');
     } else {
       await api.post('/api/access-points', {
         name: formData.name,
-        provider_id: formData.provider_id,
-        account_id: formData.account_id,
-        api_type: formData.api_type,
         short_code: formData.short_code || undefined,
-        model_mappings: validMappings.length > 0 ? validMappings : undefined,
-        default_model: defaultModel || '',
+        api_type: formData.api_type,
+        accounts: formData.accounts,
+        routing_strategy: formData.routing_strategy,
+        model_routing_grid: formData.model_routing_grid,
       });
       Toast.success('接入点已创建');
     }

@@ -1,3 +1,5 @@
+//! 用户 DTO — UserService / UserApiKeyService 的请求/响应模型
+
 pub mod change_password_request;
 pub mod create_api_key_request;
 pub mod create_api_key_response;

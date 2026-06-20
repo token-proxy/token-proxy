@@ -1,3 +1,8 @@
+//! 日志应用服务 — application/log/
+//!
+//! 编排代理日志的三阶段写入（元数据 → 内容 → token 用量），
+//! 以及日志查询、会话摘要、日志详情等功能。
+
 use std::sync::Arc;
 
 use uuid::Uuid;
@@ -15,6 +20,10 @@ use crate::infrastructure::parsers::{claude_code_context, client_info, parsed_to
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
+/// 日志应用服务
+///
+/// 编排日志的写入（三阶段）和查询操作。
+/// 写入流程：元数据 → 内容 → token 用量，前序失败不阻塞后续。
 pub struct LogService {
     log_repo: Arc<dyn LogRepository>,
     token_usage_repo: Arc<dyn LogTokenUsageRepository>,
@@ -127,7 +136,18 @@ impl LogService {
         // 响应头序列化为 JSON
         let response_headers_json = response_headers_to_json(&data.resp_headers);
 
-        // ── 阶段 2：保存原始内容（阶段 1 已成功，允许此阶段失败）──
+        // ── 阶段 2：保存原始内容 ──
+        let req_body_type = if data.request_body.is_object() {
+            "object"
+        } else if data.request_body.is_null() {
+            "null"
+        } else {
+            "other"
+        };
+        let req_headers_count = data.request_headers.len();
+        let resp_headers_count = data.resp_headers.len();
+        let resp_body_len = data.response_body.len();
+
         let content = LogContent {
             log_id: saved.id,
             timestamp: data.timestamp,
@@ -137,7 +157,17 @@ impl LogService {
             response_headers: Some(response_headers_json),
         };
         if let Err(e) = self.log_repo.save_content(&content).await {
-            tracing::error!(error = %e, "日志内容写入失败");
+            tracing::error!(
+                error = %e,
+                log_id = %saved.id,
+                status_code = %data.status_code,
+                ts = %data.timestamp,
+                req_headers_count,
+                req_body_type,
+                resp_headers_count,
+                resp_body_len,
+                "日志内容写入失败"
+            );
         }
 
         // ── 阶段 3：提取 token 用量（独立步骤，失败不影响日志完整性）──
@@ -184,10 +214,12 @@ impl LogService {
         Ok(saved.id)
     }
 
+    /// 保存 token 用量记录
     pub async fn save_token_usage(&self, usage: &LogTokenUsage) -> Result<(), AppError> {
         self.token_usage_repo.save(usage).await
     }
 
+    /// 查询某个会话的所有 token 用量记录
     pub async fn get_session_token_usage(
         &self,
         session_id: &str,
@@ -210,6 +242,9 @@ impl LogService {
             start_time: filters.start_time,
             end_time: filters.end_time,
             status_code: filters.status_code,
+            provider_id: filters.provider_id,
+            account_id: filters.account_id,
+            is_interrupted: filters.is_interrupted,
         };
 
         let result = self
@@ -226,10 +261,13 @@ impl LogService {
                 session_id: item.entry.session_id.clone(),
                 user_id: item.entry.user_id,
                 access_point_id: item.entry.access_point_id,
+                provider_id: item.entry.provider_id,
+                account_id: item.entry.account_id,
                 model_original: item.entry.model_original.clone(),
                 model_mapped: item.entry.model_mapped.clone(),
                 status_code: item.entry.status_code,
                 duration_ms: item.entry.duration_ms,
+                is_interrupted: item.entry.is_interrupted,
                 conversation_source: item.entry.conversation_source.clone(),
                 agent_id: item.entry.agent_id.clone(),
                 client_name: item.entry.client_name.clone(),
@@ -445,6 +483,7 @@ impl LogService {
         })
     }
 
+    /// 查询单条日志的 token 用量
     pub async fn get_log_token_usage(
         &self,
         log_id: Uuid,
@@ -457,6 +496,7 @@ impl LogService {
             .map(Self::to_token_usage_response))
     }
 
+    /// 查询某个会话的 token 用量（以响应 DTO 格式返回）
     pub async fn get_session_token_usage_response(
         &self,
         session_id: &str,
@@ -464,10 +504,44 @@ impl LogService {
         let usages = self.token_usage_repo.find_by_session_id(session_id).await?;
         Ok(usages.iter().map(Self::to_token_usage_response).collect())
     }
+
+    /// 获取全局概览统计（总请求数、活跃接入点数）
+    pub async fn get_overview_stats(&self) -> Result<(u64, u64), AppError> {
+        let total = self.log_repo.count_total().await?;
+        let active = self.log_repo.count_active_access_points().await?;
+        Ok((total, active))
+    }
+
+    /// 获取最近 N 天的每日请求趋势
+    pub async fn get_trends(
+        &self,
+        days: u64,
+    ) -> Result<Vec<(chrono::NaiveDate, u64)>, AppError> {
+        let end = chrono::Utc::now();
+        let start = end - chrono::Duration::days(days as i64);
+        self.log_repo.count_by_date_range(start, end).await
+    }
+
+    /// 获取请求量最高的接入点排名
+    pub async fn get_top_access_points(
+        &self,
+        limit: u64,
+    ) -> Result<Vec<(Uuid, u64)>, AppError> {
+        self.log_repo.top_access_points(limit).await
+    }
+
+    /// 获取请求量最高的模型排名
+    pub async fn get_top_models(
+        &self,
+        limit: u64,
+    ) -> Result<Vec<(String, u64)>, AppError> {
+        self.log_repo.top_models(limit).await
+    }
 }
 
-// ─── 请求头脱敏（仅日志层使用） ───────────────────────────────────
+// ─── 请求头脱敏（敏感字段替换为 [REDACTED]） ───────────────────────────────────
 
+/// 将 HeaderMap 序列化为 JSON，对敏感字段自动脱敏
 fn headers_to_json(headers: &axum::http::HeaderMap) -> serde_json::Value {
     let mut map = serde_json::Map::new();
     for (key, value) in headers {
@@ -482,6 +556,7 @@ fn headers_to_json(headers: &axum::http::HeaderMap) -> serde_json::Value {
     serde_json::Value::Object(map)
 }
 
+/// 判断是否为敏感头（需要脱敏的字段）
 fn is_sensitive_header(name: &str) -> bool {
     name.eq_ignore_ascii_case("authorization")
         || name.eq_ignore_ascii_case("x-api-key")
@@ -492,6 +567,7 @@ fn is_sensitive_header(name: &str) -> bool {
 
 // ─── 响应头序列化（无需脱敏） ───────────────────────────────────
 
+/// 将响应 HeaderMap 序列化为 JSON（响应头不含敏感信息，直接序列化）
 fn response_headers_to_json(headers: &axum::http::HeaderMap) -> serde_json::Value {
     let mut map = serde_json::Map::new();
     for (key, value) in headers {

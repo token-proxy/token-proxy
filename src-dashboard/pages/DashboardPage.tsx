@@ -84,6 +84,13 @@ const MODEL_COLUMNS = [
 
 // --- 主页面组件 ---
 
+/**
+ * DashboardPage - Dashboard 概览页面
+ *
+ * 展示系统核心统计数据：总请求量、活跃接入点、活跃用户、错误率，
+ * 近 7 天请求趋势图、Top-N 接入点和模型排名。
+ * API 未就绪时回退到 Mock 数据用于 UI 演示。
+ */
 export default function DashboardPage(): ReactNode {
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<OverviewData | null>(null);
@@ -108,7 +115,7 @@ export default function DashboardPage(): ReactNode {
         setTopAccessPoints(ap);
         setTopModels(md);
       } catch {
-        // API 尚未就绪时回退到 Mock 数据
+        console.warn('[DashboardPage] Dashboard API 尚未就绪，回退到 Mock 数据');
         if (cancelled) return;
         setOverview(MOCK_OVERVIEW);
         setTrends(MOCK_TRENDS);

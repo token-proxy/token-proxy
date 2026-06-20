@@ -1,3 +1,7 @@
+//! 密码哈希与验证（基础设施层）
+//!
+//! 使用 Argon2id 算法，每次自动生成随机盐值。
+
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,

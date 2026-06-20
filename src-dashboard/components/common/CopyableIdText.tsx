@@ -4,10 +4,17 @@ import { IconCopy, IconTick } from '@douyinfe/semi-icons';
 
 const {Text} = Typography;
 
+/** CopyableIdText 组件 Props */
 type CopyableIdTextProps = {
+  /** 要显示的 ID 文本 */
   value: string;
 };
 
+/**
+ * CopyableIdText - 可复制的 ID 文本组件
+ *
+ * 使用 Semi Typography Text 的 copyable 功能，展示 monospace 样式的 ID。
+ */
 export default function CopyableIdText({value}: CopyableIdTextProps): ReactNode {
   return (
     <Text

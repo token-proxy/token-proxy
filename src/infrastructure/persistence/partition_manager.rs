@@ -9,7 +9,9 @@ use crate::shared::error::AppError;
 /// 分区维护结果
 #[derive(Debug, Clone)]
 pub struct PartitionResult {
+    /// 本次创建的分区名列表
     pub created: Vec<String>,
+    /// 本次删除的分区名列表
     pub dropped: Vec<String>,
 }
 
@@ -29,7 +31,7 @@ pub struct PartitionManager {
     premake_months: u32,
 }
 
-/// 从 (year, month) 向前或向后调整 n 个月
+/// 从 (year, month) 向前（n > 0）或向后（n < 0）调整 n 个月
 fn add_months(year: i32, month: u32, n: i32) -> (i32, u32) {
     let total_months = (year * 12 + month as i32 - 1) + n;
     let y = total_months.div_euclid(12);
@@ -42,7 +44,10 @@ impl PartitionManager {
         PartitionManager { db, premake_months }
     }
 
-    /// 查询指定表的现有分区名
+    /// 查询指定父表的现有分区名
+    ///
+    /// 通过 `pg_inherits` 系统表查询指定表的所有直接继承分区。
+    /// `parent` 参数为表名（如 `log_metadata`）。
     async fn existing_partitions(&self, parent: &str) -> Result<Vec<String>, AppError> {
         let db = &*self.db;
         let sql = format!(

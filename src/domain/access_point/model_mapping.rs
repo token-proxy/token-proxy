@@ -1,11 +1,19 @@
+//! 模型映射值对象 — domain/access_point/
+//!
+//! 定义 `ModelMapping`（单条映射规则）和 `ModelMappingCollection`（映射集合），
+//! 支持精确匹配、前缀匹配和 `__unmatched__` 兜底规则。
+//! 提供常量定义（模型族前缀、哨兵值）和匹配辅助函数。
+
 use sea_orm::FromJsonQueryResult;
 use serde::{Deserialize, Serialize};
 
 /// 未匹配的模型哨兵常量：当没有精确/前缀匹配时，使用此规则
 pub const UNMATCHED_MODEL_SENTINEL: &str = "__unmatched__";
-/// Claude 模型族前缀常量
+/// Claude Opus 模型族前缀
 pub const CLAUDE_OPUS_PREFIX: &str = "claude-opus-";
+/// Claude Sonnet 模型族前缀
 pub const CLAUDE_SONNET_PREFIX: &str = "claude-sonnet-";
+/// Claude Haiku 模型族前缀
 pub const CLAUDE_HAIKU_PREFIX: &str = "claude-haiku-";
 
 /// 模型映射匹配方式
@@ -36,6 +44,7 @@ impl MatchType {
     }
 }
 
+/// 判断源模型是否属于前缀匹配类别（模型族前缀或哨兵值）
 pub fn is_prefix_source_model(source_model: &str) -> bool {
     matches!(
         source_model,
@@ -43,6 +52,7 @@ pub fn is_prefix_source_model(source_model: &str) -> bool {
     )
 }
 
+/// 标准化匹配方式：模型族前缀和哨兵值强制转为前缀匹配
 pub fn normalize_match_type(source_model: &str, match_type: MatchType) -> MatchType {
     if is_prefix_source_model(source_model) {
         MatchType::Prefix

@@ -21,6 +21,11 @@ interface UserFormData {
   password?: string;
 }
 
+/**
+ * UserManagement - 用户管理页面
+ *
+ * 系统用户的增删改查、启用/禁用操作，支持创建用户时设置初始密码。
+ */
 export default function UserManagement(): ReactNode {
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [loading, setLoading] = useState(false);

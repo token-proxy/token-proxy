@@ -1,3 +1,8 @@
+//! 服务商应用服务 — application/provider/
+//!
+//! 编排 Provider 的 CRUD、模型自动发现操作。
+//! 包含审计日志写入和上游 API 调用能力。
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,6 +18,9 @@ use crate::domain::shared::EncryptionService;
 use crate::domain::shared::Status;
 use crate::shared::error::AppError;
 
+/// 服务商应用服务
+///
+/// 编排服务商 CRUD、模型自动发现、审计日志记录。
 pub struct ProviderService {
     provider_repo: Arc<dyn ProviderRepository>,
     account_repo: Arc<dyn AccountRepository>,
@@ -43,17 +51,24 @@ impl ProviderService {
         }
     }
 
-    fn to_response(provider: &Provider, account_count: Option<i64>) -> ProviderResponse {
+    fn to_response(
+        provider: &Provider,
+        account_count: Option<i64>,
+        available_account_count: Option<i64>,
+    ) -> ProviderResponse {
         ProviderResponse {
             id: provider.id,
             name: provider.name.clone(),
             openai_base_url: provider.openai_base_url.clone(),
             anthropic_base_url: provider.anthropic_base_url.clone(),
             models: provider.models.clone().into(),
+            rate_limit_config: provider.rate_limit_config.clone(),
+            balance_exhausted_config: provider.balance_exhausted_config.clone(),
             status: provider.status.to_string(),
             created_at: provider.created_at.with_timezone(&chrono::Utc),
             updated_at: provider.updated_at.with_timezone(&chrono::Utc),
             account_count,
+            available_account_count,
         }
     }
 
@@ -67,17 +82,23 @@ impl ProviderService {
         }
     }
 
+    /// 创建服务商
+    ///
+    /// 保存 Provider 并记录创建审计日志。
     pub async fn create(
         &self,
         req: CreateProviderRequest,
         user_id: Option<Uuid>,
     ) -> Result<ProviderResponse, AppError> {
-        let provider = Provider::new(req.name, req.openai_base_url, req.anthropic_base_url)?;
+        let mut provider = Provider::new(req.name, req.openai_base_url, req.anthropic_base_url)?;
+        provider.rate_limit_config = req.rate_limit_config;
+        provider.balance_exhausted_config = req.balance_exhausted_config;
         let saved = self.provider_repo.save(&provider).await?;
 
         // 记录审计日志
         self.log_audit(
             user_id,
+            "user",
             "create",
             "provider",
             Some(provider.id),
@@ -89,9 +110,13 @@ impl ProviderService {
         )
         .await;
 
-        Ok(Self::to_response(&saved, Some(0)))
+        Ok(Self::to_response(&saved, Some(0), Some(0)))
     }
 
+    /// 更新服务商
+    ///
+    /// 支持更新名称、地址、模型列表、故障配置和状态。
+    /// 状态变更时自动触发 enable/disable 领域行为。
     pub async fn update(
         &self,
         id: Uuid,
@@ -102,7 +127,7 @@ impl ProviderService {
             .provider_repo
             .find_by_id(id)
             .await?
-            .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", id)))?;
+            .ok_or_else(|| AppError::NotFound(format!("服务商 {} 未找到", id)))?;
 
         let old_status = provider.status.to_string();
 
@@ -110,13 +135,19 @@ impl ProviderService {
             provider.rename(name)?;
         }
         if let Some(url) = req.openai_base_url {
-            provider.openai_base_url = Some(url).filter(|u| !u.trim().is_empty());
+            provider.set_openai_base_url(Some(url));
         }
         if let Some(url) = req.anthropic_base_url {
-            provider.anthropic_base_url = Some(url).filter(|u| !u.trim().is_empty());
+            provider.set_anthropic_base_url(Some(url));
         }
         if let Some(models) = req.models {
             provider.set_models(models);
+        }
+        if req.rate_limit_config.is_some() {
+            provider.rate_limit_config = req.rate_limit_config;
+        }
+        if req.balance_exhausted_config.is_some() {
+            provider.balance_exhausted_config = req.balance_exhausted_config;
         }
         if let Some(status_str) = req.status {
             let status: Status = status_str
@@ -130,12 +161,10 @@ impl ProviderService {
 
         let saved = self.provider_repo.save(&provider).await?;
 
-        let account_count = self
-            .account_repo
-            .find_by_provider_id(id)
-            .await
-            .map(|accounts| accounts.len() as i64)
-            .unwrap_or(0);
+        let accounts = self.account_repo.find_by_provider_id(id).await.unwrap_or_default();
+        let account_count = accounts.len() as i64;
+        let available_account_count =
+            accounts.iter().filter(|a| a.status.is_enabled()).count() as i64;
 
         // 记录审计日志
         let new_status = provider.status.to_string();
@@ -151,6 +180,7 @@ impl ProviderService {
 
         self.log_audit(
             user_id,
+            "user",
             audit_action,
             "provider",
             Some(id),
@@ -162,49 +192,60 @@ impl ProviderService {
         )
         .await;
 
-        Ok(Self::to_response(&saved, Some(account_count)))
+        Ok(Self::to_response(&saved, Some(account_count), Some(available_account_count)))
     }
 
+    /// 根据 ID 查询服务商（含账号统计）
     pub async fn get_by_id(&self, id: Uuid) -> Result<ProviderResponse, AppError> {
         let provider = self
             .provider_repo
             .find_by_id(id)
             .await?
-            .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", id)))?;
+            .ok_or_else(|| AppError::NotFound(format!("服务商 {} 未找到", id)))?;
 
-        let account_count = self
+        let accounts = self
             .account_repo
             .find_by_provider_id(id)
             .await
-            .map(|accounts| accounts.len() as i64)
-            .unwrap_or(0);
+            .unwrap_or_default();
+        let account_count = accounts.len() as i64;
+        let available_account_count =
+            accounts.iter().filter(|a| a.status.is_enabled()).count() as i64;
 
-        Ok(Self::to_response(&provider, Some(account_count)))
+        Ok(Self::to_response(&provider, Some(account_count), Some(available_account_count)))
     }
 
+    /// 查询所有服务商列表（含账号统计）
     pub async fn list_all(&self) -> Result<Vec<ProviderResponse>, AppError> {
         let providers = self.provider_repo.find_all().await?;
 
         let mut results = Vec::with_capacity(providers.len());
         for provider in &providers {
-            let account_count = self
+            let accounts = self
                 .account_repo
                 .find_by_provider_id(provider.id)
                 .await
-                .map(|accounts| accounts.len() as i64)
-                .unwrap_or(0);
-            results.push(Self::to_response(provider, Some(account_count)));
+                .unwrap_or_default();
+            let account_count = accounts.len() as i64;
+            let available_account_count =
+                accounts.iter().filter(|a| a.status.is_enabled()).count() as i64;
+            results.push(Self::to_response(
+                provider,
+                Some(account_count),
+                Some(available_account_count),
+            ));
         }
 
         Ok(results)
     }
 
+    /// 删除服务商（需先清空关联账号）
     pub async fn delete(&self, id: Uuid, user_id: Option<Uuid>) -> Result<(), AppError> {
         let accounts = self.account_repo.find_by_provider_id(id).await?;
 
         if !accounts.is_empty() {
             return Err(AppError::Conflict(format!(
-                "提供商 {} 下存在 {} 个关联账号，请先删除账号",
+                "服务商 {} 下存在 {} 个关联账号，请先删除账号",
                 id,
                 accounts.len()
             )));
@@ -214,13 +255,14 @@ impl ProviderService {
             .provider_repo
             .find_by_id(id)
             .await?
-            .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", id)))?;
+            .ok_or_else(|| AppError::NotFound(format!("服务商 {} 未找到", id)))?;
 
         self.provider_repo.delete(id).await?;
 
         // 记录审计日志
         self.log_audit(
             user_id,
+            "user",
             "delete",
             "provider",
             Some(id),
@@ -236,15 +278,23 @@ impl ProviderService {
     /// 写入审计日志（异步，忽略错误）
     async fn log_audit(
         &self,
-        user_id: Option<Uuid>,
+        operator_id: Option<Uuid>,
+        operator_type: &str,
         action: &str,
         entity_type: &str,
         entity_id: Option<Uuid>,
         details: Option<serde_json::Value>,
     ) {
-        let log = AuditLog::new(user_id, action, entity_type, entity_id, details);
+        let log = AuditLog::new(
+            operator_id,
+            operator_type,
+            action,
+            entity_type,
+            entity_id,
+            details,
+        );
         if let Err(e) = self.audit_log_repo.save(&log).await {
-            tracing::error!("审计日志写入失败: {}", e);
+            tracing::error!(error = %e, "审计日志写入失败");
         }
     }
 
@@ -254,8 +304,8 @@ impl ProviderService {
     /// 自动发现失败时返回错误，让用户感知到具体原因。
     pub async fn discover_models(&self, provider_id: Uuid) -> Result<Vec<String>, AppError> {
         tracing::info!(
-            "[discover_models v2] 开始为 provider {} 自动发现模型",
-            provider_id
+            provider_id = %provider_id,
+            "开始自动发现模型",
         );
 
         // 1. 查找 Provider
@@ -263,16 +313,16 @@ impl ProviderService {
             .provider_repo
             .find_by_id(provider_id)
             .await?
-            .ok_or_else(|| AppError::NotFound(format!("提供商 {} 未找到", provider_id)))?;
+            .ok_or_else(|| AppError::NotFound(format!("服务商 {} 未找到", provider_id)))?;
 
         // 2. 尝试自动发现 — 失败时直接抛出错误而非静默返回空
         let new_models = self.try_discover_models(&provider).await?;
 
         tracing::info!(
-            "[discover_models v2] provider {} 自动发现得到 {} 个模型: {:?}",
-            provider_id,
-            new_models.len(),
-            new_models
+            provider_id = %provider_id,
+            count = new_models.len(),
+            models = ?new_models,
+            "模型自动发现完成",
         );
 
         if new_models.is_empty() {
@@ -299,7 +349,7 @@ impl ProviderService {
             .await?;
 
         if accounts.is_empty() {
-            tracing::warn!("[discover] provider {} 没有已启用的 Account", provider.id);
+            tracing::warn!(provider_id = %provider.id, "Provider 没有已启用的 Account");
             return Err(AppError::NotFound(
                 "缺少可用的 API Key，请先为此 Provider 添加 Account".to_string(),
             ));
@@ -308,17 +358,17 @@ impl ProviderService {
         // 2. 从第一个已启用的账号获取并解密 API Key
         let account = &accounts[0];
         tracing::info!(
-            "[discover] 使用账号 {} (suffix: {})",
-            account.id,
-            account.api_key_suffix
+            account_id = %account.id,
+            suffix = %account.api_key_suffix,
+            "使用账号自动发现模型",
         );
 
         let encrypted_key = self.account_repo.get_encrypted_api_key(account.id).await?;
 
         if encrypted_key.is_empty() {
             tracing::error!(
-                "[discover] 账号 {} 的 api_key_encrypted 为空! 请重新添加 API Key",
-                account.id
+                account_id = %account.id,
+                "账号加密 Key 为空，请重新添加 API Key",
             );
             return Err(AppError::NotFound(
                 "API Key 未正确存储，请删除并重新添加 Account".to_string(),
@@ -326,9 +376,9 @@ impl ProviderService {
         }
 
         tracing::info!(
-            "[discover] 账号 {} 加密 Key 长度: {} 字节",
-            account.id,
-            encrypted_key.len()
+            account_id = %account.id,
+            key_len = encrypted_key.len(),
+            "加密 Key 长度",
         );
 
         let decrypted = self
@@ -345,11 +395,11 @@ impl ProviderService {
             .openai_base_url
             .as_deref()
             .or(provider.anthropic_base_url.as_deref())
-            .ok_or_else(|| AppError::Internal("提供商没有配置 API 基础地址".to_string()))?;
+            .ok_or_else(|| AppError::Internal("服务商没有配置 API 基础地址".to_string()))?;
 
         let url = build_models_url(base_url_raw);
 
-        tracing::info!("[discover] 请求 URL: {}", url);
+        tracing::info!(url = %url, "模型发现请求 URL");
 
         // 4. 调用上游 /v1/models 端点
         let response = self
@@ -385,9 +435,9 @@ impl ProviderService {
 
         if models.is_empty() {
             tracing::warn!(
-                "上游 {} 返回了 200，但未能从响应中解析出模型 ID。响应体: {}",
-                url,
-                body
+                url = %url,
+                response_body = %body.to_string().chars().take(300).collect::<String>(),
+                "上游返回 200 但未能解析出模型 ID",
             );
         }
 

@@ -1,12 +1,20 @@
+//! 服务商实体 — domain/provider/
+//!
+//! 定义 `Provider`（SeaORM 实体映射 `providers` 表），
+//! 包含基础 URL、模型列表、故障配置和账号关系。
+//! 提供模型管理、启停控制等领域行为。
+
 use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::entity::prelude::*;
 use uuid::Uuid;
 
+use crate::domain::provider::fault_config::FaultConfig;
 use crate::domain::provider::model_list::ModelList;
 use crate::domain::shared::status::Status;
 use crate::domain::shared::AccessPointType;
 use crate::shared::error::AppError;
 
+/// SeaORM 实体映射 providers 表
 #[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "providers")]
@@ -17,6 +25,8 @@ pub struct Model {
     pub openai_base_url: Option<String>,
     pub anthropic_base_url: Option<String>,
     pub models: ModelList,
+    pub rate_limit_config: Option<FaultConfig>,
+    pub balance_exhausted_config: Option<FaultConfig>,
     pub status: Status,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
@@ -28,6 +38,7 @@ pub struct Model {
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
+    /// 创建新的服务商，校验名称非空且至少提供一个基础 URL
     pub fn new(
         name: String,
         openai_base_url: Option<String>,
@@ -35,7 +46,7 @@ impl Model {
     ) -> Result<Self, AppError> {
         let name = name.trim().to_string();
         if name.is_empty() {
-            return Err(AppError::Validation("提供商名称不能为空".to_string()));
+            return Err(AppError::Validation("服务商名称不能为空".to_string()));
         }
 
         let has_openai = openai_base_url
@@ -65,26 +76,31 @@ impl Model {
                 .map(|u| u.trim().to_string())
                 .filter(|u| !u.is_empty()),
             models: ModelList::default(),
+            rate_limit_config: None,
+            balance_exhausted_config: None,
             status: Status::Enabled,
             created_at: now,
             updated_at: now,
         })
     }
 
+    /// 获取 created_at 为 DateTime<Utc>
     pub fn created_at_utc(&self) -> DateTime<Utc> {
         self.created_at.with_timezone(&Utc)
     }
 
+    /// 获取 updated_at 为 DateTime<Utc>
     pub fn updated_at_utc(&self) -> DateTime<Utc> {
         self.updated_at.with_timezone(&Utc)
     }
 
+    /// 根据 API 类型返回对应的基础 URL
     pub fn base_url_for(&self, api_type: &AccessPointType) -> Result<&str, AppError> {
         match api_type {
             AccessPointType::Anthropic => self
                 .anthropic_base_url
                 .as_deref()
-                .ok_or_else(|| AppError::Internal("提供商未配置 Anthropic 基础 URL".to_string())),
+                .ok_or_else(|| AppError::Internal("服务商未配置 Anthropic 基础 URL".to_string())),
         }
     }
 
@@ -92,7 +108,7 @@ impl Model {
     pub fn rename(&mut self, name: String) -> Result<(), AppError> {
         let trimmed = name.trim().to_string();
         if trimmed.is_empty() {
-            return Err(AppError::Validation("提供商名称不能为空".to_string()));
+            return Err(AppError::Validation("服务商名称不能为空".to_string()));
         }
         self.name = trimmed;
         self.touch();
@@ -125,6 +141,22 @@ impl Model {
     /// 禁用
     pub fn disable(&mut self) {
         self.status = Status::Disabled;
+        self.touch();
+    }
+
+    /// 设置 OpenAI 基础 URL，自动 trim 并过滤空字符串
+    pub fn set_openai_base_url(&mut self, url: Option<String>) {
+        self.openai_base_url = url
+            .map(|u| u.trim().to_string())
+            .filter(|u| !u.is_empty());
+        self.touch();
+    }
+
+    /// 设置 Anthropic 基础 URL，自动 trim 并过滤空字符串
+    pub fn set_anthropic_base_url(&mut self, url: Option<String>) {
+        self.anthropic_base_url = url
+            .map(|u| u.trim().to_string())
+            .filter(|u| !u.is_empty());
         self.touch();
     }
 

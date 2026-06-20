@@ -1,3 +1,8 @@
+//! 短码值对象 — domain/access_point/
+//!
+//! 定义 `ShortCode` 类型，封装接入点的 URL 短码（4-16 位字母数字），
+//! 提供校验、随机生成和字符串转换能力。
+
 use crate::shared::error::AppError;
 use rand::Rng;
 use sea_orm::DeriveValueType;
@@ -9,6 +14,7 @@ const MAX_LENGTH: usize = 16;
 const GENERATED_LENGTH: usize = 16;
 const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
 
+/// 接入点短码值对象（4-16 位字母数字，含下划线和连字符）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, DeriveValueType)]
 pub struct ShortCode(String);
 

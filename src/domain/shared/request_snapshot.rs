@@ -146,9 +146,20 @@ impl RequestSnapshot {
     }
 }
 
+/// 标准 hop-by-hop 头（RFC 2616 Section 13.5.1）+ host / content-length
+///
+/// 代理转发时入站请求头和上游响应头均需过滤这些头。
+pub const HOP_BY_HOP_HEADERS: &[&str] = &[
+    "transfer-encoding",
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "upgrade",
+    "host",
+    "content-length",
+];
+
 fn is_hop_by_hop_header(name: &str) -> bool {
-    matches!(
-        name,
-        "host" | "transfer-encoding" | "content-length" | "connection"
-    )
+    HOP_BY_HOP_HEADERS.contains(&name)
 }

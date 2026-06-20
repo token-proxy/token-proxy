@@ -3,11 +3,13 @@ import { Card, Descriptions } from '@douyinfe/semi-ui';
 import type { LogDetailFull } from '../../../types/log.ts';
 import { formatNumber } from '../../../utils/format.ts';
 
+/** TokenUsageCard 组件 Props */
 interface TokenUsageCardProps {
   data: LogDetailFull;
   style?: React.CSSProperties;
 }
 
+/** 判断日志是否包含 Token 数据 */
 export function hasTokenData(d: LogDetailFull): boolean {
   return (
     d.token_input_tokens != null ||
@@ -19,6 +21,11 @@ export function hasTokenData(d: LogDetailFull): boolean {
   );
 }
 
+/**
+ * TokenUsageCard - Token 用量展示卡片
+ *
+ * 无 Token 数据时不渲染，有数据时展示总计及各类详细用量。
+ */
 export default function TokenUsageCard({data: d, style}: TokenUsageCardProps): ReactNode {
   if (!hasTokenData(d)) return null;
 

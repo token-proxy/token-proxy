@@ -1,8 +1,13 @@
+//! 用户仓储接口 — domain/user/
+//!
+//! 定义 `UserRepository` trait，提供用户的持久化契约。
+
 use crate::domain::user::User;
 use crate::shared::error::AppError;
 use async_trait::async_trait;
 use uuid::Uuid;
 
+/// 用户仓储接口
 #[async_trait]
 pub trait UserRepository: Send + Sync {
     /// 根据 ID 查找用户

@@ -1,3 +1,8 @@
+//! 日志仓储接口 — domain/log/
+//!
+//! 定义 `LogRepository` trait 及其关联的查询/摘要 DTO，
+//! 提供日志元数据、内容、token 用量的持久化契约。
+
 use chrono::{DateTime, NaiveDate, Utc};
 use uuid::Uuid;
 
@@ -15,6 +20,10 @@ pub struct LogQuery {
     pub start_time: Option<DateTime<Utc>>,
     pub end_time: Option<DateTime<Utc>>,
     pub status_code: Option<i16>,
+    pub provider_id: Option<Uuid>,
+    pub account_id: Option<Uuid>,
+    /// 按是否中断过滤
+    pub is_interrupted: Option<bool>,
 }
 
 /// 日志条目带 token 用量摘要
@@ -29,7 +38,7 @@ pub struct LogMetadataWithTokenSummary {
     pub total_tokens: Option<i32>,
 }
 
-/// 会话摘要数据
+/// 会话摘要数据（统计请求数、各类型 token 总量）
 #[derive(Debug, Clone)]
 pub struct SessionSummaryData {
     pub session_id: String,
@@ -56,6 +65,7 @@ pub struct SessionQuery {
     pub status_code: Option<i16>,
 }
 
+/// 日志仓储接口
 #[async_trait]
 pub trait LogRepository: Send + Sync {
     /// 根据 ID 查找日志条目
@@ -84,7 +94,7 @@ pub trait LogRepository: Send + Sync {
     /// 删除指定 ID 的日志条目及其内容
     async fn delete(&self, id: Uuid) -> Result<(), AppError>;
 
-    // ─── 新查询方法 ───
+    // ─── 联表查询 ───
 
     /// 分页查询日志条目（含 token 用量摘要），使用 LEFT JOIN log_token_usage 联表查询
     async fn find_all_paginated_with_token_summary(

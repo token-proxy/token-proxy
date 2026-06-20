@@ -2,6 +2,9 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
 
+/// Token 用量响应
+///
+/// 包含单次请求的详细 token 消耗明细。
 #[derive(Debug, Clone, Serialize)]
 pub struct TokenUsageResponse {
     pub id: Uuid,

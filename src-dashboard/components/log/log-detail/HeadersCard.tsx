@@ -26,13 +26,19 @@ function formatHeadersForCopy(
     .join('\n');
 }
 
-interface HadersCardProps {
+/** HeadersCard 组件 Props */
+interface HeadersCardProps {
   headers: Record<string, unknown> | null | undefined;
   style?: React.CSSProperties;
-  title: String;
+  title: string;
 }
 
-export default function HeadersCard({headers, style, title}: HadersCardProps): ReactNode {
+/**
+ * HeadersCard - 请求/响应头展示卡片
+ *
+ * 使用 CollapsibleCard 折叠展示，支持一键复制所有头部内容。
+ */
+export default function HeadersCard({headers, style, title}: HeadersCardProps): ReactNode {
   const items = formatHeadersToArray(headers);
   const [copying, setCopying] = useState(false);
   const copyText = useMemo(() => formatHeadersForCopy(headers), [headers]);

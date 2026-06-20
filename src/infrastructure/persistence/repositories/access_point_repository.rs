@@ -1,21 +1,24 @@
+//! 接入点 Repository 实现（基础设施层）
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    TransactionTrait,
 };
 
+use crate::domain::access_point::access_point_account::AccessPointAccount;
 use crate::domain::access_point::repository::AccessPointRepository;
 use crate::domain::access_point::AccessPoint;
 use crate::domain::access_point::{
     AccessPointActiveModel, AccessPointColumn, AccessPointEntity, AccessPointEx,
 };
-use crate::domain::provider::{AccountEntity, ProviderEntity};
 use crate::domain::shared::Status;
 use crate::shared::error::AppError;
 use uuid::Uuid;
 
-use sea_orm::entity::compound::HasOne;
+use super::access_point_account_repository as accounts_mod;
 
 pub struct SeaOrmAccessPointRepository {
     db: Arc<DatabaseConnection>,
@@ -44,24 +47,21 @@ impl AccessPointRepository for SeaOrmAccessPointRepository {
 
         match ap {
             Some(ap_model) => {
-                let provider = ap_model.find_related(ProviderEntity).one(&*self.db).await?;
-                let account = ap_model.find_related(AccountEntity).one(&*self.db).await?;
+                // 加载账户池
+                let accounts: Vec<AccessPointAccount> = accounts_mod::Entity::find()
+                    .filter(accounts_mod::Column::AccessPointId.eq(ap_model.id))
+                    .order_by_asc(accounts_mod::Column::Priority)
+                    .all(&*self.db)
+                    .await?
+                    .into_iter()
+                    .map(|a| AccessPointAccount {
+                        account_id: a.account_id,
+                        weight: a.weight,
+                        priority: a.priority,
+                    })
+                    .collect();
 
-                let mut model_ex: AccessPointEx = ap_model.into();
-
-                if let Some(p) = provider {
-                    model_ex.provider = HasOne::loaded(p);
-                } else {
-                    model_ex.provider = HasOne::NotFound;
-                }
-
-                if let Some(a) = account {
-                    model_ex.account = HasOne::loaded(a);
-                } else {
-                    model_ex.account = HasOne::NotFound;
-                }
-
-                Ok(Some(model_ex))
+                Ok(Some(AccessPointEx::from_model(ap_model, accounts)))
             }
             None => Ok(None),
         }
@@ -75,15 +75,54 @@ impl AccessPointRepository for SeaOrmAccessPointRepository {
     }
 
     async fn find_by_provider_id(&self, provider_id: Uuid) -> Result<Vec<AccessPoint>, AppError> {
+        // AccessPoint 不再直接关联 Provider，通过 accounts → access_point_accounts 间接查找
+        let account_ids: Vec<Uuid> = crate::domain::provider::AccountEntity::find()
+            .filter(crate::domain::provider::AccountColumn::ProviderId.eq(provider_id))
+            .all(&*self.db)
+            .await?
+            .into_iter()
+            .map(|a| a.id)
+            .collect();
+
+        if account_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let ap_ids: Vec<Uuid> = accounts_mod::Entity::find()
+            .filter(accounts_mod::Column::AccountId.is_in(account_ids))
+            .all(&*self.db)
+            .await?
+            .into_iter()
+            .map(|a| a.access_point_id)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if ap_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
         Ok(AccessPointEntity::find()
-            .filter(AccessPointColumn::ProviderId.eq(provider_id))
+            .filter(AccessPointColumn::Id.is_in(ap_ids))
             .all(&*self.db)
             .await?)
     }
 
     async fn find_by_account_id(&self, account_id: Uuid) -> Result<Vec<AccessPoint>, AppError> {
+        let ap_ids: Vec<Uuid> = accounts_mod::Entity::find()
+            .filter(accounts_mod::Column::AccountId.eq(account_id))
+            .all(&*self.db)
+            .await?
+            .into_iter()
+            .map(|a| a.access_point_id)
+            .collect();
+
+        if ap_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
         Ok(AccessPointEntity::find()
-            .filter(AccessPointColumn::AccountId.eq(account_id))
+            .filter(AccessPointColumn::Id.is_in(ap_ids))
             .all(&*self.db)
             .await?)
     }
@@ -116,6 +155,69 @@ impl AccessPointRepository for SeaOrmAccessPointRepository {
 
     async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         AccessPointEntity::delete_by_id(id).exec(&*self.db).await?;
+        Ok(())
+    }
+
+    async fn find_accounts_by_access_point(
+        &self,
+        access_point_id: Uuid,
+    ) -> Result<Vec<AccessPointAccount>, AppError> {
+        let accounts = accounts_mod::Entity::find()
+            .filter(accounts_mod::Column::AccessPointId.eq(access_point_id))
+            .order_by_asc(accounts_mod::Column::Priority)
+            .all(&*self.db)
+            .await?;
+
+        Ok(accounts
+            .into_iter()
+            .map(|a| AccessPointAccount {
+                account_id: a.account_id,
+                weight: a.weight,
+                priority: a.priority,
+            })
+            .collect())
+    }
+
+    async fn save_accounts(
+        &self,
+        access_point_id: Uuid,
+        accounts: &[AccessPointAccount],
+    ) -> Result<(), AppError> {
+        let db = Arc::clone(&self.db);
+        let ap_id = access_point_id;
+        let accounts_vec = accounts.to_vec();
+
+        db.transaction(|txn| {
+            let accounts_vec = accounts_vec.clone();
+            Box::pin(async move {
+                // 先删除该接入点的所有账户
+                accounts_mod::Entity::delete_many()
+                    .filter(accounts_mod::Column::AccessPointId.eq(ap_id))
+                    .exec(txn)
+                    .await?;
+
+                // 再插入新记录
+                for entry in accounts_vec {
+                    let model = accounts_mod::ActiveModel {
+                        id: Set(Uuid::new_v4()),
+                        access_point_id: Set(ap_id),
+                        account_id: Set(entry.account_id),
+                        weight: Set(entry.weight),
+                        priority: Set(entry.priority),
+                        created_at: Set(chrono::Utc::now().into()),
+                    };
+                    accounts_mod::Entity::insert(model).exec(txn).await?;
+                }
+
+                Ok(())
+            })
+        })
+        .await
+        .map_err(|e: sea_orm::TransactionError<sea_orm::DbErr>| match e {
+            sea_orm::TransactionError::Connection(db_err)
+            | sea_orm::TransactionError::Transaction(db_err) => AppError::from(db_err),
+        })?;
+
         Ok(())
     }
 }

@@ -10,11 +10,18 @@ import './RequestContentCard.css'
 
 const {Text} = Typography;
 
+/** RequestContentCard 组件 Props */
 interface RequestContentCardProps {
   requestBody: Record<string, unknown> | null | undefined;
   style?: React.CSSProperties;
 }
 
+/**
+ * RequestContentCard - 请求内容展示卡片
+ *
+ * 支持结构化视图（分段展示模型配置、系统提示词、消息、工具）和原始 JSON 视图，
+ * 通过 Switch 切换模式。
+ */
 export default function RequestContentCard({
   requestBody,
   style,

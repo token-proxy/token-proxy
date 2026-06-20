@@ -3,7 +3,6 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use chrono::Utc;
 
 use crate::application::AppState;
 use crate::shared::error::AppError;
@@ -14,10 +13,10 @@ use super::stats::dto::{
 
 /// 构建统计查询路由
 ///
-/// - `GET /api/stats/overview`             → get_overview
-/// - `GET /api/stats/trends`               → get_trends
-/// - `GET /api/stats/top-access-points`    → get_top_access_points
-/// - `GET /api/stats/top-models`           → get_top_models
+/// - `GET /api/stats/overview`              → get_overview
+/// - `GET /api/stats/trends`                → get_trends
+/// - `GET /api/stats/top-access-points`     → get_top_access_points
+/// - `GET /api/stats/top-models`            → get_top_models
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/stats/overview", get(get_overview))
@@ -28,10 +27,9 @@ pub fn routes() -> Router<AppState> {
 
 /// GET /api/stats/overview
 ///
-/// 返回全局概览统计
+/// 返回全局概览统计，委托给 `LogService::get_overview_stats()`。
 async fn get_overview(State(state): State<AppState>) -> Result<Json<OverviewResponse>, AppError> {
-    let total_requests = state.log_repo.count_total().await?;
-    let active_access_points = state.log_repo.count_active_access_points().await?;
+    let (total_requests, active_access_points) = state.log_service.get_overview_stats().await?;
 
     Ok(Json(OverviewResponse {
         total_requests,
@@ -41,16 +39,14 @@ async fn get_overview(State(state): State<AppState>) -> Result<Json<OverviewResp
 
 /// GET /api/stats/trends?days=7
 ///
-/// 返回最近 N 天每日请求量趋势
+/// 返回最近 N 天每日请求量趋势，委托给 `LogService::get_trends()`。
 async fn get_trends(
     State(state): State<AppState>,
     Query(query): Query<TrendsQuery>,
 ) -> Result<Json<Vec<TrendItem>>, AppError> {
     let days = query.days.unwrap_or(7).min(365);
-    let end = Utc::now();
-    let start = end - chrono::Duration::days(days as i64);
 
-    let trends = state.log_repo.count_by_date_range(start, end).await?;
+    let trends = state.log_service.get_trends(days).await?;
 
     let items: Vec<TrendItem> = trends
         .into_iter()
@@ -62,14 +58,14 @@ async fn get_trends(
 
 /// GET /api/stats/top-access-points?limit=10
 ///
-/// 返回请求量最高的接入点排名
+/// 返回请求量最高的接入点排名，委托给 `LogService::get_top_access_points()`。
 async fn get_top_access_points(
     State(state): State<AppState>,
     Query(query): Query<TopQuery>,
 ) -> Result<Json<Vec<TopAccessPointItem>>, AppError> {
     let limit = query.limit.unwrap_or(10).min(100);
 
-    let top = state.log_repo.top_access_points(limit).await?;
+    let top = state.log_service.get_top_access_points(limit).await?;
 
     let items: Vec<TopAccessPointItem> = top
         .into_iter()
@@ -84,14 +80,14 @@ async fn get_top_access_points(
 
 /// GET /api/stats/top-models?limit=10
 ///
-/// 返回请求量最高的模型排名
+/// 返回请求量最高的模型排名，委托给 `LogService::get_top_models()`。
 async fn get_top_models(
     State(state): State<AppState>,
     Query(query): Query<TopQuery>,
 ) -> Result<Json<Vec<TopModelItem>>, AppError> {
     let limit = query.limit.unwrap_or(10).min(100);
 
-    let top = state.log_repo.top_models(limit).await?;
+    let top = state.log_service.get_top_models(limit).await?;
 
     let items: Vec<TopModelItem> = top
         .into_iter()

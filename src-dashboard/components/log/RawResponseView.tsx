@@ -3,10 +3,16 @@ import { Button, Toast } from '@douyinfe/semi-ui';
 import { IconCopy } from '@douyinfe/semi-icons';
 import CodeHighlight from '@components/common/CodeHighlight';
 
+/** RawResponseView 组件 Props */
 interface RawResponseViewProps {
   body: string;
 }
 
+/**
+ * RawResponseView - 原始响应内容展示组件
+ *
+ * 展示原始 SSE 响应文本，支持一键复制。
+ */
 export default function RawResponseView({body}: RawResponseViewProps): ReactNode {
   const [copying, setCopying] = useState(false);
 

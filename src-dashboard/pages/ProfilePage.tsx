@@ -19,6 +19,12 @@ interface UserProfile {
 
 /* ---- 组件 ---- */
 
+/**
+ * ProfilePage - 个人设置页面
+ *
+ * 包含个人资料编辑、密码修改、API Key 管理三个标签页。
+ * 密码修改成功后清除本地令牌并跳转到登录页。
+ */
 export default function ProfilePage(): ReactNode {
   const navigate = useNavigate();
 

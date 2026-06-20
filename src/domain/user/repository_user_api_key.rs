@@ -1,8 +1,13 @@
+//! 用户 API Key 仓储接口 — domain/user/
+//!
+//! 定义 `UserApiKeyRepository` trait，提供用户 API key 的持久化契约。
+
 use crate::domain::user::UserApiKey;
 use crate::shared::error::AppError;
 use async_trait::async_trait;
 use uuid::Uuid;
 
+/// 用户 API Key 仓储接口
 #[async_trait]
 pub trait UserApiKeyRepository: Send + Sync {
     /// 根据 ID 查找 API key

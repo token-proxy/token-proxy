@@ -10,6 +10,12 @@ interface LoginFormValues {
   password: string;
 }
 
+/**
+ * LoginPage - 登录页面
+ *
+ * 提供账号密码登录表单，登录成功后存储 JWT 并跳转到 Dashboard。
+ * 已登录用户自动重定向到 /dashboard。
+ */
 export default function LoginPage(): ReactNode {
   const navigate = useNavigate();
   const token = localStorage.getItem('access_token');

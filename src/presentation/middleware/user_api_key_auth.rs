@@ -1,3 +1,9 @@
+//! API key 认证中间件（展示层）
+//!
+//! 对 `/ap/*` 代理转发路径进行用户 API key 认证。
+//! 通过 SHA-256 哈希查找并验证 API key，
+//! 认证通过后将 `ApiKeyUser` 注入 request extensions。
+
 use axum::{
     extract::{FromRequestParts, Request, State},
     http::request::Parts,

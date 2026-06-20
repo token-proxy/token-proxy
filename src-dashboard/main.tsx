@@ -1,3 +1,8 @@
+/**
+ * 前端应用入口
+ *
+ * 初始化 React 根渲染，注入 StrictMode 和 ThemeProvider。
+ */
 import '@douyinfe/semi-ui/react19-adapter';
 import './styles.css';
 

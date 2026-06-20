@@ -6,19 +6,24 @@ use axum::{
 use uuid::Uuid;
 
 use crate::application::provider::dto::{
-    AccountResponse, CreateAccountRequest, UpdateAccountRequest,
+    AccountResponse, CreateAccountRequest, SetAccountStatusRequest, UpdateAccountRequest,
 };
 use crate::application::AppState;
+use crate::domain::shared::Status;
 use crate::shared::error::AppError;
 
 /// 构建账号管理路由
 ///
-/// 账号是嵌套在提供商之下的子资源:
+/// 账号是嵌套在服务商之下的子资源:
 /// - `GET    /api/providers/{provider_id}/accounts`          → list_accounts
 /// - `POST   /api/providers/{provider_id}/accounts`          → create_account
 /// - `GET    /api/providers/{provider_id}/accounts/{id}`     → get_account
 /// - `PUT    /api/providers/{provider_id}/accounts/{id}`     → update_account
 /// - `DELETE /api/providers/{provider_id}/accounts/{id}`     → delete_account
+///
+/// 独立的账号操作（不依赖 provider 路径）:
+/// - `PUT    /api/accounts/{id}/status`                      → set_account_status
+/// - `PUT    /api/accounts/{id}/recover`                     → recover_account
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/providers/{provider_id}/accounts", get(list_accounts))
@@ -38,11 +43,13 @@ pub fn routes() -> Router<AppState> {
             "/api/providers/{provider_id}/accounts/{id}",
             delete(delete_account),
         )
+        .route("/api/accounts/{id}/status", put(set_account_status))
+        .route("/api/accounts/{id}/recover", put(recover_account))
 }
 
 /// GET /api/providers/{provider_id}/accounts
 ///
-/// 返回指定提供商下的所有账号
+/// 返回指定服务商下的所有账号
 async fn list_accounts(
     State(state): State<AppState>,
     Path(provider_id): Path<Uuid>,
@@ -53,7 +60,7 @@ async fn list_accounts(
 
 /// POST /api/providers/{provider_id}/accounts
 ///
-/// 为指定提供商创建新账号
+/// 为指定服务商创建新账号
 async fn create_account(
     State(state): State<AppState>,
     Path(provider_id): Path<Uuid>,
@@ -95,4 +102,31 @@ async fn delete_account(
 ) -> Result<Json<serde_json::Value>, AppError> {
     state.account_service.delete(id).await?;
     Ok(Json(serde_json::json!({"message": "账号已删除"})))
+}
+
+/// PUT /api/accounts/{id}/status
+///
+/// 启用或禁用账号
+async fn set_account_status(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<SetAccountStatusRequest>,
+) -> Result<Json<AccountResponse>, AppError> {
+    let status: Status = req
+        .status
+        .parse()
+        .map_err(|e: AppError| AppError::Validation(e.to_string()))?;
+    let account = state.account_service.set_status(id, status).await?;
+    Ok(Json(account))
+}
+
+/// PUT /api/accounts/{id}/recover
+///
+/// 恢复被自动禁用的账号（清除 disabled_reason 和 available_at，重置为启用）
+async fn recover_account(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<AccountResponse>, AppError> {
+    let account = state.account_service.recover(id).await?;
+    Ok(Json(account))
 }

@@ -9,6 +9,12 @@ import HeadersCard from '@components/log/log-detail/HeadersCard.tsx';
 import RequestContentCard from '@components/log/log-detail/RequestContentCard';
 import ResponseContentCard from '@components/log/log-detail/ResponseContentCard';
 
+/**
+ * LogDetailPage - 日志详情页面
+ *
+ * 展示单条日志的完整详情：基础信息、Token 用量、请求头、请求内容解析、
+ * 响应头、响应内容解析。支持加载中、错误、空数据三种状态展示。
+ */
 export default function LogDetailPage(): ReactNode {
   const {id} = useParams<{ id: string }>();
   const navigate = useNavigate();

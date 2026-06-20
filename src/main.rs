@@ -4,7 +4,9 @@ use axum::Router;
 use sea_orm::Database;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
+use tracing::info_span;
 use tracing_subscriber::EnvFilter;
+use uuid::Uuid;
 
 use token_proxy::application::access_point::AccessPointService;
 use token_proxy::application::auth::AuthService;
@@ -18,6 +20,7 @@ use token_proxy::application::user::UserService;
 use token_proxy::application::AppState;
 use token_proxy::config::Config;
 use token_proxy::domain::access_point::repository::AccessPointRepository;
+use token_proxy::domain::access_point::SessionAffinityRepository;
 use token_proxy::domain::log::AuditLogRepository;
 use token_proxy::domain::log::LogRepository;
 use token_proxy::domain::log::LogTokenUsageRepository;
@@ -38,6 +41,7 @@ use token_proxy::infrastructure::persistence::repositories::SeaOrmLogRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmLogTokenUsageRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmProviderRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmRefreshTokenRepository;
+use token_proxy::infrastructure::persistence::repositories::SeaOrmSessionAffinityRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmSystemSettingsRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmUserApiKeyRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmUserRepository;
@@ -49,8 +53,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 加载 .env（可选）
     dotenvy::dotenv().ok();
 
-    // 初始化 tracing 日志
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    // 加载配置（须在 tracing 初始化之前，以便 LOG_LEVEL 生效）
+    let config = Config::from_env()?;
+
+    // 初始化 tracing 日志 — 由 LOG_LEVEL 环境变量控制
+    let env_filter = EnvFilter::new(&config.log_level);
     tracing_subscriber::fmt()
         .json()
         .with_env_filter(env_filter)
@@ -62,9 +69,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.len() > 1 && args[1] == "migrate" {
         let subcommand = args.get(2).map(|s| s.as_str()).unwrap_or("up");
 
-        let config = Config::from_env()?;
         let db = Database::connect(&config.database_url).await?;
-        tracing::info!("数据库连接成功");
+        tracing::info!("迁移模式数据库连接成功");
 
         use sea_orm_migration::MigratorTrait;
         match subcommand {
@@ -93,10 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    tracing::info!("token-proxy 服务启动中...");
-
-    // 加载配置
-    let config = Config::from_env()?;
+    tracing::info!("token-proxy 服务正在启动");
 
     // 连接数据库
     let db = Arc::new(Database::connect(&config.database_url).await?);
@@ -119,15 +122,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match partition_manager.run_maintenance(initial_retention).await {
         Ok(result) => {
             if !result.created.is_empty() {
-                tracing::info!("创建分区: {:?}", result.created);
+                tracing::info!(created = ?result.created, "启动时创建分区");
             }
             if !result.dropped.is_empty() {
-                tracing::info!("清理分区: {:?}", result.dropped);
+                tracing::info!(dropped = ?result.dropped, "启动时清理过期分区");
             }
             tracing::info!("分区初始化完成");
         }
         Err(e) => {
-            tracing::error!("分区初始化失败: {}", e);
+            tracing::error!(error = %e, "分区初始化失败");
         }
     }
 
@@ -167,17 +170,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(token_cleanup_interval);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        // 首个 tick 立即触发, 跳过它避免启动瞬间执行
+        // 首个 tick 立即触发，跳过它避免启动瞬间执行
         interval.tick().await;
         loop {
             interval.tick().await;
             match token_repo_cleanup.delete_expired().await {
                 Ok(n) if n > 0 => {
-                    tracing::info!("清理过期 refresh_token: {} 条", n);
+                    tracing::info!(count = %n, "清理过期 refresh_token");
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    tracing::error!("清理过期 refresh_token 失败: {}", e);
+                    tracing::error!(error = %e, "清理过期 refresh_token 失败");
                 }
             }
         }
@@ -197,6 +200,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_api_key_repo: Arc<dyn UserApiKeyRepository> =
         Arc::new(SeaOrmUserApiKeyRepository::new(db.clone()));
 
+    let session_affinity_repo: Arc<dyn SessionAffinityRepository> =
+        Arc::new(SeaOrmSessionAffinityRepository::new(db.clone()));
+
     // ─── 创建 Application Services ───
 
     let provider_service = Arc::new(ProviderService::new(
@@ -209,6 +215,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let account_service = Arc::new(AccountService::new(
         account_repo.clone(),
         provider_repo.clone(),
+        access_point_repo.clone(),
         encryption_service.clone(),
     ));
 
@@ -216,8 +223,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let access_point_service = Arc::new(AccessPointService::new(
         access_point_repo.clone(),
-        provider_repo.clone(),
-        account_repo.clone(),
     ));
 
     let auth_service = Arc::new(AuthService::new(
@@ -235,9 +240,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let proxy_pipeline = Arc::new(ProxyPipeline::new(
         access_point_repo.clone(),
+        provider_repo.clone(),
+        account_repo.clone(),
         encryption_service.clone(),
         proxy_client.clone(),
         log_service.clone(),
+        session_affinity_repo.clone(),
     ));
 
     let user_api_key_service = Arc::new(UserApiKeyService::new(
@@ -249,6 +257,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         system_settings_repo.clone(),
         audit_log_repo.clone(),
     ));
+
+    // 启动后台定时任务：清理过期的 session_affinity
+    let sa_repo_cleanup = session_affinity_repo.clone();
+    let sa_cleanup_interval =
+        std::time::Duration::from_secs(config.partition_check_interval_secs);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(sa_cleanup_interval);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            match sa_repo_cleanup.delete_stale(chrono::Duration::days(7)).await {
+                Ok(n) if n > 0 => {
+                    tracing::info!(count = %n, "清理过期 session_affinity");
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!(error = %e, "清理 session_affinity 失败");
+                }
+            }
+        }
+    });
 
     // 启动后台定时分区维护任务
     let pm = partition_manager.clone();
@@ -267,14 +297,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match pm.run_maintenance_with_lock(retention).await {
                 Ok(result) => {
                     if !result.created.is_empty() {
-                        tracing::info!("创建分区: {:?}", result.created);
+                        tracing::info!(created = ?result.created, "分区维护创建分区");
                     }
                     if !result.dropped.is_empty() {
-                        tracing::info!("清理分区: {:?}", result.dropped);
+                        tracing::info!(dropped = ?result.dropped, "分区维护清理过期分区");
                     }
                 }
                 Err(e) => {
-                    tracing::error!("分区维护失败: {}", e);
+                    tracing::error!(error = %e, "分区维护失败");
                 }
             }
         }
@@ -325,26 +355,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         auth_service,
         proxy_pipeline,
         log_service,
-        log_repo,
-        log_token_usage_repo,
-        audit_log_repo,
-        system_settings_repo,
         settings_service,
         jwt_service,
         proxy_client,
+        session_affinity_repo,
     };
 
     // ─── 构建 Router ───
 
+    // ─── HTTP 请求日志 ───
+    // TraceLayer 仅为每个请求记录 method、uri、status、latency 和 request_id。
+    // 不记录请求/响应 header 和 body，避免泄露 Authorization、API key 等敏感信息。
+    let trace_layer = TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
+        let request_id = Uuid::new_v4().to_string();
+        info_span!(
+            "http_request",
+            http.method = %request.method(),
+            http.uri = %request.uri(),
+            request_id = %request_id,
+        )
+    });
+
     let app = Router::new()
         .merge(routes::build(state))
         .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http());
+        .layer(trace_layer);
 
     // ─── 启动 ───
 
     let addr = format!("0.0.0.0:{}", config.server_port);
-    tracing::info!("服务监听地址: {}", addr);
+    tracing::info!(address = %addr, "服务开始监听");
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;

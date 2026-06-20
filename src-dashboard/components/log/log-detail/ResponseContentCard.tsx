@@ -9,11 +9,18 @@ import ToolUseBlockCard from './response-content/ToolUseBlockCard';
 
 const {Text} = Typography;
 
+/** ResponseContentCard 组件 Props */
 interface ResponseContentCardProps {
   responseBody: string | null | undefined;
   style?: React.CSSProperties;
 }
 
+/**
+ * ResponseContentCard - 响应内容展示卡片
+ *
+ * 支持结构化视图（解析 SSE 后按 content block 类型分组展示）和原始 SSE 视图，
+ * 通过 Switch 切换模式。
+ */
 export default function ResponseContentCard({
   responseBody,
   style,

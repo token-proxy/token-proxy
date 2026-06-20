@@ -63,6 +63,7 @@ impl EncryptionService for Aes256GcmEncryptionService {
 }
 
 impl Aes256GcmEncryptionService {
+    /// 生成 12 字节随机 nonce
     fn generate_nonce() -> [u8; 12] {
         use rand::RngCore;
         let mut nonce = [0u8; 12];

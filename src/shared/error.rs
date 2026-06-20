@@ -1,3 +1,9 @@
+//! 应用层错误类型定义（共享层）
+//!
+//! 定义了 9 种 `AppError` 变体，对应不同的 HTTP 状态码。
+//! 实现了 `IntoResponse`，确保所有错误都以统一 JSON 格式返回。
+//! `Database` / `Upstream` / `Internal` 错误会额外记录 `tracing::error!` 日志。
+
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;

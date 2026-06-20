@@ -1,3 +1,7 @@
+//! 认证应用服务 — application/auth/
+//!
+//! 编排用户登录、token 刷新、退出登录和 token 验证操作。
+
 use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
@@ -12,6 +16,9 @@ use crate::infrastructure::auth::password::verify_password;
 use crate::infrastructure::auth::JwtService;
 use crate::shared::error::AppError;
 
+/// 认证应用服务
+///
+/// 编排登录、token 刷新、退出和 token 验证操作。
 pub struct AuthService {
     user_repo: Arc<dyn UserRepository>,
     refresh_token_repo: Arc<dyn RefreshTokenRepository>,
@@ -37,6 +44,9 @@ impl AuthService {
         format!("{:x}", hasher.finalize())
     }
 
+    /// 用户登录
+    ///
+    /// 验证用户名密码，生成 access_token 和 refresh_token。
     pub async fn login(&self, req: LoginRequest) -> Result<LoginResponse, AppError> {
         let user = self
             .user_repo
@@ -89,6 +99,9 @@ impl AuthService {
         })
     }
 
+    /// 刷新 token
+    ///
+    /// 验证 refresh token，原子吊销旧 token 并生成新的 token pair。
     pub async fn refresh(&self, req: RefreshRequest) -> Result<LoginResponse, AppError> {
         let token_hash = Self::hash_token(&req.refresh_token);
 
@@ -150,12 +163,14 @@ impl AuthService {
         })
     }
 
+    /// 退出登录（吊销该用户的所有 refresh token）
     pub async fn logout(&self, user_id: Uuid) -> Result<(), AppError> {
         self.refresh_token_repo.revoke_all_for_user(user_id).await?;
 
         Ok(())
     }
 
+    /// 验证 access token 并返回 JWT 声明
     pub async fn validate_access_token(&self, token: &str) -> Result<Claims, AppError> {
         let jwt_claims = self
             .jwt_service

@@ -1,3 +1,5 @@
+//! 账号 Repository 实现（基础设施层）
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -5,7 +7,9 @@ use sea_orm::{ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFi
 
 use crate::domain::provider::repository::AccountRepository;
 use crate::domain::provider::Account;
-use crate::domain::provider::{AccountActiveModel, AccountColumn, AccountEntity};
+use crate::domain::provider::{
+    AccountActiveModel, AccountColumn, AccountEntity,
+};
 use crate::domain::shared::Status;
 use crate::shared::error::AppError;
 use uuid::Uuid;
@@ -67,8 +71,6 @@ impl AccountRepository for SeaOrmAccountRepository {
 
         // Account 的 AccountActiveModel 需要 api_key_encrypted, 但领域实体不包含此字段。
         // 更新时保持原加密数据不变; 新建时使用空 Vec（应由应用层补充处理）。
-        use chrono::FixedOffset;
-        let _offset = FixedOffset::east_opt(0).expect("UTC offset");
 
         let active_model = if exists {
             let existing = AccountEntity::find_by_id(account.id)
@@ -82,6 +84,8 @@ impl AccountRepository for SeaOrmAccountRepository {
                 name: Set(account.name.clone()),
                 api_key_encrypted: Set(existing.api_key_encrypted),
                 api_key_suffix: Set(account.api_key_suffix.clone()),
+                disabled_reason: Set(account.disabled_reason.clone()),
+                available_at: Set(account.available_at),
                 status: Set(account.status.clone()),
                 created_at: Set(account.created_at),
                 updated_at: Set(account.updated_at),
@@ -93,6 +97,8 @@ impl AccountRepository for SeaOrmAccountRepository {
                 name: Set(account.name.clone()),
                 api_key_encrypted: Set(Vec::new()),
                 api_key_suffix: Set(account.api_key_suffix.clone()),
+                disabled_reason: Set(account.disabled_reason.clone()),
+                available_at: Set(account.available_at),
                 status: Set(account.status.clone()),
                 created_at: Set(account.created_at),
                 updated_at: Set(account.updated_at),
@@ -124,8 +130,6 @@ impl AccountRepository for SeaOrmAccountRepository {
         encrypted_api_key: &[u8],
     ) -> Result<Account, AppError> {
         let db = &*self.db;
-        use chrono::FixedOffset;
-        let _offset = FixedOffset::east_opt(0).expect("UTC offset");
 
         let active_model = AccountActiveModel {
             id: Set(account.id),
@@ -133,6 +137,8 @@ impl AccountRepository for SeaOrmAccountRepository {
             name: Set(account.name.clone()),
             api_key_encrypted: Set(encrypted_api_key.to_vec()),
             api_key_suffix: Set(account.api_key_suffix.clone()),
+            disabled_reason: Set(account.disabled_reason.clone()),
+            available_at: Set(account.available_at),
             status: Set(account.status.clone()),
             created_at: Set(account.created_at),
             updated_at: Set(account.updated_at),
@@ -167,6 +173,8 @@ impl AccountRepository for SeaOrmAccountRepository {
             provider_id: ActiveValue::NotSet,
             name: ActiveValue::NotSet,
             api_key_suffix: ActiveValue::NotSet,
+            disabled_reason: ActiveValue::NotSet,
+            available_at: ActiveValue::NotSet,
             status: ActiveValue::NotSet,
             created_at: ActiveValue::NotSet,
         };

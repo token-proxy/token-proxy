@@ -8,6 +8,11 @@ interface Settings {
   log_retention_months: number;
 }
 
+/**
+ * SettingsPage - 系统设置页面
+ *
+ * 提供全局系统配置的查看和修改功能（如日志保留月数）。
+ */
 export default function SettingsPage(): ReactNode {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(false);

@@ -1,8 +1,13 @@
+//! 刷新令牌仓储接口 — domain/user/
+//!
+//! 定义 `RefreshTokenRepository` trait，提供刷新令牌的持久化契约。
+
 use crate::domain::user::RefreshToken;
 use crate::shared::error::AppError;
 use async_trait::async_trait;
 use uuid::Uuid;
 
+/// 刷新令牌仓储接口
 #[async_trait]
 pub trait RefreshTokenRepository: Send + Sync {
     /// 根据 ID 查找刷新令牌

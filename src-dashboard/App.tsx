@@ -11,6 +11,11 @@ import LogDetailPage from './pages/LogDetailPage.tsx';
 import SettingsPage from './pages/SettingsPage.tsx';
 import ProfilePage from './pages/ProfilePage.tsx';
 
+/**
+ * App - 应用根组件
+ *
+ * 配置 React Router 路由结构，包含登录页和管理后台（侧边栏 + 内容区）两级布局。
+ */
 function App() {
   return (
     <BrowserRouter>

@@ -1,3 +1,8 @@
+//! 用户 API Key 实体 — domain/user/
+//!
+//! 定义 `UserApiKey`（SeaORM 实体映射 `user_api_keys` 表），
+//! 用户用于访问代理入口的 API key 管理。
+
 use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::entity::prelude::*;
 use uuid::Uuid;
@@ -13,6 +18,7 @@ pub struct Model {
     pub user_id: Uuid,
     #[sea_orm(unique)]
     pub key_hash: String,
+    /// API key 前缀（`tp_` 开头的用于在前端展示时标识用户）
     pub key_prefix: String,
     pub description: String,
     pub last_used_at: Option<DateTimeWithTimeZone>,

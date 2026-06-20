@@ -92,6 +92,7 @@ impl UserApiKeyService {
         });
         let audit = AuditLog::new(
             Some(user_id),
+            "user",
             "create_api_key",
             "user_api_key",
             Some(saved.id),
@@ -157,6 +158,7 @@ impl UserApiKeyService {
         });
         let audit = AuditLog::new(
             operator_user_id,
+            "user",
             "revoke_api_key",
             "user_api_key",
             Some(key_id),

@@ -1,3 +1,9 @@
+//! 日志内容实体 — domain/log/
+//!
+//! 定义 `LogContent`（SeaORM 实体映射 `log_contents` 表），
+//! 按月分区，存储请求和响应的完整 headers、body。
+//! 按需加载，不随日志列表一起查询。
+
 use sea_orm::entity::prelude::*;
 use uuid::Uuid;
 

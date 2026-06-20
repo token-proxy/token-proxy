@@ -1,9 +1,17 @@
+/**
+ * API 请求封装模块
+ *
+ * 提供 HTTP 请求的基础封装，包含 JWT 自动刷新机制（双层防御：请求前体检 + 401 兜底）、
+ * 并发去重、认证失败重定向等功能。
+ */
+
 // access_token 距离过期不足该阈值时, 请求前主动刷新（秒）
 const REFRESH_THRESHOLD_SEC = 300;
 
 // 并发去重：所有需要刷新的请求 await 同一个 Promise, 避免后端 Refresh Token Rotation 互相吊销
 let refreshing: Promise<string> | null = null;
 
+/** 清除本地认证信息并跳转到登录页 */
 function clearAuthAndRedirect(): void {
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
@@ -12,7 +20,7 @@ function clearAuthAndRedirect(): void {
   window.location.href = '/login';
 }
 
-// 本地解码 JWT payload, 不验签 (前端无密钥), 仅用于读取 exp 字段
+/** 本地解码 JWT payload, 不验签 (前端无密钥), 仅用于读取 exp 字段 */
 function getTokenExp(token: string): number | null {
   try {
     const payload = token.split('.')[1];
@@ -26,6 +34,7 @@ function getTokenExp(token: string): number | null {
   }
 }
 
+/** 执行 refresh token 刷新，更新本地存储并返回新 access_token */
 async function doRefresh(): Promise<string> {
   const refreshToken = localStorage.getItem('refresh_token');
   if (!refreshToken) {
@@ -50,6 +59,9 @@ async function doRefresh(): Promise<string> {
   return data.access_token;
 }
 
+/**
+ * 执行刷新：存在进行中的刷新请求时复用同一个 Promise 防止并发刷新互相吊销
+ */
 function scheduleRefresh(): Promise<string> {
   if (!refreshing) {
     refreshing = doRefresh().finally(() => {
@@ -60,6 +72,7 @@ function scheduleRefresh(): Promise<string> {
 }
 
 // 请求前体检：必要时主动刷新, 返回最新的 access_token
+/** 请求前体检：必要时主动刷新, 返回最新的 access_token */
 async function ensureFreshToken(): Promise<string | null> {
   // 已有 refresh 进行中, 直接 await 同一个 Promise
   if (refreshing) return refreshing;
@@ -80,6 +93,7 @@ async function ensureFreshToken(): Promise<string | null> {
   }
 }
 
+/** 构建请求头：自动注入 Content-Type 和 Authorization */
 async function buildHeaders(extra?: HeadersInit): Promise<HeadersInit> {
   const token = await ensureFreshToken();
   return {
@@ -89,6 +103,12 @@ async function buildHeaders(extra?: HeadersInit): Promise<HeadersInit> {
   };
 }
 
+/**
+ * 通用请求方法
+ *
+ * 自动注入认证头，401 时触发一次刷新重试。
+ * 请求失败时输出 console.error 并 throw 错误。
+ */
 async function request<T>(
   url: string,
   options: RequestInit = {},
@@ -109,8 +129,11 @@ async function request<T>(
   }
 
   if (!res.ok) {
+    const method = (options.method ?? 'GET').toUpperCase();
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `请求失败 (${res.status})`);
+    const errorMsg = body.error || `请求失败 (${res.status})`;
+    console.error(`[API] ${method} ${url} 失败: ${res.status} - ${errorMsg}`, { request_id: body.request_id });
+    throw new Error(errorMsg);
   }
 
   // DELETE 等场景可能无响应体
@@ -118,11 +141,14 @@ async function request<T>(
   return res.json();
 }
 
+/** HTTP 请求封装，提供 get/post/put/delete 方法 */
 const api = {
+  /** GET 请求 */
   get<T>(url: string): Promise<T> {
     return request<T>(url);
   },
 
+  /** POST 请求 */
   post<T>(url: string, body: unknown): Promise<T> {
     return request<T>(url, {
       method: 'POST',
@@ -130,6 +156,7 @@ const api = {
     });
   },
 
+  /** PUT 请求 */
   put<T>(url: string, body: unknown): Promise<T> {
     return request<T>(url, {
       method: 'PUT',
@@ -137,6 +164,7 @@ const api = {
     });
   },
 
+  /** DELETE 请求 */
   async delete(url: string): Promise<void> {
     await request<void>(url, {method: 'DELETE'});
   },

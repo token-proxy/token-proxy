@@ -4,6 +4,7 @@ import StatusToggle from '@components/common/StatusToggle';
 import CopyableIdText from '@components/common/CopyableIdText';
 import type { AccessPoint } from '../../types/accessPoint.ts';
 
+/** AccessPointTable 组件 Props */
 interface AccessPointTableProps {
   accessPoints: AccessPoint[];
   loading: boolean;
@@ -16,6 +17,11 @@ interface AccessPointTableProps {
   onToggleEnabled: (accessPoint: AccessPoint) => void;
 }
 
+/**
+ * AccessPointTable - 接入点列表表格组件
+ *
+ * 展示接入点列表，支持复制 URL/命令、编辑、删除、启用/禁用等操作。
+ */
 export default function AccessPointTable({
   accessPoints,
   loading,
@@ -48,11 +54,10 @@ export default function AccessPointTable({
       ),
     },
     {
-      title: '映射规则数',
-      key: 'mapping_count',
-      width: 120,
-      render: (_: unknown, record: AccessPoint) =>
-        record.model_mappings?.length ?? 0,
+      title: '账号数量',
+      key: 'account_count',
+      width: 100,
+      render: (_: unknown, record: AccessPoint) => record.accounts?.length ?? 0,
     },
     {title: 'API 类型', dataIndex: 'api_type', key: 'api_type', width: 100},
     {

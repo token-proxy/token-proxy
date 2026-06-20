@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Dropdown, Layout, Nav } from '@douyinfe/semi-ui';
-import { IconUserCircle } from '@douyinfe/semi-icons';
+import { IconHomeStroked, IconServerStroked, IconRoute, IconCommentStroked, IconListView, IconUserGroup, IconSettingStroked, IconUserCircle } from '@douyinfe/semi-icons';
 import ThemeToggle from '@components/common/ThemeToggle';
 
 const {Header, Sider, Content} = Layout;
@@ -9,22 +9,38 @@ const {Header, Sider, Content} = Layout;
 interface NavItem {
   itemKey: string;
   text: string;
+  icon?: ReactNode;
 }
 
 const navItems: NavItem[] = [
-  {itemKey: '/dashboard', text: 'Dashboard'},
-  {itemKey: '/providers', text: 'Provider 管理'},
-  {itemKey: '/access-points', text: '接入点管理'},
-  {itemKey: '/sessions', text: '会话日志'},
-  {itemKey: '/logs', text: '请求日志'},
-  {itemKey: '/users', text: '用户管理'},
-  {itemKey: '/settings', text: '系统设置'},
+  {itemKey: '/dashboard', text: 'Dashboard', icon: <IconHomeStroked />},
+  {itemKey: '/providers', text: '服务商管理', icon: <IconServerStroked />},
+  {itemKey: '/access-points', text: '接入点管理', icon: <IconRoute />},
+  {itemKey: '/sessions', text: '会话日志', icon: <IconCommentStroked />},
+  {itemKey: '/logs', text: '请求日志', icon: <IconListView />},
+  {itemKey: '/users', text: '用户管理', icon: <IconUserGroup />},
+  {itemKey: '/settings', text: '系统设置', icon: <IconSettingStroked />},
 ];
 
+// 匹配详情页路径：logs/:id 或 sessions/:sessionId
+const DETAIL_PAGE_PATTERN = /^\/(logs|sessions)\/[^/]+$/;
+
+/**
+ * AdminLayout - 管理后台布局组件
+ *
+ * 包含侧边栏导航（Semi Nav）和顶部 Header（主题切换 + 用户菜单）。
+ * 详情页（logs/:id, sessions/:sessionId）自动收起侧边栏以便展示更多内容。
+ */
 export default function AdminLayout(): ReactNode {
   const navigate = useNavigate();
   const location = useLocation();
-  const [selectedKeys, setSelectedKeys] = useState([location.pathname.replace(/\/$/, '') || '/dashboard']);
+  const [selectedKeys, setSelectedKeys] = useState(() => {
+    const path = location.pathname.replace(/\/$/, '') || '/dashboard';
+    return DETAIL_PAGE_PATTERN.test(path) ? [] : [path];
+  });
+  const [isCollapsed, setIsCollapsed] = useState(
+    DETAIL_PAGE_PATTERN.test(location.pathname.replace(/\/$/, '')),
+  );
   const [displayName, setDisplayName] = useState(
     localStorage.getItem('display_name') || localStorage.getItem('username') || '管理员',
   );
@@ -39,6 +55,15 @@ export default function AdminLayout(): ReactNode {
 
   useEffect(() => {
     const currentPath = location.pathname.replace(/\/$/, '') || '/dashboard';
+
+    // 详情页（logs/:id / sessions/:sessionId）：自动收起侧边栏，不激活任何导航项
+    if (DETAIL_PAGE_PATTERN.test(currentPath)) {
+      setIsCollapsed(true);
+      setSelectedKeys([]);
+      return;
+    }
+
+    // 列表页或其他页面：匹配导航高亮，不干预折叠状态（保留用户偏好）
     const matchingItem = [...navItems]
       .sort((a, b) => b.itemKey.length - a.itemKey.length)
       .find(item => currentPath === item.itemKey || currentPath.startsWith(item.itemKey + '/'));
@@ -60,7 +85,9 @@ export default function AdminLayout(): ReactNode {
       <Sider style={{backgroundColor: 'var(--semi-color-bg-1)'}}>
         <Nav
           style={{maxWidth: 220, height: '100%'}}
+          isCollapsed={isCollapsed}
           selectedKeys={selectedKeys}
+          onCollapseChange={setIsCollapsed}
           onSelect={({itemKey}) => {
             setSelectedKeys([itemKey as string]);
             navigate(itemKey as string);

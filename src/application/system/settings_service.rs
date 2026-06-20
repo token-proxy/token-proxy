@@ -1,3 +1,7 @@
+//! 系统设置应用服务 — application/system/
+//!
+//! 编排系统配置的读取和更新操作，包括日志保留月数等全局设置。
+
 use std::sync::Arc;
 
 use crate::domain::log::AuditLog;
@@ -8,6 +12,9 @@ use crate::shared::error::AppError;
 
 use super::dto::{SettingsResponse, UpdateSettingsRequest};
 
+/// 系统设置应用服务
+///
+/// 编排系统全局配置的读取和更新，更新时记录审计日志。
 pub struct SettingsService {
     settings_repo: Arc<dyn SystemSettingsRepository>,
     audit_log_repo: Arc<dyn AuditLogRepository>,
@@ -24,6 +31,7 @@ impl SettingsService {
         }
     }
 
+    /// 获取系统设置
     pub async fn get_settings(&self) -> Result<SettingsResponse, AppError> {
         let settings = self.settings_repo.get().await?;
         Ok(SettingsResponse {
@@ -31,6 +39,9 @@ impl SettingsService {
         })
     }
 
+    /// 更新系统设置
+    ///
+    /// 校验日志保留月数范围（1-36），保存后记录审计日志。
     pub async fn update_settings(
         &self,
         input: UpdateSettingsRequest,
@@ -52,6 +63,7 @@ impl SettingsService {
         // 审计日志（忽略写入失败）
         let audit = AuditLog::new(
             user_id,
+            "user",
             "update",
             "system_settings",
             Some(uuid::Uuid::new_v4()),

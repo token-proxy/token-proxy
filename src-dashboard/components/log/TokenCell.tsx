@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { Tooltip } from '@douyinfe/semi-ui';
 import { formatNumber } from '../../utils/format.ts';
 
+/** TokenCell 组件 Props */
 interface TokenCellProps {
   input_tokens?: number | null;
   output_tokens?: number | null;
@@ -11,6 +12,7 @@ interface TokenCellProps {
   total_tokens?: number | null;
 }
 
+/** Token 分类显示配置，按 label 排序展示在 Tooltip 中 */
 const CATEGORIES = [
   { label: '总计',        value: (_v: Values) => _v.total },
   { label: '新输入',      value: (_v: Values) => _v.input },
@@ -29,6 +31,11 @@ interface Values {
   total: number;
 }
 
+/**
+ * TokenCell - Token 用量表格单元格组件
+ *
+ * 精简显示 ↑输入 / ↓输出，Tooltip 悬浮展示各分类详细数量。
+ */
 export default function TokenCell(props: TokenCellProps): ReactNode {
   const {
     input_tokens,

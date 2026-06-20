@@ -1,3 +1,8 @@
+//! Token 用量解析器（基础设施层）
+//!
+//! 从上游响应中解析 token 用量信息。
+//! 支持 SSE 流式格式（`message_delta` 事件）和非流式 JSON 格式（`usage` 字段）。
+
 use serde_json::Value;
 
 /// 从响应中解析 token 用量
@@ -48,14 +53,22 @@ fn parse_non_streaming_usage(response_body: &str) -> Option<ParsedTokenUsage> {
     Some(extract_usage_fields(usage))
 }
 
+/// 解析后的 token 用量
 #[derive(Debug, Clone, Default)]
 pub struct ParsedTokenUsage {
+    /// 输入 token 数
     pub input_tokens: i32,
+    /// 输出 token 数
     pub output_tokens: i32,
+    /// 缓存创建输入 token 数
     pub cache_creation_input_tokens: i32,
+    /// 缓存读取输入 token 数
     pub cache_read_input_tokens: i32,
+    /// 思考 token 数
     pub thinking_tokens: i32,
+    /// 总计 token 数（各字段之和）
     pub total_tokens: i32,
+    /// 原始 usage 数据（JSON）
     pub raw_usage: Value,
 }
 

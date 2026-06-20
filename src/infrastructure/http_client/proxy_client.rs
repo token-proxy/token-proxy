@@ -1,3 +1,8 @@
+//! 上游 API 代理客户端
+//!
+//! 纯 HTTP 执行器，不关心 API 格式细节。
+//! 接收预构造好的 URL、headers 和 body，直接发送请求并返回原始响应。
+
 use std::time::Duration;
 
 use axum::http::HeaderMap;

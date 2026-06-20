@@ -1,3 +1,5 @@
+//! JWT 声明定义（基础设施层）
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

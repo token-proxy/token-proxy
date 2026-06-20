@@ -7,6 +7,7 @@ const {Text} = Typography;
 
 /* ---- 类型定义 ---- */
 
+/** 用户 API Key 信息 */
 interface UserApiKey {
   id: string;
   key_prefix: string;
@@ -16,6 +17,7 @@ interface UserApiKey {
   created_at: string;
 }
 
+/** 创建 API Key 的响应 */
 interface CreateApiKeyResponse {
   id: string;
   full_key: string;
@@ -41,6 +43,12 @@ function formatDate(dateStr: string | null): string {
 
 /* ---- 组件 ---- */
 
+/**
+ * ApiKeyManager - 用户 API Key 管理组件
+ *
+ * 提供个人 API Key 的创建、编辑备注、吊销等功能。
+ * 创建成功后弹窗展示完整 Key，并提示用户立即保存。
+ */
 export default function ApiKeyManager(): ReactNode {
   /* ---- API key 状态 ---- */
   const [apiKeys, setApiKeys] = useState<UserApiKey[]>([]);

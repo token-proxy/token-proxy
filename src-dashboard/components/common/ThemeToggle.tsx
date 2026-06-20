@@ -3,6 +3,7 @@ import { Button, Dropdown } from '@douyinfe/semi-ui';
 import { IconDesktop, IconMoon, IconSun, IconTick } from '@douyinfe/semi-icons';
 import { type ThemeMode, useTheme } from '../../hooks/useTheme';
 
+/** ThemeToggle 组件 Props */
 interface ThemeToggleProps {
   size?: 'default' | 'small' | 'large';
 }
@@ -17,6 +18,11 @@ const themeOptions: Array<{
   {mode: 'system', label: '跟随系统', icon: <IconDesktop/>},
 ];
 
+/**
+ * ThemeToggle - 主题切换下拉组件
+ *
+ * 支持明亮/黑暗/跟随系统三种模式，使用 Dropdown 菜单选择。
+ */
 export default function ThemeToggle({size = 'default'}: ThemeToggleProps): ReactNode {
   const {mode, setMode} = useTheme();
   const currentOption = themeOptions.find((option) => option.mode === mode) ?? themeOptions[2];

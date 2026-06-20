@@ -11,7 +11,7 @@ use crate::application::provider::dto::{
 use crate::application::AppState;
 use crate::shared::error::AppError;
 
-/// 构建提供商管理路由
+/// 构建服务商管理路由
 ///
 /// - `GET    /api/providers`              → list_providers
 /// - `POST   /api/providers`              → create_provider
@@ -31,7 +31,7 @@ pub fn routes() -> Router<AppState> {
 
 /// GET /api/providers
 ///
-/// 返回所有提供商列表
+/// 返回所有服务商列表
 async fn list_providers(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ProviderResponse>>, AppError> {
@@ -41,7 +41,7 @@ async fn list_providers(
 
 /// POST /api/providers
 ///
-/// 创建新的提供商
+/// 创建新的服务商
 async fn create_provider(
     State(state): State<AppState>,
     Json(req): Json<CreateProviderRequest>,
@@ -52,7 +52,7 @@ async fn create_provider(
 
 /// GET /api/providers/{id}
 ///
-/// 获取指定提供商详情
+/// 获取指定服务商详情
 async fn get_provider(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -63,7 +63,7 @@ async fn get_provider(
 
 /// PUT /api/providers/{id}
 ///
-/// 更新指定提供商
+/// 更新指定服务商
 async fn update_provider(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -75,13 +75,13 @@ async fn update_provider(
 
 /// DELETE /api/providers/{id}
 ///
-/// 删除指定提供商
+/// 删除指定服务商
 async fn delete_provider(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     state.provider_service.delete(id, None).await?;
-    Ok(Json(serde_json::json!({"message": "提供商已删除"})))
+    Ok(Json(serde_json::json!({"message": "服务商已删除"})))
 }
 
 /// POST /api/providers/{id}/models:discover

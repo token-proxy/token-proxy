@@ -1,19 +1,30 @@
+//! API Key 值对象 — domain/shared/
+//!
+//! 定义 `ApiKey` 类型，封装 API 密钥并提供脱敏展示（仅暴露后 6 位）。
+
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+/// API Key 值对象，提供脱敏展示和末尾截取能力
+///
+/// `Display` 和 `Debug` 实现均为脱敏格式，避免意外泄露。
+/// 完整密钥通过 `as_str()` / `into_inner()` 显式获取。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApiKey(String);
 
 impl ApiKey {
+    /// 创建新的 API Key
     pub fn new(key: String) -> Self {
         ApiKey(key)
     }
 
+    /// 返回脱敏字符串（`******` + 后 6 位）
     pub fn mask(&self) -> String {
         let suffix = self.suffix();
         format!("******{}", suffix)
     }
 
+    /// 返回后 6 位作为标识
     pub fn suffix(&self) -> String {
         let len = self.0.len();
         if len <= 6 {
@@ -23,10 +34,12 @@ impl ApiKey {
         }
     }
 
+    /// 获取内部字符串引用
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// 消费自身并返回内部字符串
     pub fn into_inner(self) -> String {
         self.0
     }

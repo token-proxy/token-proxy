@@ -1,3 +1,5 @@
+//! 审计日志 Repository 实现（基础设施层）
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -24,7 +26,8 @@ impl AuditLogRepository for SeaOrmAuditLogRepository {
     async fn save(&self, log: &AuditLog) -> Result<(), AppError> {
         let active_model = ActiveModel {
             id: Set(log.id),
-            user_id: Set(log.user_id),
+            operator_id: Set(log.operator_id),
+            operator_type: Set(log.operator_type.clone()),
             action: Set(log.action.clone()),
             entity_type: Set(log.entity_type.clone()),
             entity_id: Set(log.entity_id),

@@ -1,3 +1,7 @@
+//! 审计日志仓储接口 — domain/log/
+//!
+//! 定义 `AuditLogRepository` trait，提供审计日志的持久化契约。
+
 use async_trait::async_trait;
 
 use crate::domain::log::audit_log::AuditLog;

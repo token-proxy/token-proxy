@@ -80,6 +80,11 @@ export function ThemeProvider({children}: { children: ReactNode }): ReactNode {
   return createElement(ThemeContext.Provider, {value}, children);
 }
 
+/**
+ * useTheme - 主题管理 Hook
+ *
+ * @returns 当前主题模式、生效主题类型、设置主题方法
+ */
 export function useTheme(): ThemeContextValue {
   const ctx = useContext(ThemeContext);
   if (!ctx) {

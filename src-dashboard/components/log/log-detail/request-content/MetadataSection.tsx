@@ -6,6 +6,11 @@ interface MetadataSectionProps {
   metadata: unknown;
 }
 
+/**
+ * MetadataSection - 元数据展示区块
+ *
+ * 展示请求中的元数据字段（支持字符串 JSON 自动解析）。
+ */
 export default function MetadataSection({
   metadata,
 }: MetadataSectionProps): ReactNode {

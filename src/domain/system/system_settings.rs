@@ -1,6 +1,11 @@
+//! 系统设置实体 — domain/system/
+//!
+//! 定义 `SystemSettings` 领域实体和 SeaORM 实体映射 `system_settings` 表。
+//! 单行表（id 恒为 1），使用 `SystemSettings` 领域类型解耦 ORM 实现。
+
 use sea_orm::entity::prelude::*;
 
-/// 系统设置（单行表，id 恒为 1）
+/// SeaORM 实体映射 system_settings 表（单行表，id 恒为 1）
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "system_settings")]
 pub struct Model {

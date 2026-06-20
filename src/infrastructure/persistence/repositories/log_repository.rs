@@ -1,3 +1,11 @@
+//! 日志 Repository 实现（基础设施层）
+//!
+//! 实现了 `LogRepository` trait 的所有方法，包括：
+//! - 基础 CRUD（metadata、content、token usage）
+//! - 分页查询（含 SQL 动态拼接和全文检索）
+//! - 会话聚合查询
+//! - 统计方法
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -80,6 +88,15 @@ impl LogRepository for SeaOrmLogRepository {
         }
         if let Some(status_code) = &filter.status_code {
             select = select.filter(Column::StatusCode.eq(*status_code));
+        }
+        if let Some(provider_id) = &filter.provider_id {
+            select = select.filter(Column::ProviderId.eq(*provider_id));
+        }
+        if let Some(account_id) = &filter.account_id {
+            select = select.filter(Column::AccountId.eq(*account_id));
+        }
+        if let Some(is_interrupted) = &filter.is_interrupted {
+            select = select.filter(Column::IsInterrupted.eq(*is_interrupted));
         }
 
         let paginator = select.paginate(db, page_size);
@@ -250,6 +267,36 @@ impl LogRepository for SeaOrmLogRepository {
             param_index += 1;
             let cond = format!(" AND lm.status_code = {}", p);
             let val: sea_orm::Value = (*status_code).into();
+            count_sql.push_str(&cond);
+            data_sql.push_str(&cond);
+            count_params.push(val.clone());
+            data_params.push(val);
+        }
+        if let Some(provider_id) = &filter.provider_id {
+            let p = format!("${}", param_index);
+            param_index += 1;
+            let cond = format!(" AND lm.provider_id = {}", p);
+            let val: sea_orm::Value = (*provider_id).into();
+            count_sql.push_str(&cond);
+            data_sql.push_str(&cond);
+            count_params.push(val.clone());
+            data_params.push(val);
+        }
+        if let Some(account_id) = &filter.account_id {
+            let p = format!("${}", param_index);
+            param_index += 1;
+            let cond = format!(" AND lm.account_id = {}", p);
+            let val: sea_orm::Value = (*account_id).into();
+            count_sql.push_str(&cond);
+            data_sql.push_str(&cond);
+            count_params.push(val.clone());
+            data_params.push(val);
+        }
+        if let Some(is_interrupted) = &filter.is_interrupted {
+            let p = format!("${}", param_index);
+            param_index += 1;
+            let cond = format!(" AND lm.is_interrupted = {}", p);
+            let val: sea_orm::Value = (*is_interrupted).into();
             count_sql.push_str(&cond);
             data_sql.push_str(&cond);
             count_params.push(val.clone());

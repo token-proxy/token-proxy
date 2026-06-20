@@ -3,10 +3,15 @@ import { Button, Typography } from '@douyinfe/semi-ui';
 import AccessPointDrawer from '@components/access-point/AccessPointDrawer';
 import AccessPointTable from '@components/access-point/AccessPointTable';
 import useAccessPoints from '../hooks/useAccessPoints.ts';
-import { type AccessPoint, type AccessPointFormData, type ModelMapping } from '../types/accessPoint.ts';
+import { type AccessPoint } from '../types/accessPoint.ts';
 
 const {Title} = Typography;
 
+/**
+ * AccessPointManagement - 接入点管理页面
+ *
+ * 接入点的列表展示、创建、编辑、删除、状态切换等操作入口。
+ */
 export default function AccessPointManagement(): ReactNode {
   const {
     accessPoints,
@@ -17,8 +22,6 @@ export default function AccessPointManagement(): ReactNode {
     operatingIds,
     copyingUrl,
     emptyForm,
-    loadProviderById,
-    loadAccountsByProvider,
     clearAccounts,
     saveAccessPoint,
     deleteAccessPoint,
@@ -30,15 +33,11 @@ export default function AccessPointManagement(): ReactNode {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [editingAccessPoint, setEditingAccessPoint] = useState<AccessPoint | null>(null);
   const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState<AccessPointFormData>(emptyForm);
-  const [mappings, setMappings] = useState<ModelMapping[]>([]);
-  const [defaultModel, setDefaultModel] = useState<string | undefined>();
+  const [formData, setFormData] = useState(emptyForm);
 
   const openCreateDrawer = () => {
     setEditingAccessPoint(null);
-    setFormData(emptyForm);
-    setMappings([]);
-    setDefaultModel(undefined);
+    setFormData({...emptyForm});
     clearAccounts();
     setDrawerVisible(true);
   };
@@ -48,38 +47,18 @@ export default function AccessPointManagement(): ReactNode {
     setFormData({
       name: accessPoint.name,
       short_code: accessPoint.short_code,
-      provider_id: accessPoint.provider_id,
-      account_id: accessPoint.account_id,
       api_type: accessPoint.api_type,
+      accounts: accessPoint.accounts ?? [],
+      routing_strategy: accessPoint.routing_strategy ?? 'weighted',
+      model_routing_grid: accessPoint.model_routing_grid ?? {provider_ids: [], rows: []},
     });
-    setMappings(accessPoint.model_mappings ?? []);
-    setDefaultModel(accessPoint.default_model);
-    if (accessPoint.provider_id) {
-      loadAccountsByProvider(accessPoint.provider_id);
-    }
     setDrawerVisible(true);
-  };
-
-  const handleProviderChange = async (providerId: string) => {
-    setFormData({...formData, provider_id: providerId, account_id: undefined});
-    loadAccountsByProvider(providerId);
-
-    try {
-      await loadProviderById(providerId);
-    } catch {
-      // ignore
-    }
-
-    if (!editingAccessPoint) {
-      setMappings([]);
-      setDefaultModel(undefined);
-    }
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const saved = await saveAccessPoint(formData, mappings, defaultModel, editingAccessPoint);
+      const saved = await saveAccessPoint(formData, editingAccessPoint);
       if (saved) {
         setDrawerVisible(false);
       }
@@ -112,16 +91,11 @@ export default function AccessPointManagement(): ReactNode {
         editingAccessPoint={editingAccessPoint}
         saving={saving}
         formData={formData}
-        mappings={mappings}
-        defaultModel={defaultModel}
         providers={providers}
         accounts={accounts}
         accountsLoading={accountsLoading}
         onClose={() => setDrawerVisible(false)}
         onFormChange={setFormData}
-        onProviderChange={handleProviderChange}
-        onMappingsChange={setMappings}
-        onDefaultModelChange={setDefaultModel}
         onSave={handleSave}
       />
     </div>

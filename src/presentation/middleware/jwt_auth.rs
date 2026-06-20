@@ -1,3 +1,9 @@
+//! JWT 认证中间件（展示层）
+//!
+//! 对受保护路由进行 JWT Bearer token 认证。
+//! 认证通过后将 `Claims` 注入 request extensions，
+//! 供 `CurrentUser` extractor 提取。
+
 use axum::{
     extract::{FromRequestParts, Request, State},
     http::request::Parts,

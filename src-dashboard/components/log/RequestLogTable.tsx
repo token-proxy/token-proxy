@@ -5,6 +5,7 @@ import type { LogSummary } from '../../types/log.ts';
 import { formatDateTime, formatDuration, truncateMiddle } from '../../utils/format.ts';
 import TokenCell from './TokenCell.tsx';
 
+/** RequestLogTable 组件 Props */
 interface RequestLogTableProps {
   logs: LogSummary[];
   loading: boolean;
@@ -13,9 +14,16 @@ interface RequestLogTableProps {
   pageSize: number;
   userMap: Record<string, string>;
   apMap: Record<string, string>;
+  providerMap: Record<string, string>;
+  accountMap: Record<string, string>;
   onPageChange: (page: number) => void;
 }
 
+/**
+ * RequestLogTable - 请求日志表格组件
+ *
+ * 展示日志列表，包含 ID、时间、来源、会话、用户、模型、状态码、Token 耗时等列。
+ */
 export default function RequestLogTable({
   logs,
   loading,
@@ -24,6 +32,8 @@ export default function RequestLogTable({
   pageSize,
   userMap,
   apMap,
+  providerMap,
+  accountMap,
   onPageChange,
 }: RequestLogTableProps): ReactNode {
   const columns = [
@@ -80,6 +90,48 @@ export default function RequestLogTable({
 
         return <CopyableIdText value={r.access_point_id}/>;
       },
+    },
+    {
+      title: '服务商',
+      key: 'provider',
+      width: 100,
+      render: (_: unknown, r: LogSummary) => {
+        if (!r.provider_id) {
+          return '-';
+        }
+
+        const providerName = providerMap[r.provider_id];
+        if (providerName) {
+          return <span className="nowrap-text">{providerName}</span>;
+        }
+
+        return <CopyableIdText value={r.provider_id}/>;
+      },
+    },
+    {
+      title: '账号',
+      key: 'account',
+      width: 100,
+      render: (_: unknown, r: LogSummary) => {
+        if (!r.account_id) {
+          return '-';
+        }
+
+        const accountName = accountMap[r.account_id];
+        if (accountName) {
+          return <span className="nowrap-text">{accountName}</span>;
+        }
+
+        return <CopyableIdText value={r.account_id}/>;
+      },
+    },
+    {
+      title: '中断',
+      dataIndex: 'is_interrupted',
+      width: 60,
+      render: (v: boolean) => (
+        <Tag color={v ? 'red' : undefined}>{v ? '是' : '否'}</Tag>
+      ),
     },
     {
       title: '原始模型',

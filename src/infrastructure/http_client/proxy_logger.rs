@@ -1,23 +1,24 @@
+//! 代理日志积累器（基础设施层）
+//!
+//! 贯穿一次代理转发的完整生命周期，逐步填充 `ProxyLogData`。
+//! 生命周期结束时（正常 flush 或 Drop 自动兜底），将完整的 DTO 交给 `LogService`。
+//! 自身不记录 tracing 日志——日志记录由 `LogService` 在写入时统一处理。
+
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::http::HeaderMap;
 use bytes::Bytes;
-use uuid::Uuid;
 
 use crate::application::log::dto::ProxyLogData;
 use crate::application::log::LogService;
-use crate::domain::access_point::AccessPointEx;
 
-use super::processed_request::ProcessedRequest;
-
-/// 代理日志积累器（防腐 + 累积）
+/// 代理日志积累器（累积 + 防腐）
 ///
 /// 贯穿一次代理转发的完整生命周期，逐步填充 `ProxyLogData`：
-/// 请求头体（构造时）→ 响应头（构造时）→ body 片段（逐段追加）。
+/// 请求头体（外部构造 ProxyLogData 时完成）→ body 片段（逐段追加）。
 ///
-/// 构造时从 `ProcessedRequest` 和 `AccessPointEx` 提取请求侧字段，
-/// 翻译为 `ProxyLogData` 的对应字段（防腐职责）。
+/// 调用方负责在构造前组装好 `ProxyLogData`（从 `ProcessedRequest`、
+/// `AccessPointEx` 等提取字段），Logger 只负责运行时的 body 积累和最终 flush。
 /// 生命周期结束时（正常 flush 或 Drop 自动兜底），
 /// 将完整的 DTO 交给 `LogService::record_proxy_log()`。
 pub struct ProxyLogger {
@@ -28,38 +29,8 @@ pub struct ProxyLogger {
 }
 
 impl ProxyLogger {
-    /// 构造 Logger，从域对象 / 基础设施类型翻译为 ProxyLogData
-    pub fn new(
-        processed: ProcessedRequest,
-        access_point: &AccessPointEx,
-        user_id: Uuid,
-        status_code: u16,
-        start: Instant,
-        resp_headers: HeaderMap,
-        log_service: Arc<LogService>,
-    ) -> Self {
-        let timestamp = chrono::Utc::now().fixed_offset();
-
-        let data = ProxyLogData {
-            timestamp,
-            session_id: processed.session_id,
-            user_id,
-            access_point_id: access_point.id,
-            provider_id: access_point.provider_id,
-            account_id: access_point.account_id,
-            model_original: processed.inbound.model().to_string(),
-            model_mapped: processed.outbound.model().to_string(),
-            api_type: access_point.api_type.to_string(),
-            status_code,
-            request_headers: processed.inbound.headers().clone(),
-            request_body: processed.inbound.body().clone(),
-            resp_headers,
-            response_body: String::new(),
-            duration_ms: 0,
-            is_interrupted: false,
-            error_message: None,
-        };
-
+    /// 构造 Logger，接收已组装好的 ProxyLogData
+    pub fn new(data: ProxyLogData, log_service: Arc<LogService>, start: Instant) -> Self {
         ProxyLogger {
             log_service,
             data,
@@ -68,16 +39,16 @@ impl ProxyLogger {
         }
     }
 
-    /// 流式路径：逐段追加响应体
+    /// 流式路径：逐段追加响应体（过滤 PostgreSQL 不接受的 null 字节）
     pub fn append_body(&mut self, bytes: &Bytes) {
         self.data
             .response_body
-            .push_str(&String::from_utf8_lossy(bytes));
+            .push_str(&sanitize_body_bytes(bytes));
     }
 
-    /// 非流式路径：一次性设置响应体
+    /// 非流式路径：一次性设置响应体（过滤 PostgreSQL 不接受的 null 字节）
     pub fn set_body(&mut self, bytes: &Bytes) {
-        self.data.response_body = String::from_utf8_lossy(bytes).to_string();
+        self.data.response_body = sanitize_body_bytes(bytes);
     }
 
     /// 正常完成时调用：计算耗时标记 → 交出 DTO → spawn 异步写入
@@ -100,6 +71,16 @@ impl ProxyLogger {
                 tracing::error!(error = %e, "代理日志写入失败");
             }
         });
+    }
+}
+
+/// 过滤响应体中的 null 字节（0x00），避免 PostgreSQL TEXT 列拒绝存储
+fn sanitize_body_bytes(bytes: &[u8]) -> String {
+    let s = String::from_utf8_lossy(bytes);
+    if s.contains('\0') {
+        s.replace('\0', "")
+    } else {
+        s.into_owned()
     }
 }
 

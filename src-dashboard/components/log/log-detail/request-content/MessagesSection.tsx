@@ -7,6 +7,11 @@ interface MessagesSectionProps {
   messages: Array<Record<string, unknown>> | undefined;
 }
 
+/**
+ * MessagesSection - 消息列表展示区块
+ *
+ * 按角色和内容类型展示请求中的消息列表，支持文本、思考、工具调用和工具结果。
+ */
 export default function MessagesSection({
   messages,
 }: MessagesSectionProps): ReactNode {

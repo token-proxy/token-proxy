@@ -1,3 +1,7 @@
+//! 用户应用服务 — application/user/
+//!
+//! 编排系统用户的 CRUD、Profile 更新和密码修改操作。
+
 use std::sync::Arc;
 
 use uuid::Uuid;
@@ -13,6 +17,9 @@ use crate::domain::user::UserRepository;
 use crate::infrastructure::auth::password::{hash_password, verify_password};
 use crate::shared::error::AppError;
 
+/// 用户应用服务
+///
+/// 编排系统用户 CRUD、Profile 更新和密码修改操作。
 pub struct UserService {
     user_repo: Arc<dyn UserRepository>,
     audit_log_repo: Arc<dyn AuditLogRepository>,
@@ -40,6 +47,9 @@ impl UserService {
         }
     }
 
+    /// 创建用户
+    ///
+    /// 校验用户名唯一性和密码长度，哈希密码后保存。
     pub async fn create(&self, req: CreateUserRequest) -> Result<UserResponse, AppError> {
         let trimmed_username = req.username.trim().to_string();
         if trimmed_username.is_empty() {
@@ -70,6 +80,9 @@ impl UserService {
         Ok(Self::to_response(&saved))
     }
 
+    /// 更新用户
+    ///
+    /// 支持更新显示名称、密码和状态（enabled/disabled）。
     pub async fn update(&self, id: Uuid, req: UpdateUserRequest) -> Result<UserResponse, AppError> {
         let mut user = self
             .user_repo
@@ -78,36 +91,33 @@ impl UserService {
             .ok_or_else(|| AppError::NotFound(format!("用户 {} 未找到", id)))?;
 
         if let Some(display_name) = req.display_name {
-            let trimmed = display_name.trim().to_string();
-            if trimmed.is_empty() {
-                return Err(AppError::Validation("显示名称不能为空".to_string()));
-            }
-            user.display_name = trimmed;
+            user.set_display_name(display_name)?;
         }
 
         if let Some(password) = req.password {
             if password.len() < 6 {
                 return Err(AppError::Validation("密码长度不能少于 6 位".to_string()));
             }
-            user.password_hash =
-                hash_password(&password).map_err(|e| AppError::Internal(e.to_string()))?;
+            let hash = hash_password(&password).map_err(|e| AppError::Internal(e.to_string()))?;
+            user.set_password_hash(hash);
         }
 
         if let Some(status_str) = req.status {
             let status: Status = status_str
                 .parse()
                 .map_err(|e: AppError| AppError::Validation(e.to_string()))?;
-            user.status = status;
+            match status {
+                Status::Enabled => user.enable(),
+                Status::Disabled => user.disable(),
+            }
         }
-
-        user.updated_at = chrono::Utc::now()
-            .with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
 
         let saved = self.user_repo.save(&user).await?;
 
         Ok(Self::to_response(&saved))
     }
 
+    /// 根据 ID 查询用户
     pub async fn get_by_id(&self, id: Uuid) -> Result<UserResponse, AppError> {
         let user = self
             .user_repo
@@ -118,12 +128,14 @@ impl UserService {
         Ok(Self::to_response(&user))
     }
 
+    /// 查询所有用户列表
     pub async fn list_all(&self) -> Result<Vec<UserResponse>, AppError> {
         let users = self.user_repo.find_all().await?;
 
         Ok(users.iter().map(Self::to_response).collect())
     }
 
+    /// 删除用户
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         self.user_repo.delete(id).await?;
 
@@ -136,20 +148,13 @@ impl UserService {
         user_id: Uuid,
         req: UpdateProfileRequest,
     ) -> Result<UserResponse, AppError> {
-        let trimmed = req.display_name.trim().to_string();
-        if trimmed.is_empty() {
-            return Err(AppError::Validation("显示名称不能为空".to_string()));
-        }
-
         let mut user = self
             .user_repo
             .find_by_id(user_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("用户 {} 未找到", user_id)))?;
 
-        user.display_name = trimmed;
-        user.updated_at = chrono::Utc::now()
-            .with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
+        user.set_display_name(req.display_name)?;
 
         let saved = self.user_repo.save(&user).await?;
 
@@ -185,15 +190,14 @@ impl UserService {
             hash_password(&req.new_password).map_err(|e| AppError::Internal(e.to_string()))?;
 
         let mut mutable_user = user;
-        mutable_user.password_hash = new_hash;
-        mutable_user.updated_at = chrono::Utc::now()
-            .with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset"));
+        mutable_user.set_password_hash(new_hash);
 
         self.user_repo.save(&mutable_user).await?;
 
         // 记录审计日志
         let audit = AuditLog::new(
             Some(user_id),
+            "user",
             "change_password",
             "user",
             Some(user_id),

@@ -1,3 +1,8 @@
+//! JWT 令牌服务（基础设施层）
+//!
+//! 负责 access token 和 refresh token 的创建与验证。
+//! 使用 HS256 签名算法。
+
 use chrono::Utc;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use uuid::Uuid;

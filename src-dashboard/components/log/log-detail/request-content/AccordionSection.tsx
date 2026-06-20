@@ -15,6 +15,12 @@ interface AccordionSectionProps {
  * 提供可点击标题 + 内容折叠/展开的手风琴交互。
  * 各 section 内部自管理展开状态，互不影响。
  */
+/**
+ * AccordionSection - 手风琴折叠区块组件
+ *
+ * 提供可点击标题 + 内容折叠/展开的手风琴交互。
+ * 各 section 内部自管理展开状态，互不影响。
+ */
 export default function AccordionSection({
   title,
   children,

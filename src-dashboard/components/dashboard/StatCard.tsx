@@ -28,6 +28,7 @@ function ChangeIndicator({value, invert}: ChangeIndicatorProps): ReactNode {
   );
 }
 
+/** StatCard 组件 Props */
 interface StatCardProps {
   title: string;
   value: string | number;
@@ -36,6 +37,11 @@ interface StatCardProps {
   invertChange?: boolean;
 }
 
+/**
+ * StatCard - Dashboard 统计卡片组件
+ *
+ * 展示单个指标数值、变化趋势（上升/下降/持平）、加载态。
+ */
 export default function StatCard({
   title,
   value,
