@@ -18,8 +18,8 @@ use crate::domain::access_point::repository::AccessPointRepository;
 use crate::domain::access_point::SessionAffinityRepository;
 use crate::domain::provider::repository::AccountRepository;
 use crate::domain::provider::repository::ProviderRepository;
-use crate::domain::provider::FaultService;
 use crate::domain::provider::FaultOutcome;
+use crate::domain::provider::FaultService;
 use crate::domain::shared::EncryptionService;
 use crate::domain::shared::HOP_BY_HOP_HEADERS;
 use crate::infrastructure::http_client::ProcessedRequest;
@@ -121,9 +121,7 @@ impl ProxyPipeline {
                 .provider_repo
                 .find_by_id(account.provider_id)
                 .await?
-                .ok_or_else(|| {
-                    AppError::Internal("后端关联的 Provider 未找到".to_string())
-                })?;
+                .ok_or_else(|| AppError::Internal("后端关联的 Provider 未找到".to_string()))?;
 
             // 4c. 解密 API Key
             let encrypted_key = self
@@ -135,9 +133,8 @@ impl ProxyPipeline {
                 .decrypt(&encrypted_key)
                 .await
                 .map_err(|e| AppError::Encryption(e.to_string()))?;
-            let upstream_key =
-                String::from_utf8(decrypted)
-                    .map_err(|_| AppError::Internal("API Key 解码失败".to_string()))?;
+            let upstream_key = String::from_utf8(decrypted)
+                .map_err(|_| AppError::Internal("API Key 解码失败".to_string()))?;
 
             // 4d. 构造上游请求
             let processed = ProcessedRequest::prepare(

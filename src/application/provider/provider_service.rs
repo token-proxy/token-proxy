@@ -161,7 +161,11 @@ impl ProviderService {
 
         let saved = self.provider_repo.save(&provider).await?;
 
-        let accounts = self.account_repo.find_by_provider_id(id).await.unwrap_or_default();
+        let accounts = self
+            .account_repo
+            .find_by_provider_id(id)
+            .await
+            .unwrap_or_default();
         let account_count = accounts.len() as i64;
         let available_account_count =
             accounts.iter().filter(|a| a.status.is_enabled()).count() as i64;
@@ -192,7 +196,11 @@ impl ProviderService {
         )
         .await;
 
-        Ok(Self::to_response(&saved, Some(account_count), Some(available_account_count)))
+        Ok(Self::to_response(
+            &saved,
+            Some(account_count),
+            Some(available_account_count),
+        ))
     }
 
     /// 根据 ID 查询服务商（含账号统计）
@@ -212,7 +220,11 @@ impl ProviderService {
         let available_account_count =
             accounts.iter().filter(|a| a.status.is_enabled()).count() as i64;
 
-        Ok(Self::to_response(&provider, Some(account_count), Some(available_account_count)))
+        Ok(Self::to_response(
+            &provider,
+            Some(account_count),
+            Some(available_account_count),
+        ))
     }
 
     /// 查询所有服务商列表（含账号统计）

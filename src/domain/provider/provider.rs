@@ -146,17 +146,13 @@ impl Model {
 
     /// 设置 OpenAI 基础 URL，自动 trim 并过滤空字符串
     pub fn set_openai_base_url(&mut self, url: Option<String>) {
-        self.openai_base_url = url
-            .map(|u| u.trim().to_string())
-            .filter(|u| !u.is_empty());
+        self.openai_base_url = url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty());
         self.touch();
     }
 
     /// 设置 Anthropic 基础 URL，自动 trim 并过滤空字符串
     pub fn set_anthropic_base_url(&mut self, url: Option<String>) {
-        self.anthropic_base_url = url
-            .map(|u| u.trim().to_string())
-            .filter(|u| !u.is_empty());
+        self.anthropic_base_url = url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty());
         self.touch();
     }
 

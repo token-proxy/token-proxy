@@ -513,28 +513,19 @@ impl LogService {
     }
 
     /// 获取最近 N 天的每日请求趋势
-    pub async fn get_trends(
-        &self,
-        days: u64,
-    ) -> Result<Vec<(chrono::NaiveDate, u64)>, AppError> {
+    pub async fn get_trends(&self, days: u64) -> Result<Vec<(chrono::NaiveDate, u64)>, AppError> {
         let end = chrono::Utc::now();
         let start = end - chrono::Duration::days(days as i64);
         self.log_repo.count_by_date_range(start, end).await
     }
 
     /// 获取请求量最高的接入点排名
-    pub async fn get_top_access_points(
-        &self,
-        limit: u64,
-    ) -> Result<Vec<(Uuid, u64)>, AppError> {
+    pub async fn get_top_access_points(&self, limit: u64) -> Result<Vec<(Uuid, u64)>, AppError> {
         self.log_repo.top_access_points(limit).await
     }
 
     /// 获取请求量最高的模型排名
-    pub async fn get_top_models(
-        &self,
-        limit: u64,
-    ) -> Result<Vec<(String, u64)>, AppError> {
+    pub async fn get_top_models(&self, limit: u64) -> Result<Vec<(String, u64)>, AppError> {
         self.log_repo.top_models(limit).await
     }
 }

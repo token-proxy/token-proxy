@@ -29,9 +29,7 @@ pub struct AccessPointService {
 
 impl AccessPointService {
     pub fn new(access_point_repo: Arc<dyn AccessPointRepository>) -> Self {
-        AccessPointService {
-            access_point_repo,
-        }
+        AccessPointService { access_point_repo }
     }
 
     fn base_response_fields(ap: &AccessPoint) -> AccessPointResponse {
@@ -162,11 +160,13 @@ impl AccessPointService {
         if let Some(ref accounts) = req.accounts {
             let account_entries: Vec<AccessPointAccount> = accounts
                 .iter()
-                .map(|a| AccessPointAccount::new(
-                    a.account_id,
-                    a.weight.unwrap_or(0),
-                    a.priority.unwrap_or(0),
-                ))
+                .map(|a| {
+                    AccessPointAccount::new(
+                        a.account_id,
+                        a.weight.unwrap_or(0),
+                        a.priority.unwrap_or(0),
+                    )
+                })
                 .collect();
             self.access_point_repo
                 .save_accounts(saved.id, &account_entries)
@@ -216,11 +216,13 @@ impl AccessPointService {
         if let Some(ref accounts) = req.accounts {
             let account_entries: Vec<AccessPointAccount> = accounts
                 .iter()
-                .map(|a| AccessPointAccount::new(
-                    a.account_id,
-                    a.weight.unwrap_or(0),
-                    a.priority.unwrap_or(0),
-                ))
+                .map(|a| {
+                    AccessPointAccount::new(
+                        a.account_id,
+                        a.weight.unwrap_or(0),
+                        a.priority.unwrap_or(0),
+                    )
+                })
                 .collect();
             self.access_point_repo
                 .save_accounts(saved.id, &account_entries)

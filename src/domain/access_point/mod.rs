@@ -9,8 +9,8 @@ pub mod session_affinity;
 pub mod short_code;
 
 pub use access_point::{
-    ActiveModel as AccessPointActiveModel, Column as AccessPointColumn,
-    Entity as AccessPointEntity, Model as AccessPoint, AccessPointEx,
+    AccessPointEx, ActiveModel as AccessPointActiveModel, Column as AccessPointColumn,
+    Entity as AccessPointEntity, Model as AccessPoint,
 };
 pub use access_point_account::AccessPointAccount;
 pub use model_mapping::{

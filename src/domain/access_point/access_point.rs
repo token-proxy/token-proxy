@@ -253,20 +253,21 @@ mod tests {
             source_model: "claude-sonnet-4-20250514".to_string(),
             targets: HashMap::new(),
         };
-        row1.targets.insert(pid1, Some("claude-sonnet-4-map".to_string()));
+        row1.targets
+            .insert(pid1, Some("claude-sonnet-4-map".to_string()));
 
         let mut row2 = ModelRoutingRow {
             source_model: "claude-*".to_string(),
             targets: HashMap::new(),
         };
-        row2.targets.insert(pid1, Some("claude-prefix-map".to_string()));
+        row2.targets
+            .insert(pid1, Some("claude-prefix-map".to_string()));
 
         let mut row3 = ModelRoutingRow {
             source_model: UNMATCHED_MODEL.to_string(),
             targets: HashMap::new(),
         };
-        row3
-            .targets
+        row3.targets
             .insert(pid1, Some("fallback-model".to_string()));
 
         ModelRoutingGrid {
@@ -335,7 +336,11 @@ mod tests {
         let mut ap = make_access_point_ex();
         ap.access_point.model_routing_grid = make_multi_provider_grid(pid1, pid2);
         ap.remove_provider_from_routing(&pid1);
-        assert!(!ap.access_point.model_routing_grid.provider_ids.contains(&pid1));
+        assert!(!ap
+            .access_point
+            .model_routing_grid
+            .provider_ids
+            .contains(&pid1));
         for row in &ap.access_point.model_routing_grid.rows {
             assert!(!row.targets.contains_key(&pid1));
         }
@@ -350,13 +355,12 @@ mod tests {
         assert!(ap.access_point.model_routing_grid.rows.is_empty());
         // When rows is empty, sync_providers is a no-op for rows
         // Add a row and test
-        ap.access_point
-            .model_routing_grid
-            .rows
-            .push(crate::domain::access_point::model_routing_grid::ModelRoutingRow {
+        ap.access_point.model_routing_grid.rows.push(
+            crate::domain::access_point::model_routing_grid::ModelRoutingRow {
                 source_model: "test".to_string(),
                 targets: std::collections::HashMap::new(),
-            });
+            },
+        );
         ap.sync_routing_providers();
         assert!(ap.access_point.model_routing_grid.rows[0]
             .targets

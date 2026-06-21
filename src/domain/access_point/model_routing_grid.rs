@@ -102,13 +102,15 @@ mod tests {
             source_model: "claude-*".to_string(),
             targets: HashMap::new(),
         };
-        row2.targets.insert(pid1, Some("claude-sonnet-4".to_string()));
+        row2.targets
+            .insert(pid1, Some("claude-sonnet-4".to_string()));
 
         let mut row3 = ModelRoutingRow {
             source_model: UNMATCHED_MODEL.to_string(),
             targets: HashMap::new(),
         };
-        row3.targets.insert(pid1, Some("fallback-model".to_string()));
+        row3.targets
+            .insert(pid1, Some("fallback-model".to_string()));
 
         ModelRoutingGrid {
             provider_ids: vec![pid1, pid2],

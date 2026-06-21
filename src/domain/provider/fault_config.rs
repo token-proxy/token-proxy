@@ -35,13 +35,9 @@ pub enum RecoverType {
     /// 手动恢复 — 永久禁用账户，等待管理员手动启用
     Manual,
     /// 定时恢复 — `available_at = now + delay`
-    Scheduled {
-        delay: DurationConfig,
-    },
+    Scheduled { delay: DurationConfig },
     /// 从上游响应提取恢复时间
-    Extract {
-        config: ExtractConfig,
-    },
+    Extract { config: ExtractConfig },
 }
 
 // ── 时长配置（scheduled / extract duration 模式共用）──
@@ -91,9 +87,7 @@ pub enum ExtractSource {
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum ExtractKind {
     /// 提取值是时间间隔 → available_at = now + duration
-    Duration {
-        unit: DurationUnit,
-    },
+    Duration { unit: DurationUnit },
     /// 提取值是时刻 → 后端自动匹配格式解析后直接作为 available_at
     Timestamp,
 }
@@ -104,9 +98,7 @@ pub enum ExtractKind {
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum OnExtractFailed {
     /// 降级为定时恢复 — 提取失败时按固定延迟重试
-    FallbackScheduled {
-        delay: DurationConfig,
-    },
+    FallbackScheduled { delay: DurationConfig },
     /// 降级为手动恢复
     FallbackManual,
 }
@@ -216,7 +208,10 @@ impl ExtractConfig {
                 .map(|s| s.to_string()),
             ExtractSource::Body => {
                 let json: Value = serde_json::from_slice(resp_body).ok()?;
-                let path = self.source_path.strip_prefix("$.").unwrap_or(&self.source_path);
+                let path = self
+                    .source_path
+                    .strip_prefix("$.")
+                    .unwrap_or(&self.source_path);
                 let mut current = &json;
                 for segment in path.split('.') {
                     current = current.get(segment)?;
@@ -312,9 +307,7 @@ impl ExtractConfig {
         // 4. 去掉末尾非数字时区缩写（如 "CST"）再试
         if let Some(last_space) = s.rfind(' ') {
             let after_last = &s[last_space + 1..];
-            let is_tz_abbr = after_last
-                .chars()
-                .all(|c| c.is_alphabetic())
+            let is_tz_abbr = after_last.chars().all(|c| c.is_alphabetic())
                 && !after_last.starts_with('+')
                 && !after_last.starts_with('-');
             if is_tz_abbr {
@@ -340,10 +333,7 @@ mod tests {
             recover_type: RecoverType::Manual,
         };
         let json = serde_json::to_string(&config).unwrap();
-        assert_eq!(
-            json,
-            r#"{"status_codes":["429"],"type":"manual"}"#
-        );
+        assert_eq!(json, r#"{"status_codes":["429"],"type":"manual"}"#);
     }
 
     #[test]
@@ -428,7 +418,12 @@ mod tests {
             RecoverType::Extract { config: extract } => {
                 assert_eq!(extract.source, ExtractSource::Header);
                 assert_eq!(extract.source_path, "Retry-After");
-                assert!(matches!(extract.kind, ExtractKind::Duration { unit: DurationUnit::Seconds }));
+                assert!(matches!(
+                    extract.kind,
+                    ExtractKind::Duration {
+                        unit: DurationUnit::Seconds
+                    }
+                ));
                 match extract.on_extract_failed.unwrap() {
                     OnExtractFailed::FallbackScheduled { delay } => {
                         assert_eq!(delay.value, 30);

@@ -70,10 +70,7 @@ impl std::str::FromStr for RoutingStrategy {
         match s {
             "priority" => Ok(RoutingStrategy::Priority),
             "weighted" => Ok(RoutingStrategy::Weighted),
-            _ => Err(AppError::Validation(format!(
-                "无效的路由策略: {}",
-                s
-            ))),
+            _ => Err(AppError::Validation(format!("无效的路由策略: {}", s))),
         }
     }
 }

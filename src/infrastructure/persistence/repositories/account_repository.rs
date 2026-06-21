@@ -7,9 +7,7 @@ use sea_orm::{ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFi
 
 use crate::domain::provider::repository::AccountRepository;
 use crate::domain::provider::Account;
-use crate::domain::provider::{
-    AccountActiveModel, AccountColumn, AccountEntity,
-};
+use crate::domain::provider::{AccountActiveModel, AccountColumn, AccountEntity};
 use crate::domain::shared::Status;
 use crate::shared::error::AppError;
 use uuid::Uuid;

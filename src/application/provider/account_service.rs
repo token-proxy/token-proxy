@@ -50,7 +50,9 @@ impl AccountService {
             name: account.name.clone(),
             api_key_suffix: account.api_key_suffix.clone(),
             disabled_reason: account.disabled_reason.as_ref().map(|r| r.to_string()),
-            available_at: account.available_at.map(|dt| dt.with_timezone(&chrono::Utc)),
+            available_at: account
+                .available_at
+                .map(|dt| dt.with_timezone(&chrono::Utc)),
             status: account.status.to_string(),
             created_at: account.created_at.with_timezone(&chrono::Utc),
             updated_at: account.updated_at.with_timezone(&chrono::Utc),
@@ -183,7 +185,10 @@ impl AccountService {
                 .access_point_repo
                 .find_accounts_by_access_point(ap.id)
                 .await?;
-            let filtered: Vec<_> = accounts.into_iter().filter(|a| a.account_id != id).collect();
+            let filtered: Vec<_> = accounts
+                .into_iter()
+                .filter(|a| a.account_id != id)
+                .collect();
             self.access_point_repo
                 .save_accounts(ap.id, &filtered)
                 .await?;

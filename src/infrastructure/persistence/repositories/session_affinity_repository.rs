@@ -8,10 +8,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use sea_orm::entity::prelude::*;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement,
 };
-use sea_orm::entity::prelude::*;
 use uuid::Uuid;
 
 use crate::domain::access_point::{SessionAffinity, SessionAffinityRepository};
@@ -114,11 +114,7 @@ impl SessionAffinityRepository for SeaOrmSessionAffinityRepository {
         let stmt = Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
             sql,
-            vec![
-                access_point_id.into(),
-                session_id.into(),
-                account_id.into(),
-            ],
+            vec![access_point_id.into(), session_id.into(), account_id.into()],
         );
 
         let result = self
@@ -129,24 +125,24 @@ impl SessionAffinityRepository for SeaOrmSessionAffinityRepository {
 
         match result {
             Some(row) => {
-                let id: Uuid = row.try_get_by_index(0).map_err(|e| {
-                    AppError::Internal(format!("解析 id 失败: {}", e))
-                })?;
-                let ap_id: Uuid = row.try_get_by_index(1).map_err(|e| {
-                    AppError::Internal(format!("解析 access_point_id 失败: {}", e))
-                })?;
-                let sid: String = row.try_get_by_index(2).map_err(|e| {
-                    AppError::Internal(format!("解析 session_id 失败: {}", e))
-                })?;
-                let acc_id: Uuid = row.try_get_by_index(3).map_err(|e| {
-                    AppError::Internal(format!("解析 account_id 失败: {}", e))
-                })?;
-                let created_at: DateTimeWithTimeZone = row.try_get_by_index(4).map_err(|e| {
-                    AppError::Internal(format!("解析 created_at 失败: {}", e))
-                })?;
-                let updated_at: DateTimeWithTimeZone = row.try_get_by_index(5).map_err(|e| {
-                    AppError::Internal(format!("解析 updated_at 失败: {}", e))
-                })?;
+                let id: Uuid = row
+                    .try_get_by_index(0)
+                    .map_err(|e| AppError::Internal(format!("解析 id 失败: {}", e)))?;
+                let ap_id: Uuid = row
+                    .try_get_by_index(1)
+                    .map_err(|e| AppError::Internal(format!("解析 access_point_id 失败: {}", e)))?;
+                let sid: String = row
+                    .try_get_by_index(2)
+                    .map_err(|e| AppError::Internal(format!("解析 session_id 失败: {}", e)))?;
+                let acc_id: Uuid = row
+                    .try_get_by_index(3)
+                    .map_err(|e| AppError::Internal(format!("解析 account_id 失败: {}", e)))?;
+                let created_at: DateTimeWithTimeZone = row
+                    .try_get_by_index(4)
+                    .map_err(|e| AppError::Internal(format!("解析 created_at 失败: {}", e)))?;
+                let updated_at: DateTimeWithTimeZone = row
+                    .try_get_by_index(5)
+                    .map_err(|e| AppError::Internal(format!("解析 updated_at 失败: {}", e)))?;
 
                 Ok(SessionAffinity {
                     id,
@@ -157,9 +153,7 @@ impl SessionAffinityRepository for SeaOrmSessionAffinityRepository {
                     updated_at,
                 })
             }
-            None => Err(AppError::Internal(
-                "会话绑定 upsert 未返回记录".to_string(),
-            )),
+            None => Err(AppError::Internal("会话绑定 upsert 未返回记录".to_string())),
         }
     }
 
