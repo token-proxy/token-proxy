@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "format": "prettier --write 'src-dashboard/**/*.{ts,tsx,json,css}'",
+    "preview": "vite preview",
+    "prepare": "simple-git-hooks"
   },
   "dependencies": {
     "@douyinfe/semi-icons": "^2.97.0",
@@ -28,6 +30,24 @@
     "globals": "^17.6.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "prettier": "^3.7.4",
+    "simple-git-hooks": "^2.12.1",
+    "lint-staged": "^15.5.1"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "npx lint-staged"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,css,md}": [
+      "prettier --write"
+    ],
+    "*.rs": [
+      "cargo fmt"
+    ]
   }
 }
