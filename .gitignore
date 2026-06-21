@@ -27,8 +27,9 @@ pnpm-lock.yaml
 *.swp
 *.swo
 *~
-.claude/
+.claude/*
 !.claude/settings.json
+!.claude/skills/
 
 # Environment
 .env
