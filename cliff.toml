@@ -1,0 +1,35 @@
+[changelog]
+header = "# CHANGELOG\n\n本项目的所有重要变更均会记录在此文件中。\n\n格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，\n项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。\n\n"
+body = ""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+commit_preprocessors = []
+commit_parsers = [
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^perf", group = "Changed" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^doc", group = "Documentation" },
+  { message = "^test", group = "Miscellaneous" },
+  { message = "^ci", group = "Miscellaneous" },
+  { message = "^chore", group = "Miscellaneous" },
+  { message = "^style", group = "Miscellaneous" },
+  { message = ".*", group = "Miscellaneous" },
+]
+protect_breaking_commits = false
+filter_commits = true
+tag_pattern = "[0-9]*"
+skip_tags = ""
+ignore_tags = ""
+topo_order = false
+sort_commits = "newest"
+
+[remote.github]
+owner = "{{ github.owner }}"
+repo = "{{ github.repo }}"
+token = "{{ github.token }}"
