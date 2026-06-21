@@ -67,17 +67,19 @@ export default function ExpandableContentBlock({
 
   // ── 短内容：直接全部渲染 ──
   if (!isLong) {
-    return <MarkdownRender content={content}/>;
+    return <MarkdownRender content={content} />;
   }
 
   // ── 长内容：CSS 切换收起/展开态 ──
   return (
     <div>
-      <div style={{
-        maxHeight: expanded ? undefined : collapsedHeight,
-        overflow: expanded ? undefined : 'hidden',
-      }}>
-        <MarkdownRender content={content}/>
+      <div
+        style={{
+          maxHeight: expanded ? undefined : collapsedHeight,
+          overflow: expanded ? undefined : 'hidden',
+        }}
+      >
+        <MarkdownRender content={content} />
       </div>
       <div
         style={{
@@ -95,7 +97,7 @@ export default function ExpandableContentBlock({
         <Button
           type="tertiary"
           size="small"
-          icon={expanded ? <IconChevronUp/> : <IconChevronDown/>}
+          icon={expanded ? <IconChevronUp /> : <IconChevronDown />}
           onClick={expanded ? collapse : expand}
         >
           {expanded ? collapseLabel : '展开'}

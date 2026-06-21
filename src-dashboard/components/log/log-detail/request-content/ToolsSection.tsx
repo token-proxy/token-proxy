@@ -12,9 +12,7 @@ interface ToolsSectionProps {
  *
  * 展示请求中的工具定义列表，支持点击展开查看具体参数描述。
  */
-export default function ToolsSection({
-  tools,
-}: ToolsSectionProps): ReactNode {
+export default function ToolsSection({ tools }: ToolsSectionProps): ReactNode {
   if (!tools || tools.length === 0) return null;
 
   const [expandedToolIdx, setExpandedToolIdx] = useState<number | null>(null);
@@ -24,11 +22,8 @@ export default function ToolsSection({
   };
 
   return (
-    <AccordionSection
-      title={`工具定义（共 ${tools.length} 个）`}
-      defaultExpanded={false}
-    >
-      <div style={{display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8}}>
+    <AccordionSection title={`工具定义（共 ${tools.length} 个）`} defaultExpanded={false}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
         {tools.map((tool, idx) => {
           const name = String(tool.name ?? '');
           return (
@@ -36,7 +31,7 @@ export default function ToolsSection({
               key={idx}
               size="small"
               color={expandedToolIdx === idx ? 'blue' : 'grey'}
-              style={{cursor: 'pointer'}}
+              style={{ cursor: 'pointer' }}
               onClick={() => handleTagClick(idx)}
             >
               {name}
@@ -45,7 +40,7 @@ export default function ToolsSection({
         })}
       </div>
       {expandedToolIdx !== null && tools[expandedToolIdx] && (
-        <ToolDetail tool={tools[expandedToolIdx]}/>
+        <ToolDetail tool={tools[expandedToolIdx]} />
       )}
     </AccordionSection>
   );

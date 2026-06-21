@@ -1,9 +1,19 @@
 import { type ReactNode, useRef, useState } from 'react';
-import { Button, Input, Popconfirm, SideSheet, Space, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import {
+  Button,
+  Input,
+  Popconfirm,
+  SideSheet,
+  Space,
+  Table,
+  Tag,
+  Toast,
+  Typography,
+} from '@douyinfe/semi-ui';
 import { IconEyeClosedSolid, IconEyeOpened } from '@douyinfe/semi-icons';
 import api from '../../api.ts';
 
-const {Title, Text} = Typography;
+const { Title, Text } = Typography;
 
 /** 账号信息 */
 export interface Account {
@@ -60,7 +70,7 @@ export default function AccountManager({
 }: AccountManagerProps): ReactNode {
   const [accountFormVisible, setAccountFormVisible] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
-  const [accountForm, setAccountForm] = useState({name: '', api_key: ''});
+  const [accountForm, setAccountForm] = useState({ name: '', api_key: '' });
   const [accountSaving, setAccountSaving] = useState(false);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [operatingIds, setOperatingIds] = useState<string[]>([]);
@@ -81,10 +91,10 @@ export default function AccountManager({
     setApiKeyVisible(false);
     if (account) {
       setEditingAccount(account);
-      setAccountForm({name: account.name, api_key: ''});
+      setAccountForm({ name: account.name, api_key: '' });
     } else {
       setEditingAccount(null);
-      setAccountForm({name: '', api_key: ''});
+      setAccountForm({ name: '', api_key: '' });
     }
     setAccountFormVisible(true);
   };
@@ -97,21 +107,15 @@ export default function AccountManager({
     setAccountSaving(true);
     try {
       if (editingAccount) {
-        const body: Record<string, string> = {name: accountForm.name};
+        const body: Record<string, string> = { name: accountForm.name };
         if (accountForm.api_key.trim()) body.api_key = accountForm.api_key.trim();
-        await api.put(
-          `/api/providers/${providerId}/accounts/${editingAccount.id}`,
-          body,
-        );
+        await api.put(`/api/providers/${providerId}/accounts/${editingAccount.id}`, body);
         Toast.success('账号已更新');
       } else {
-        await api.post(
-          `/api/providers/${providerId}/accounts`,
-          {
-            name: accountForm.name.trim() || undefined,
-            api_key: accountForm.api_key.trim(),
-          },
-        );
+        await api.post(`/api/providers/${providerId}/accounts`, {
+          name: accountForm.name.trim() || undefined,
+          api_key: accountForm.api_key.trim(),
+        });
         Toast.success('账号已创建');
       }
       setAccountFormVisible(false);
@@ -155,13 +159,13 @@ export default function AccountManager({
   };
 
   const accountColumns = [
-    {title: '名称', dataIndex: 'name', key: 'name', width: 120},
+    { title: '名称', dataIndex: 'name', key: 'name', width: 120 },
     {
       title: 'API Key',
       dataIndex: 'api_key_suffix',
       key: 'api_key_suffix',
       width: 140,
-      render: (suffix: string) => suffix ? `******${suffix}` : '-',
+      render: (suffix: string) => (suffix ? `******${suffix}` : '-'),
     },
     {
       title: '状态',
@@ -169,7 +173,11 @@ export default function AccountManager({
       width: 200,
       render: (_: unknown, record: Account) => {
         if (record.status === 'enabled') {
-          return <Tag color="green" size="small">已启用</Tag>;
+          return (
+            <Tag color="green" size="small">
+              已启用
+            </Tag>
+          );
         }
         const suffix = disabledReasonSuffix(record.disabled_reason);
         const label = suffix ? `已禁用（${suffix}）` : '已禁用';
@@ -178,7 +186,9 @@ export default function AccountManager({
           : null;
         return (
           <div>
-            <Tag color="grey" size="small">{label}</Tag>
+            <Tag color="grey" size="small">
+              {label}
+            </Tag>
             {availableAt && (
               <div style={{ marginTop: 2 }}>
                 <Text type="tertiary" size="small">
@@ -196,7 +206,9 @@ export default function AccountManager({
       width: 220,
       render: (_: unknown, record: Account) => (
         <Space>
-          <Button size="small" onClick={() => handleOpenAccountForm(record)}>编辑</Button>
+          <Button size="small" onClick={() => handleOpenAccountForm(record)}>
+            编辑
+          </Button>
           <Button
             size="small"
             type="danger"
@@ -210,7 +222,11 @@ export default function AccountManager({
             onConfirm={() => handleDeleteAccount(record.id)}
             position="bottomRight"
           >
-            <Button size="small" type="danger" loading={operatingIds.includes(`account:${record.id}`)}>
+            <Button
+              size="small"
+              type="danger"
+              loading={operatingIds.includes(`account:${record.id}`)}
+            >
               删除
             </Button>
           </Popconfirm>
@@ -221,9 +237,18 @@ export default function AccountManager({
 
   return (
     <>
-      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 12,
+        }}
+      >
         <Title heading={6}>账号管理</Title>
-        <Button size="small" onClick={() => handleOpenAccountForm()}>添加账号</Button>
+        <Button size="small" onClick={() => handleOpenAccountForm()}>
+          添加账号
+        </Button>
       </div>
       <Table
         columns={accountColumns}
@@ -231,7 +256,7 @@ export default function AccountManager({
         loading={loading}
         rowKey="id"
         size="small"
-        scroll={{x: 'max-content'}}
+        scroll={{ x: 'max-content' }}
         pagination={false}
       />
 
@@ -242,18 +267,20 @@ export default function AccountManager({
         width={560}
         maskClosable
       >
-        <div style={{padding: '0 4px'}}>
+        <div style={{ padding: '0 4px' }}>
           <div>
-            <div style={{marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14}}>名称</div>
+            <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>
+              名称
+            </div>
             <Input
               value={accountForm.name}
-              onChange={(v: string) => setAccountForm({...accountForm, name: v})}
+              onChange={(v: string) => setAccountForm({ ...accountForm, name: v })}
               placeholder="留空将自动以 API Key 后缀生成"
               autoComplete="off"
             />
           </div>
-          <div style={{marginTop: 16}}>
-            <div style={{marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14}}>
+          <div style={{ marginTop: 16 }}>
+            <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)', fontSize: 14 }}>
               {editingAccount ? 'API Key (留空表示不修改)' : 'API Key'}
             </div>
             {/*
@@ -262,23 +289,25 @@ export default function AccountManager({
               */}
             <Input
               value={accountForm.api_key}
-              onChange={(v: string) => setAccountForm({...accountForm, api_key: v})}
+              onChange={(v: string) => setAccountForm({ ...accountForm, api_key: v })}
               placeholder={editingAccount ? '仅在需要替换时填写' : '上游 API Key'}
               autoComplete="off"
               data-1p-ignore="true"
               data-lpignore="true"
               spellCheck={false}
-              style={!apiKeyVisible && accountForm.api_key
-                ? ({
-                  WebkitTextSecurity: 'disc',
-                  textSecurity: 'disc',
-                  fontFamily: 'text-security-disc, monospace',
-                } as React.CSSProperties)
-                : undefined}
+              style={
+                !apiKeyVisible && accountForm.api_key
+                  ? ({
+                      WebkitTextSecurity: 'disc',
+                      textSecurity: 'disc',
+                      fontFamily: 'text-security-disc, monospace',
+                    } as React.CSSProperties)
+                  : undefined
+              }
               suffix={
                 <Button
                   theme="borderless"
-                  icon={apiKeyVisible ? <IconEyeClosedSolid/> : <IconEyeOpened/>}
+                  icon={apiKeyVisible ? <IconEyeClosedSolid /> : <IconEyeOpened />}
                   size="small"
                   onClick={() => setApiKeyVisible(!apiKeyVisible)}
                   aria-label={apiKeyVisible ? '隐藏' : '显示'}
@@ -291,7 +320,7 @@ export default function AccountManager({
             onClick={handleSaveAccount}
             loading={accountSaving}
             block
-            style={{marginTop: 16}}
+            style={{ marginTop: 16 }}
           >
             {editingAccount ? '更新' : '添加'}
           </Button>

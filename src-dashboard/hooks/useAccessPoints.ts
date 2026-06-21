@@ -15,7 +15,7 @@ const EMPTY_FORM: AccessPointFormData = {
   api_type: 'anthropic',
   accounts: [],
   routing_strategy: 'weighted',
-  model_routing_grid: {provider_ids: [], rows: []},
+  model_routing_grid: { provider_ids: [], rows: [] },
 };
 
 /**
@@ -183,7 +183,7 @@ export default function useAccessPoints() {
     setOperation(accessPoint.id, true);
     const nextStatus = accessPoint.status === 'enabled' ? 'disabled' : 'enabled';
     try {
-      await api.put(`/api/access-points/${accessPoint.id}`, {status: nextStatus});
+      await api.put(`/api/access-points/${accessPoint.id}`, { status: nextStatus });
       Toast.success(`接入点已${nextStatus === 'enabled' ? '启用' : '禁用'}`);
       loadAccessPoints();
     } catch (err) {

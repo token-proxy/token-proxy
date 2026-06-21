@@ -112,7 +112,14 @@ export default function SessionDetailView({
       thinkingTokens: acc.thinkingTokens + turn.tokenSummary.thinkingTokens,
       totalTokens: acc.totalTokens + turn.tokenSummary.totalTokens,
     }),
-    { inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, thinkingTokens: 0, totalTokens: 0 },
+    {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      thinkingTokens: 0,
+      totalTokens: 0,
+    },
   );
 
   return (
@@ -122,7 +129,9 @@ export default function SessionDetailView({
         <Button type="tertiary" onClick={onBack}>
           &larr; 返回会话列表
         </Button>
-        <Title heading={3} style={{ margin: 0 }}>会话详情</Title>
+        <Title heading={3} style={{ margin: 0 }}>
+          会话详情
+        </Title>
         <Button icon={<IconRefresh />} loading={detailLoading} onClick={onRefresh}>
           刷新
         </Button>
@@ -151,31 +160,21 @@ export default function SessionDetailView({
           {turns.length > 0 && (
             <>
               <Text>
-                <strong>时间范围:</strong>{' '}
-                {formatDateTime(turns[0].startTime)} ~ {formatDateTime(turns[turns.length - 1].endTime)}
+                <strong>时间范围:</strong> {formatDateTime(turns[0].startTime)} ~{' '}
+                {formatDateTime(turns[turns.length - 1].endTime)}
               </Text>
               {/* 会话级 Token 汇总 */}
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
-                <Tag color="light-blue">
-                  总输入 &uarr;{formatNumber(tokenTotals.inputTokens)}
-                </Tag>
-                <Tag color="light-blue">
-                  总输出 &darr;{formatNumber(tokenTotals.outputTokens)}
-                </Tag>
+                <Tag color="light-blue">总输入 &uarr;{formatNumber(tokenTotals.inputTokens)}</Tag>
+                <Tag color="light-blue">总输出 &darr;{formatNumber(tokenTotals.outputTokens)}</Tag>
                 {tokenTotals.cacheCreationTokens > 0 && (
-                  <Tag color="teal">
-                    缓存创建 {formatNumber(tokenTotals.cacheCreationTokens)}
-                  </Tag>
+                  <Tag color="teal">缓存创建 {formatNumber(tokenTotals.cacheCreationTokens)}</Tag>
                 )}
                 {tokenTotals.cacheReadTokens > 0 && (
-                  <Tag color="teal">
-                    缓存读取 {formatNumber(tokenTotals.cacheReadTokens)}
-                  </Tag>
+                  <Tag color="teal">缓存读取 {formatNumber(tokenTotals.cacheReadTokens)}</Tag>
                 )}
                 {tokenTotals.thinkingTokens > 0 && (
-                  <Tag color="amber">
-                    思考 {formatNumber(tokenTotals.thinkingTokens)}
-                  </Tag>
+                  <Tag color="amber">思考 {formatNumber(tokenTotals.thinkingTokens)}</Tag>
                 )}
                 <Tag>总计 {formatNumber(tokenTotals.totalTokens)}</Tag>
               </div>
@@ -191,7 +190,9 @@ export default function SessionDetailView({
       {detailLoading ? (
         <div style={{ textAlign: 'center', padding: 40 }}>
           <Spin />
-          <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>加载中...</Text>
+          <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+            加载中...
+          </Text>
         </div>
       ) : turns.length === 0 ? (
         <Empty description="暂无对话数据" />

@@ -2,14 +2,14 @@ import { Card, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { IconArrowDown, IconArrowUp, IconMinus } from '@douyinfe/semi-icons';
 import type { ReactNode } from 'react';
 
-const {Title, Text} = Typography;
+const { Title, Text } = Typography;
 
 interface ChangeIndicatorProps {
   value?: number;
   invert?: boolean;
 }
 
-function ChangeIndicator({value, invert}: ChangeIndicatorProps): ReactNode {
+function ChangeIndicator({ value, invert }: ChangeIndicatorProps): ReactNode {
   if (value === undefined || value === null || Number.isNaN(value)) return null;
 
   const adjusted = invert ? -value : value;
@@ -20,9 +20,9 @@ function ChangeIndicator({value, invert}: ChangeIndicatorProps): ReactNode {
   return (
     <Tag
       color={color}
-      style={{marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 2}}
+      style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 2 }}
     >
-      <Icon size="small"/>
+      <Icon size="small" />
       {label}
     </Tag>
   );
@@ -50,20 +50,20 @@ export default function StatCard({
   invertChange,
 }: StatCardProps): ReactNode {
   return (
-    <Card style={{minHeight: 140, backgroundColor: 'var(--semi-color-bg-0)'}}>
-      <Text type="secondary" style={{fontSize: 14}}>
+    <Card style={{ minHeight: 140, backgroundColor: 'var(--semi-color-bg-0)' }}>
+      <Text type="secondary" style={{ fontSize: 14 }}>
         {title}
       </Text>
       {loading ? (
-        <div style={{marginTop: 20}}>
-          <Spin size="small"/>
+        <div style={{ marginTop: 20 }}>
+          <Spin size="small" />
         </div>
       ) : (
         <>
-          <Title heading={3} style={{marginTop: 8, marginBottom: 4}}>
+          <Title heading={3} style={{ marginTop: 8, marginBottom: 4 }}>
             {value}
           </Title>
-          <ChangeIndicator value={change} invert={invertChange}/>
+          <ChangeIndicator value={change} invert={invertChange} />
         </>
       )}
     </Card>

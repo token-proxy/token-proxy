@@ -11,27 +11,25 @@ interface MetadataSectionProps {
  *
  * 展示请求中的元数据字段（支持字符串 JSON 自动解析）。
  */
-export default function MetadataSection({
-  metadata,
-}: MetadataSectionProps): ReactNode {
+export default function MetadataSection({ metadata }: MetadataSectionProps): ReactNode {
   if (metadata == null) return null;
 
   const metaObj: Record<string, unknown> =
     typeof metadata === 'string'
       ? (() => {
-        try {
-          return JSON.parse(metadata);
-        } catch {
-          return {};
-        }
-      })()
+          try {
+            return JSON.parse(metadata);
+          } catch {
+            return {};
+          }
+        })()
       : (metadata as Record<string, unknown>);
 
   const entries = Object.entries(metaObj);
   if (entries.length === 0) return null;
 
   return (
-    <div style={{marginBottom: 24}}>
+    <div style={{ marginBottom: 24 }}>
       <SectionHeading>元数据</SectionHeading>
       <Descriptions
         row

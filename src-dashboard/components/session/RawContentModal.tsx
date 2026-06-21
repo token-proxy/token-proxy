@@ -27,7 +27,7 @@ export default function RawContentModal({
       onCancel={onClose}
       onOk={onClose}
       width={800}
-      style={{maxHeight: '80vh'}}
+      style={{ maxHeight: '80vh' }}
     >
       <pre
         style={{

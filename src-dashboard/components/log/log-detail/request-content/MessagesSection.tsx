@@ -12,9 +12,7 @@ interface MessagesSectionProps {
  *
  * 按角色和内容类型展示请求中的消息列表，支持文本、思考、工具调用和工具结果。
  */
-export default function MessagesSection({
-  messages,
-}: MessagesSectionProps): ReactNode {
+export default function MessagesSection({ messages }: MessagesSectionProps): ReactNode {
   if (!messages || messages.length === 0) return null;
 
   // 统计所有 content block 总数
@@ -23,20 +21,12 @@ export default function MessagesSection({
   }, 0);
 
   return (
-    <AccordionSection
-      title={`消息（共 ${messages.length} 条，${totalBlocks} 个内容块）`}
-    >
+    <AccordionSection title={`消息（共 ${messages.length} 条，${totalBlocks} 个内容块）`}>
       {messages.map((msg, msgIdx) => {
         const role = String((msg as Record<string, unknown>).role ?? 'unknown');
-        const contentBlocks = extractContentBlocks(
-          (msg as Record<string, unknown>).content,
-        );
+        const contentBlocks = extractContentBlocks((msg as Record<string, unknown>).content);
         return contentBlocks.map((block, bi) => (
-          <MessageBlock
-            key={`${msgIdx}-${bi}`}
-            block={block}
-            role={role}
-          />
+          <MessageBlock key={`${msgIdx}-${bi}`} block={block} role={role} />
         ));
       })}
     </AccordionSection>

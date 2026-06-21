@@ -5,7 +5,13 @@
  * 构建会话事件流 — 全部在客户端完成，不依赖后端预解析。
  */
 
-import type { ConversationTurn, SessionContentItem, TokenUsage, TurnBlock, TurnTokenSummary } from '../types/log';
+import type {
+  ConversationTurn,
+  SessionContentItem,
+  TokenUsage,
+  TurnBlock,
+  TurnTokenSummary,
+} from '../types/log';
 
 // ─── 类型 ───
 
@@ -26,7 +32,12 @@ export interface ConversationEvent {
   event_index: number;
   source: string;
   role: 'user' | 'assistant';
-  event_type: 'user_message' | 'assistant_message' | 'assistant_thinking' | 'tool_use' | 'agent_call';
+  event_type:
+    | 'user_message'
+    | 'assistant_message'
+    | 'assistant_thinking'
+    | 'tool_use'
+    | 'agent_call';
   agent_id?: string;
   agent_type?: string;
   tool_use_id?: string;
@@ -324,10 +335,7 @@ export function extractThinkingFromSSE(responseBody: string): string | null {
   for (const ev of events) {
     if (ev.kind === 'content_block_delta') {
       const delta = ev.data.delta as Record<string, unknown> | undefined;
-      if (
-        delta?.type === 'thinking_delta' &&
-        typeof delta.thinking === 'string'
-      ) {
+      if (delta?.type === 'thinking_delta' && typeof delta.thinking === 'string') {
         parts.push(delta.thinking);
       }
     }
@@ -479,10 +487,13 @@ export function parseStructuredBlocks(responseBody: string): StructuredSSEResult
         try {
           // 掉尾部的截断字符
           const trimmed = fullJson.replace(/,\s*$/, '').replace(/[^}]\s*$/, '');
-          block.input = JSON.parse(trimmed + (trimmed.endsWith('}') ? '' : '}')) as Record<string, unknown>;
+          block.input = JSON.parse(trimmed + (trimmed.endsWith('}') ? '' : '}')) as Record<
+            string,
+            unknown
+          >;
         } catch {
           // 无法解析，保留原始字符串
-          block.input = {partial_json: fullJson};
+          block.input = { partial_json: fullJson };
         }
       }
     }
@@ -560,14 +571,17 @@ export function buildConversationEvents(
   const sseEvents = parseSSE(responseBody);
 
   // 按 index 分组 content blocks
-  const blocks = new Map<number, {
-    type: string;
-    textParts: string[];
-    thinkingParts: string[];
-    tool_use_id?: string;
-    tool_name?: string;
-    input?: Record<string, unknown>;
-  }>();
+  const blocks = new Map<
+    number,
+    {
+      type: string;
+      textParts: string[];
+      thinkingParts: string[];
+      tool_use_id?: string;
+      tool_name?: string;
+      input?: Record<string, unknown>;
+    }
+  >();
 
   for (const ev of sseEvents) {
     const idx = ev.index ?? 0;
@@ -690,9 +704,7 @@ export function buildConversationTurns(
   maxAgentDepth: number = 5,
 ): ConversationTurn[] {
   // 1. 按 timestamp 排序并预处理
-  const sorted = [...contents].sort((a, b) =>
-    a.timestamp.localeCompare(b.timestamp),
-  );
+  const sorted = [...contents].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const preprocessed = sorted.map((item) => ({
     item,
     structured: parseStructuredBlocks(item.response_body),
@@ -818,18 +830,18 @@ function buildTurn(
           if (block.tool_name === 'Agent') {
             // 子代理调用块（由外层在子代理处理阶段填充 children）
             const agentType =
-              String(
-                (block.input as Record<string, unknown> | undefined)
-                  ?.subagent_type || '',
-              ) || '';
-            blocks.push(buildAgentCallBlock(
-              agentType,
-              item.log_id,
-              item.timestamp,
-              [],
-              maxAgentDepth,
-              currentDepth,
-            ));
+              String((block.input as Record<string, unknown> | undefined)?.subagent_type || '') ||
+              '';
+            blocks.push(
+              buildAgentCallBlock(
+                agentType,
+                item.log_id,
+                item.timestamp,
+                [],
+                maxAgentDepth,
+                currentDepth,
+              ),
+            );
           } else {
             blocks.push({
               type: 'tool_use',

@@ -5,7 +5,13 @@ import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import api from '../api.ts';
 import LogFilterBar from '@components/log/LogFilterBar';
 import RequestLogTable from '@components/log/RequestLogTable';
-import type { AccessPointItem, LogFilters, LogSummary, PaginatedResult, UserItem } from '../types/log.ts';
+import type {
+  AccessPointItem,
+  LogFilters,
+  LogSummary,
+  PaginatedResult,
+  UserItem,
+} from '../types/log.ts';
 import type { Account } from '@components/provider/AccountManager';
 import { buildQueryString, toIsoString } from '../utils/query.ts';
 
@@ -15,19 +21,19 @@ interface ProviderItem {
   name: string;
 }
 
-const {Title, Text} = Typography;
+const { Title, Text } = Typography;
 
 const STATUS_OPTIONS = [
-  {value: 200, label: '200'},
-  {value: 201, label: '201'},
-  {value: 400, label: '400'},
-  {value: 401, label: '401'},
-  {value: 403, label: '403'},
-  {value: 404, label: '404'},
-  {value: 429, label: '429'},
-  {value: 500, label: '500'},
-  {value: 502, label: '502'},
-  {value: 503, label: '503'},
+  { value: 200, label: '200' },
+  { value: 201, label: '201' },
+  { value: 400, label: '400' },
+  { value: 401, label: '401' },
+  { value: 403, label: '403' },
+  { value: 404, label: '404' },
+  { value: 429, label: '429' },
+  { value: 500, label: '500' },
+  { value: 502, label: '502' },
+  { value: 503, label: '503' },
 ];
 
 // ─── 组件 ───
@@ -55,14 +61,17 @@ export default function RequestLogPage(): ReactNode {
   // ─── 筛选处理 ───
 
   useEffect(() => {
-    api.get<UserItem[]>('/api/users')
+    api
+      .get<UserItem[]>('/api/users')
       .then(setUsers)
       .catch(() => console.warn('[RequestLogPage] 加载用户参考数据失败'));
-    api.get<AccessPointItem[]>('/api/access-points')
+    api
+      .get<AccessPointItem[]>('/api/access-points')
       .then(setAccessPoints)
       .catch(() => console.warn('[RequestLogPage] 加载接入点参考数据失败'));
     // 1. 先加载所有服务商
-    api.get<ProviderItem[]>('/api/providers')
+    api
+      .get<ProviderItem[]>('/api/providers')
       .then((providerList) => {
         setProviders(providerList);
         // 2. 基于服务商列表并行拉取所有账号
@@ -81,25 +90,33 @@ export default function RequestLogPage(): ReactNode {
 
   const userMap = useMemo(() => {
     const m: Record<string, string> = {};
-    users.forEach((u) => { m[u.id] = u.display_name; });
+    users.forEach((u) => {
+      m[u.id] = u.display_name;
+    });
     return m;
   }, [users]);
 
   const apMap = useMemo(() => {
     const m: Record<string, string> = {};
-    accessPoints.forEach((ap) => { m[ap.id] = ap.name; });
+    accessPoints.forEach((ap) => {
+      m[ap.id] = ap.name;
+    });
     return m;
   }, [accessPoints]);
 
   const providerMap = useMemo(() => {
     const m: Record<string, string> = {};
-    providers.forEach((p) => { m[p.id] = p.name; });
+    providers.forEach((p) => {
+      m[p.id] = p.name;
+    });
     return m;
   }, [providers]);
 
   const accountMap = useMemo(() => {
     const m: Record<string, string> = {};
-    accounts.forEach((a) => { m[a.id] = a.name; });
+    accounts.forEach((a) => {
+      m[a.id] = a.name;
+    });
     return m;
   }, [accounts]);
 
@@ -147,7 +164,7 @@ export default function RequestLogPage(): ReactNode {
         endTime: value[1] ? toIsoString(value[1]) : undefined,
       }));
     } else {
-      setFilters((prev) => ({...prev, startTime: undefined, endTime: undefined}));
+      setFilters((prev) => ({ ...prev, startTime: undefined, endTime: undefined }));
     }
   };
 
@@ -162,110 +179,115 @@ export default function RequestLogPage(): ReactNode {
 
   return (
     <div>
-      <div style={{marginBottom: 16}}>
-        <Title heading={3} style={{margin: 0}}>请求日志</Title>
+      <div style={{ marginBottom: 16 }}>
+        <Title heading={3} style={{ margin: 0 }}>
+          请求日志
+        </Title>
       </div>
 
       <LogFilterBar
-        users={users.map((user) => ({id: user.id, label: user.display_name}))}
-        accessPoints={accessPoints.map((accessPoint) => ({id: accessPoint.id, label: accessPoint.name}))}
+        users={users.map((user) => ({ id: user.id, label: user.display_name }))}
+        accessPoints={accessPoints.map((accessPoint) => ({
+          id: accessPoint.id,
+          label: accessPoint.name,
+        }))}
         userId={filters.userId}
         accessPointId={filters.accessPointId}
         onDateChange={handleDateChange}
-        onUserChange={(userId) => setFilters((prev) => ({...prev, userId}))}
-        onAccessPointChange={(accessPointId) =>
-          setFilters((prev) => ({...prev, accessPointId}))
-        }
+        onUserChange={(userId) => setFilters((prev) => ({ ...prev, userId }))}
+        onAccessPointChange={(accessPointId) => setFilters((prev) => ({ ...prev, accessPointId }))}
         onReset={handleReset}
         hideUserSelect
         hideAccessPointSelect
         beforeReset={
-          <Button
-            icon={<IconRefresh/>}
-            loading={loading}
-            onClick={() => fetchLogs()}
-          >
+          <Button icon={<IconRefresh />} loading={loading} onClick={() => fetchLogs()}>
             刷新
           </Button>
         }
       >
         <div>
-          <Text style={{display: 'block', marginBottom: 4, fontSize: 13}}>会话 ID</Text>
+          <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>会话 ID</Text>
           <Input
             placeholder="输入会话 ID"
             value={filters.sessionId}
-            onChange={(v: string) =>
-              setFilters((prev) => ({...prev, sessionId: v || undefined}))
-            }
-            style={{width: 180}}
+            onChange={(v: string) => setFilters((prev) => ({ ...prev, sessionId: v || undefined }))}
+            style={{ width: 180 }}
           />
         </div>
         <div>
-          <Text style={{display: 'block', marginBottom: 4, fontSize: 13}}>用户</Text>
+          <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>用户</Text>
           <Select
             placeholder="选择用户"
             value={filters.userId}
             onChange={(v) =>
-              setFilters((prev) => ({...prev, userId: v == null ? undefined : String(v)}))
+              setFilters((prev) => ({ ...prev, userId: v == null ? undefined : String(v) }))
             }
-            style={{width: 120}}
+            style={{ width: 120 }}
             showClear
           >
             {users.map((u) => (
-              <Select.Option key={u.id} value={u.id}>{u.display_name}</Select.Option>
+              <Select.Option key={u.id} value={u.id}>
+                {u.display_name}
+              </Select.Option>
             ))}
           </Select>
         </div>
         <div>
-          <Text style={{display: 'block', marginBottom: 4, fontSize: 13}}>接入点</Text>
+          <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>接入点</Text>
           <Select
             placeholder="选择接入点"
             value={filters.accessPointId}
             onChange={(v) =>
-              setFilters((prev) => ({...prev, accessPointId: v == null ? undefined : String(v)}))
+              setFilters((prev) => ({ ...prev, accessPointId: v == null ? undefined : String(v) }))
             }
-            style={{width: 120}}
+            style={{ width: 120 }}
             showClear
           >
             {accessPoints.map((ap) => (
-              <Select.Option key={ap.id} value={ap.id}>{ap.name}</Select.Option>
+              <Select.Option key={ap.id} value={ap.id}>
+                {ap.name}
+              </Select.Option>
             ))}
           </Select>
         </div>
         <div>
-          <Text style={{display: 'block', marginBottom: 4, fontSize: 13}}>服务商</Text>
+          <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>服务商</Text>
           <Select
             placeholder="选择服务商"
             value={filters.providerId}
             onChange={(v) =>
-              setFilters((prev) => ({...prev, providerId: v == null ? undefined : String(v)}))
+              setFilters((prev) => ({ ...prev, providerId: v == null ? undefined : String(v) }))
             }
-            style={{width: 120}}
+            style={{ width: 120 }}
             showClear
           >
             {providers.map((p) => (
-              <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>
+              <Select.Option key={p.id} value={p.id}>
+                {p.name}
+              </Select.Option>
             ))}
           </Select>
         </div>
         <div>
-          <Text style={{display: 'block', marginBottom: 4, fontSize: 13}}>账号</Text>
+          <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>账号</Text>
           <Select
             placeholder="选择账号"
             value={filters.accountId}
             onChange={(v) =>
-              setFilters((prev) => ({...prev, accountId: v == null ? undefined : String(v)}))
+              setFilters((prev) => ({ ...prev, accountId: v == null ? undefined : String(v) }))
             }
-            style={{width: 120}}
+            style={{ width: 120 }}
             showClear
           >
             {accounts.map((a) => (
-              <Select.Option key={a.id} value={a.id}>{a.name}</Select.Option>
+              <Select.Option key={a.id} value={a.id}>
+                {a.name}
+              </Select.Option>
             ))}
           </Select>
         </div>
         <div>
-          <Text style={{display: 'block', marginBottom: 4, fontSize: 13}}>中断</Text>
+          <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>中断</Text>
           <Select
             placeholder="不限"
             value={filters.isInterrupted}
@@ -275,7 +297,7 @@ export default function RequestLogPage(): ReactNode {
                 isInterrupted: v == null ? undefined : String(v),
               }))
             }
-            style={{width: 80}}
+            style={{ width: 80 }}
             showClear
           >
             <Select.Option value="true">是</Select.Option>
@@ -283,7 +305,7 @@ export default function RequestLogPage(): ReactNode {
           </Select>
         </div>
         <div>
-          <Text style={{display: 'block', marginBottom: 4, fontSize: 13}}>状态码</Text>
+          <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>状态码</Text>
           <Select
             placeholder="选择状态码"
             value={filters.statusCode}
@@ -293,11 +315,13 @@ export default function RequestLogPage(): ReactNode {
                 statusCode: v == null ? undefined : Number(v),
               }))
             }
-            style={{width: 100}}
+            style={{ width: 100 }}
             showClear
           >
             {STATUS_OPTIONS.map((opt) => (
-              <Select.Option key={opt.value} value={opt.value}>{opt.label}</Select.Option>
+              <Select.Option key={opt.value} value={opt.value}>
+                {opt.label}
+              </Select.Option>
             ))}
           </Select>
         </div>

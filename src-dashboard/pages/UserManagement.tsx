@@ -1,10 +1,19 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Form, Popconfirm, SideSheet, Space, Table, Toast, Typography } from '@douyinfe/semi-ui';
+import {
+  Button,
+  Form,
+  Popconfirm,
+  SideSheet,
+  Space,
+  Table,
+  Toast,
+  Typography,
+} from '@douyinfe/semi-ui';
 import api from '../api.ts';
 import StatusToggle from '@components/common/StatusToggle';
 import { formatDate } from '../utils/format.ts';
 
-const {Title} = Typography;
+const { Title } = Typography;
 
 interface UserResponse {
   id: string;
@@ -132,8 +141,8 @@ export default function UserManagement(): ReactNode {
   };
 
   const columns = [
-    {title: '用户名', dataIndex: 'username', key: 'username'},
-    {title: '姓名', dataIndex: 'display_name', key: 'display_name', width: 140},
+    { title: '用户名', dataIndex: 'username', key: 'username' },
+    { title: '姓名', dataIndex: 'display_name', key: 'display_name', width: 140 },
     {
       title: '状态',
       dataIndex: 'status',
@@ -161,7 +170,9 @@ export default function UserManagement(): ReactNode {
       width: 160,
       render: (_: unknown, record: UserResponse) => (
         <Space>
-          <Button size="small" onClick={() => openEditDrawer(record)}>编辑</Button>
+          <Button size="small" onClick={() => openEditDrawer(record)}>
+            编辑
+          </Button>
           <Popconfirm
             title="确认删除此用户?"
             onConfirm={() => handleDelete(record.id)}
@@ -183,9 +194,18 @@ export default function UserManagement(): ReactNode {
 
   return (
     <div>
-      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
         <Title heading={3}>用户管理</Title>
-        <Button type="primary" onClick={openCreateDrawer}>创建用户</Button>
+        <Button type="primary" onClick={openCreateDrawer}>
+          创建用户
+        </Button>
       </div>
 
       <Table
@@ -193,8 +213,8 @@ export default function UserManagement(): ReactNode {
         dataSource={users}
         loading={loading}
         rowKey="id"
-        scroll={{x: 'max-content'}}
-        pagination={{pageSize: 20}}
+        scroll={{ x: 'max-content' }}
+        pagination={{ pageSize: 20 }}
         empty={<Typography.Text type="secondary">暂无用户数据</Typography.Text>}
       />
 
@@ -207,33 +227,37 @@ export default function UserManagement(): ReactNode {
       >
         <Form
           onSubmit={handleSave}
-          initValues={editingUser ? {
-            username: editingUser.username,
-            display_name: editingUser.display_name,
-          } : undefined}
-          style={{padding: '0 4px'}}
+          initValues={
+            editingUser
+              ? {
+                  username: editingUser.username,
+                  display_name: editingUser.display_name,
+                }
+              : undefined
+          }
+          style={{ padding: '0 4px' }}
         >
           <Form.Input
             field="username"
             label="账号"
             placeholder="登录账号"
             disabled={!!editingUser}
-            rules={[{required: true, message: '请输入账号'}]}
+            rules={[{ required: true, message: '请输入账号' }]}
           />
           <Form.Input
             field="display_name"
             label="姓名"
             placeholder="显示名称"
-            rules={[{required: true, message: '请输入姓名'}]}
+            rules={[{ required: true, message: '请输入姓名' }]}
           />
           <Form.Input
             field="password"
             label="密码"
             mode="password"
             placeholder={editingUser ? '留空则不修改密码' : '请输入密码'}
-            rules={editingUser ? [] : [{required: true, message: '请输入密码'}]}
+            rules={editingUser ? [] : [{ required: true, message: '请输入密码' }]}
           />
-          <Button type="primary" htmlType="submit" loading={saving} block style={{marginTop: 16}}>
+          <Button type="primary" htmlType="submit" loading={saving} block style={{ marginTop: 16 }}>
             {editingUser ? '更新' : '创建'}
           </Button>
         </Form>

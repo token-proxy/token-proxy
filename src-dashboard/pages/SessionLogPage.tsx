@@ -20,7 +20,7 @@ import type {
 import { buildConversationTurns } from '../utils/parseLogs.ts';
 import { buildQueryString, toIsoString } from '../utils/query.ts';
 
-const {Title} = Typography;
+const { Title } = Typography;
 
 // ─── 组件 ───
 
@@ -32,7 +32,7 @@ const {Title} = Typography;
  * - 有 sessionId 参数时展示会话详情，包含对话时间线、Token 用量、事件摘要
  */
 export default function SessionLogPage(): ReactNode {
-  const {sessionId} = useParams<{ sessionId: string }>();
+  const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
 
   // 参考数据，用于查找映射
@@ -57,10 +57,12 @@ export default function SessionLogPage(): ReactNode {
   // ─── 加载参考数据 ───
 
   useEffect(() => {
-    api.get<UserItem[]>('/api/users')
+    api
+      .get<UserItem[]>('/api/users')
       .then(setUsers)
       .catch(() => console.warn('[SessionLogPage] 加载用户参考数据失败'));
-    api.get<AccessPointItem[]>('/api/access-points')
+    api
+      .get<AccessPointItem[]>('/api/access-points')
       .then(setAccessPoints)
       .catch(() => console.warn('[SessionLogPage] 加载接入点参考数据失败'));
   }, []);
@@ -69,13 +71,17 @@ export default function SessionLogPage(): ReactNode {
 
   const userMap = useMemo(() => {
     const m: Record<string, string> = {};
-    users.forEach((u) => { m[u.id] = u.display_name; });
+    users.forEach((u) => {
+      m[u.id] = u.display_name;
+    });
     return m;
   }, [users]);
 
   const apMap = useMemo(() => {
     const m: Record<string, string> = {};
-    accessPoints.forEach((ap) => { m[ap.id] = ap.name; });
+    accessPoints.forEach((ap) => {
+      m[ap.id] = ap.name;
+    });
     return m;
   }, [accessPoints]);
 
@@ -117,17 +123,15 @@ export default function SessionLogPage(): ReactNode {
     try {
       // 1. 并行加载会话内容和 Token 用量
       const [contents, usage] = await Promise.all([
-        api.get<SessionContentItem[]>(
-          `/api/logs/sessions/${encodeURIComponent(sid)}/contents`,
-        ),
-        api.get<TokenUsage[]>(
-          `/api/logs/sessions/${encodeURIComponent(sid)}/token-usage`,
-        ),
+        api.get<SessionContentItem[]>(`/api/logs/sessions/${encodeURIComponent(sid)}/contents`),
+        api.get<TokenUsage[]>(`/api/logs/sessions/${encodeURIComponent(sid)}/token-usage`),
       ]);
 
       // 2. 构建 Token 用量映射
       const usageMap: Record<string, TokenUsage> = {};
-      usage.forEach((tu) => { usageMap[tu.log_id] = tu; });
+      usage.forEach((tu) => {
+        usageMap[tu.log_id] = tu;
+      });
 
       // 3. 使用 buildConversationTurns 构建轮次数据（Token 聚合在内部完成）
       const turns = buildConversationTurns(contents, usageMap);
@@ -157,16 +161,18 @@ export default function SessionLogPage(): ReactNode {
     setRawModalVisible(true);
     try {
       const detail = await api.get<LogDetail>(`/api/logs/${logId}/raw`);
-      setRawModalContent([
-        '=== 请求头 ===',
-        JSON.stringify(detail.request_headers, null, 2),
-        '',
-        '=== 请求体 ===',
-        JSON.stringify(detail.request_body, null, 2),
-        '',
-        '=== 响应体 ===',
-        detail.response_body || '(空)',
-      ].join('\n'));
+      setRawModalContent(
+        [
+          '=== 请求头 ===',
+          JSON.stringify(detail.request_headers, null, 2),
+          '',
+          '=== 请求体 ===',
+          JSON.stringify(detail.request_body, null, 2),
+          '',
+          '=== 响应体 ===',
+          detail.response_body || '(空)',
+        ].join('\n'),
+      );
     } catch (err) {
       setRawModalContent(err instanceof Error ? err.message : '加载原始内容失败');
     }
@@ -186,7 +192,7 @@ export default function SessionLogPage(): ReactNode {
         endTime: value[1] ? toIsoString(value[1]) : undefined,
       }));
     } else {
-      setFilters((prev) => ({...prev, startTime: undefined, endTime: undefined}));
+      setFilters((prev) => ({ ...prev, startTime: undefined, endTime: undefined }));
     }
   };
 
@@ -222,8 +228,10 @@ export default function SessionLogPage(): ReactNode {
 
   return (
     <div>
-      <div style={{marginBottom: 16}}>
-        <Title heading={3} style={{margin: 0}}>会话日志</Title>
+      <div style={{ marginBottom: 16 }}>
+        <Title heading={3} style={{ margin: 0 }}>
+          会话日志
+        </Title>
       </div>
 
       <SessionListView
@@ -238,19 +246,13 @@ export default function SessionLogPage(): ReactNode {
         pageSize={pageSize}
         filters={filters}
         beforeReset={
-          <Button
-            icon={<IconRefresh/>}
-            loading={sessionsLoading}
-            onClick={() => fetchSessions()}
-          >
+          <Button icon={<IconRefresh />} loading={sessionsLoading} onClick={() => fetchSessions()}>
             刷新
           </Button>
         }
         onDateChange={handleDateChange}
-        onUserChange={(userId) => setFilters((prev) => ({...prev, userId}))}
-        onAccessPointChange={(accessPointId) =>
-          setFilters((prev) => ({...prev, accessPointId}))
-        }
+        onUserChange={(userId) => setFilters((prev) => ({ ...prev, userId }))}
+        onAccessPointChange={(accessPointId) => setFilters((prev) => ({ ...prev, accessPointId }))}
         onReset={handleResetFilters}
         onPageChange={handlePageChange}
       />

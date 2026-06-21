@@ -9,25 +9,21 @@ interface TextBlockCardProps {
 }
 
 /** 块 C: 助手回复 */
-export default function TextBlockCard({
-  block,
-  itemKey,
-}: TextBlockCardProps): ReactNode | null {
+export default function TextBlockCard({ block, itemKey }: TextBlockCardProps): ReactNode | null {
   if (block.block_type !== 'text' || !block.text) return null;
 
   return (
     <Collapse.Panel
       itemKey={itemKey}
       header={
-        <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-          <Tag color="green" size="small">助手回复</Tag>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Tag color="green" size="small">
+            助手回复
+          </Tag>
         </div>
       }
     >
-      <ExpandableContentBlock
-        content={block.text}
-        collapseLabel="收起回复内容"
-      />
+      <ExpandableContentBlock content={block.text} collapseLabel="收起回复内容" />
     </Collapse.Panel>
   );
 }

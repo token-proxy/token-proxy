@@ -23,7 +23,7 @@ import api from '../api.ts';
 import AccountManager, { type Account } from '@components/provider/AccountManager';
 import type { FaultConfigJson } from '../types/accessPoint.ts';
 
-const {Title, Text} = Typography;
+const { Title, Text } = Typography;
 
 // ── 类型定义 ──
 
@@ -132,7 +132,10 @@ function buildFaultConfig(state: FaultConfigState): FaultConfigJson | undefined 
 }
 
 /** 将后端返回的 FaultConfigJson 反序列化为本地 FaultConfigState */
-function parseFaultConfig(json: FaultConfigJson | undefined, defaults: FaultConfigState): FaultConfigState {
+function parseFaultConfig(
+  json: FaultConfigJson | undefined,
+  defaults: FaultConfigState,
+): FaultConfigState {
   if (!json) return { ...defaults };
   return {
     status_codes: json.status_codes ?? defaults.status_codes,
@@ -151,10 +154,10 @@ function parseFaultConfig(json: FaultConfigJson | undefined, defaults: FaultConf
     extract_on_failed:
       (json.config?.on_extract_failed?.type as FaultConfigState['extract_on_failed']) ?? '',
     extract_fallback_delay_value:
-      json.config?.on_extract_failed?.delay?.value ??
-      defaults.extract_fallback_delay_value,
+      json.config?.on_extract_failed?.delay?.value ?? defaults.extract_fallback_delay_value,
     extract_fallback_delay_unit:
-      (json.config?.on_extract_failed?.delay?.unit as FaultConfigState['extract_fallback_delay_unit']) ??
+      (json.config?.on_extract_failed?.delay
+        ?.unit as FaultConfigState['extract_fallback_delay_unit']) ??
       defaults.extract_fallback_delay_unit,
   };
 }
@@ -173,13 +176,13 @@ function FaultConfigEditor({
 }): ReactNode {
   const update = (patch: Partial<FaultConfigState>) => onChange({ ...state, ...patch });
 
-  const recoverOptions = ([
-    { value: 'manual' as const, label: '手动恢复 (manual)' },
-    { value: 'scheduled' as const, label: '定时恢复 (scheduled)' },
-    { value: 'extract' as const, label: '从响应提取恢复时间 (extract)' },
-  ] as { value: FaultConfigState['recover_type']; label: string }[]).filter(
-    (opt) => !allowedRecoverTypes || allowedRecoverTypes.includes(opt.value),
-  );
+  const recoverOptions = (
+    [
+      { value: 'manual' as const, label: '手动恢复 (manual)' },
+      { value: 'scheduled' as const, label: '定时恢复 (scheduled)' },
+      { value: 'extract' as const, label: '从响应提取恢复时间 (extract)' },
+    ] as { value: FaultConfigState['recover_type']; label: string }[]
+  ).filter((opt) => !allowedRecoverTypes || allowedRecoverTypes.includes(opt.value));
 
   return (
     <div>
@@ -225,9 +228,7 @@ function FaultConfigEditor({
             />
             <Select
               value={state.delay_unit}
-              onChange={(v) =>
-                update({ delay_unit: v as FaultConfigState['delay_unit'] })
-              }
+              onChange={(v) => update({ delay_unit: v as FaultConfigState['delay_unit'] })}
               style={{ width: 100 }}
             >
               <Select.Option value="seconds">秒</Select.Option>
@@ -260,9 +261,7 @@ function FaultConfigEditor({
                 value={state.extract_source_path}
                 onChange={(v) => update({ extract_source_path: v })}
                 placeholder={
-                  state.extract_source === 'header'
-                    ? '如 Retry-After'
-                    : '如 $.error.reset_time'
+                  state.extract_source === 'header' ? '如 Retry-After' : '如 $.error.reset_time'
                 }
                 style={{ flex: 1 }}
               />
@@ -341,9 +340,7 @@ function FaultConfigEditor({
               <Space>
                 <InputNumber
                   value={state.extract_fallback_delay_value}
-                  onChange={(v) =>
-                    update({ extract_fallback_delay_value: (v as number) || 60 })
-                  }
+                  onChange={(v) => update({ extract_fallback_delay_value: (v as number) || 60 })}
                   min={1}
                   style={{ width: 120 }}
                 />
@@ -398,9 +395,8 @@ export default function ProviderManagement(): ReactNode {
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
 
   // 账户异常处置
-  const [rateLimitConfig, setRateLimitConfig] = useState<FaultConfigState>(
-    DEFAULT_RATE_LIMIT_CONFIG,
-  );
+  const [rateLimitConfig, setRateLimitConfig] =
+    useState<FaultConfigState>(DEFAULT_RATE_LIMIT_CONFIG);
   const [balanceConfig, setBalanceConfig] = useState<FaultConfigState>(DEFAULT_BALANCE_CONFIG);
 
   const setOperation = (key: string, operating: boolean) => {
@@ -605,7 +601,11 @@ export default function ProviderManagement(): ReactNode {
       render: (models?: string[]) => (
         <Space wrap>
           {models && models.length > 0 ? (
-            models.slice(0, 5).map((m) => <Tag key={m} size="small">{m}</Tag>)
+            models.slice(0, 5).map((m) => (
+              <Tag key={m} size="small">
+                {m}
+              </Tag>
+            ))
           ) : (
             <span style={{ color: 'var(--semi-color-text-2)' }}>暂无</span>
           )}
@@ -739,10 +739,7 @@ export default function ProviderManagement(): ReactNode {
             </div>
             <Collapse>
               <Collapse.Panel header="配额耗尽" itemKey="rate_limit">
-                <FaultConfigEditor
-                  state={rateLimitConfig}
-                  onChange={setRateLimitConfig}
-                />
+                <FaultConfigEditor state={rateLimitConfig} onChange={setRateLimitConfig} />
               </Collapse.Panel>
               <Collapse.Panel header="余额耗尽" itemKey="balance_exhausted">
                 <FaultConfigEditor
@@ -781,11 +778,7 @@ export default function ProviderManagement(): ReactNode {
                       </span>
                     </Tooltip>
                   ) : (
-                    <Button
-                      size="small"
-                      onClick={handleDiscoverModels}
-                      loading={discovering}
-                    >
+                    <Button size="small" onClick={handleDiscoverModels} loading={discovering}>
                       自动发现
                     </Button>
                   )}

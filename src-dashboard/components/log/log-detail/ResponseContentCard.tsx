@@ -7,7 +7,7 @@ import ThinkingBlockCard from './response-content/ThinkingBlockCard';
 import TextBlockCard from './response-content/TextBlockCard';
 import ToolUseBlockCard from './response-content/ToolUseBlockCard';
 
-const {Text} = Typography;
+const { Text } = Typography;
 
 /** ResponseContentCard 组件 Props */
 interface ResponseContentCardProps {
@@ -43,7 +43,9 @@ export default function ResponseContentCard({
   const defaultActiveKeys = useMemo<string[]>(() => {
     if (!parsed) return [];
     return parsed.content_blocks
-      .map((block, idx) => (block.block_type === 'text' || block.block_type === 'tool_use' ? String(idx) : null))
+      .map((block, idx) =>
+        block.block_type === 'text' || block.block_type === 'tool_use' ? String(idx) : null,
+      )
       .filter((k): k is string => k !== null);
   }, [parsed]);
 
@@ -64,11 +66,11 @@ export default function ResponseContentCard({
           const itemKey = String(idx);
           switch (block.block_type) {
             case 'thinking':
-              return <ThinkingBlockCard key={itemKey} block={block} itemKey={itemKey}/>;
+              return <ThinkingBlockCard key={itemKey} block={block} itemKey={itemKey} />;
             case 'text':
-              return <TextBlockCard key={itemKey} block={block} itemKey={itemKey}/>;
+              return <TextBlockCard key={itemKey} block={block} itemKey={itemKey} />;
             case 'tool_use':
-              return <ToolUseBlockCard key={itemKey} block={block} itemKey={itemKey}/>;
+              return <ToolUseBlockCard key={itemKey} block={block} itemKey={itemKey} />;
             default:
               return null;
           }
@@ -82,7 +84,7 @@ export default function ResponseContentCard({
     if (!hasBody) {
       return <Text type="secondary">(无响应内容)</Text>;
     }
-    return <RawResponseView body={responseBody!}/>;
+    return <RawResponseView body={responseBody!} />;
   }, [hasBody, responseBody]);
 
   return (
@@ -90,8 +92,8 @@ export default function ResponseContentCard({
       title="响应内容"
       headerExtraContent={
         hasBody ? (
-          <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-            <Text size="small" style={{color: 'var(--semi-color-text-2)'}}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Text size="small" style={{ color: 'var(--semi-color-text-2)' }}>
               {viewMode === 'formatted' ? '结构化' : '原始 SSE'}
             </Text>
             <Switch

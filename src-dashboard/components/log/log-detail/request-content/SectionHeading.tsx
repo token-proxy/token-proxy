@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { Typography } from '@douyinfe/semi-ui';
 
-const {Text} = Typography;
+const { Text } = Typography;
 
 interface SectionHeadingProps {
   children: ReactNode;
@@ -12,9 +12,7 @@ interface SectionHeadingProps {
  *
  * 提供统一的加粗标题样式。
  */
-export default function SectionHeading({
-  children,
-}: SectionHeadingProps): ReactNode {
+export default function SectionHeading({ children }: SectionHeadingProps): ReactNode {
   return (
     <Text
       strong

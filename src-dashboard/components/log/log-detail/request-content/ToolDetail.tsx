@@ -2,7 +2,7 @@ import { type ReactNode } from 'react';
 import { Descriptions, Typography } from '@douyinfe/semi-ui';
 import MarkdownRender from '@components/common/MarkdownRender';
 
-const {Text} = Typography;
+const { Text } = Typography;
 
 interface ToolDetailProps {
   tool: Record<string, unknown>;
@@ -13,7 +13,7 @@ interface ToolDetailProps {
  *
  * 展示单个工具定义的描述和参数 Schema。
  */
-export default function ToolDetail({tool}: ToolDetailProps): ReactNode {
+export default function ToolDetail({ tool }: ToolDetailProps): ReactNode {
   const description = typeof tool.description === 'string' ? tool.description : '';
   const inputSchema = tool.input_schema as
     | { properties?: Record<string, unknown>; required?: Array<string> }
@@ -30,16 +30,22 @@ export default function ToolDetail({tool}: ToolDetailProps): ReactNode {
       }}
     >
       {description && (
-        <div style={{marginBottom: 12}}>
-          <Text size="small" style={{color: 'var(--semi-color-text-2)', marginBottom: 4, display: 'block'}}>
+        <div style={{ marginBottom: 12 }}>
+          <Text
+            size="small"
+            style={{ color: 'var(--semi-color-text-2)', marginBottom: 4, display: 'block' }}
+          >
             描述
           </Text>
-          <MarkdownRender content={description}/>
+          <MarkdownRender content={description} />
         </div>
       )}
       {props && Object.keys(props).length > 0 && (
         <div>
-          <Text size="small" style={{color: 'var(--semi-color-text-2)', marginBottom: 8, display: 'block'}}>
+          <Text
+            size="small"
+            style={{ color: 'var(--semi-color-text-2)', marginBottom: 8, display: 'block' }}
+          >
             参数
           </Text>
           <Descriptions
@@ -52,7 +58,7 @@ export default function ToolDetail({tool}: ToolDetailProps): ReactNode {
               if (propVal.description) {
                 valueStr += `, ${propVal.description}`;
               }
-              return {key: k, value: valueStr};
+              return { key: k, value: valueStr };
             })}
           />
         </div>

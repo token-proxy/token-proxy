@@ -12,9 +12,7 @@ interface MarkdownRenderProps {
  *
  * 封装 Semi MarkdownRender，预处理 XML 标签清洗。
  */
-export default function MarkdownRender({
-  content,
-}: MarkdownRenderProps): ReactNode {
+export default function MarkdownRender({ content }: MarkdownRenderProps): ReactNode {
   const cleaned = cleanXmlTags(content);
 
   return (
@@ -23,9 +21,7 @@ export default function MarkdownRender({
         raw={cleaned}
         format="md"
         components={{
-          pre: ({children}) => (
-            <pre className="markdown-code-block">{children}</pre>
-          ),
+          pre: ({ children }) => <pre className="markdown-code-block">{children}</pre>,
         }}
       />
     </div>

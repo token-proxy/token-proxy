@@ -2,7 +2,7 @@ import { Card, Spin, Typography } from '@douyinfe/semi-ui';
 import type { ReactNode } from 'react';
 import type { TrendItem } from '../../types/dashboard.ts';
 
-const {Text} = Typography;
+const { Text } = Typography;
 
 /** TrendChart 组件 Props */
 interface TrendChartProps {
@@ -15,18 +15,15 @@ interface TrendChartProps {
  *
  * 展示近 7 天请求量的柱状图，自动缩放柱高。
  */
-export default function TrendChart({data, loading}: TrendChartProps): ReactNode {
+export default function TrendChart({ data, loading }: TrendChartProps): ReactNode {
   const maxCount = Math.max(...data.map((d) => d.count), 1);
   const barMaxHeight = 180;
 
   return (
-    <Card
-      title="请求趋势 (近 7 天)"
-      style={{backgroundColor: 'var(--semi-color-bg-0)'}}
-    >
+    <Card title="请求趋势 (近 7 天)" style={{ backgroundColor: 'var(--semi-color-bg-0)' }}>
       {loading ? (
-        <div style={{textAlign: 'center', padding: '60px 0'}}>
-          <Spin/>
+        <div style={{ textAlign: 'center', padding: '60px 0' }}>
+          <Spin />
         </div>
       ) : (
         <div
@@ -52,11 +49,9 @@ export default function TrendChart({data, loading}: TrendChartProps): ReactNode 
               >
                 <Text
                   type="secondary"
-                  style={{fontSize: 11, marginBottom: 4, whiteSpace: 'nowrap'}}
+                  style={{ fontSize: 11, marginBottom: 4, whiteSpace: 'nowrap' }}
                 >
-                  {item.count >= 1000
-                    ? `${(item.count / 1000).toFixed(1)}K`
-                    : item.count}
+                  {item.count >= 1000 ? `${(item.count / 1000).toFixed(1)}K` : item.count}
                 </Text>
                 <div
                   style={{
@@ -69,10 +64,7 @@ export default function TrendChart({data, loading}: TrendChartProps): ReactNode 
                     opacity: 0.85,
                   }}
                 />
-                <Text
-                  type="secondary"
-                  style={{fontSize: 12, marginTop: 8}}
-                >
+                <Text type="secondary" style={{ fontSize: 12, marginTop: 8 }}>
                   {item.date}
                 </Text>
               </div>

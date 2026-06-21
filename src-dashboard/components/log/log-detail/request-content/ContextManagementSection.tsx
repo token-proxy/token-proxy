@@ -19,12 +19,12 @@ export default function ContextManagementSection({
   const cmObj: Record<string, unknown> =
     typeof contextManagement === 'string'
       ? (() => {
-        try {
-          return JSON.parse(contextManagement);
-        } catch {
-          return {};
-        }
-      })()
+          try {
+            return JSON.parse(contextManagement);
+          } catch {
+            return {};
+          }
+        })()
       : (contextManagement as Record<string, unknown>);
 
   const entries = Object.entries(cmObj);

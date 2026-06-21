@@ -14,9 +14,7 @@ function formatHeadersToArray(
   }));
 }
 
-function formatHeadersForCopy(
-  headers: Record<string, unknown> | null | undefined,
-): string {
+function formatHeadersForCopy(headers: Record<string, unknown> | null | undefined): string {
   if (!headers) return '';
 
   return Object.entries(headers)
@@ -38,7 +36,7 @@ interface HeadersCardProps {
  *
  * 使用 CollapsibleCard 折叠展示，支持一键复制所有头部内容。
  */
-export default function HeadersCard({headers, style, title}: HeadersCardProps): ReactNode {
+export default function HeadersCard({ headers, style, title }: HeadersCardProps): ReactNode {
   const items = formatHeadersToArray(headers);
   const [copying, setCopying] = useState(false);
   const copyText = useMemo(() => formatHeadersForCopy(headers), [headers]);
@@ -55,7 +53,7 @@ export default function HeadersCard({headers, style, title}: HeadersCardProps): 
 
   const copyButton = (
     <Button
-      icon={<IconCopy/>}
+      icon={<IconCopy />}
       size="small"
       type="tertiary"
       loading={copying}
@@ -70,16 +68,8 @@ export default function HeadersCard({headers, style, title}: HeadersCardProps): 
   );
 
   return (
-    <CollapsibleCard
-      title={title}
-      defaultCollapsed
-      headerExtraContent={copyButton}
-      style={style}
-    >
-      {items.length > 0
-        ? <Descriptions data={items} size="small"/>
-        : <Text>无{title}</Text>
-      }
+    <CollapsibleCard title={title} defaultCollapsed headerExtraContent={copyButton} style={style}>
+      {items.length > 0 ? <Descriptions data={items} size="small" /> : <Text>无{title}</Text>}
     </CollapsibleCard>
   );
 }

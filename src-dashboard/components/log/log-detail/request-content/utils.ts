@@ -1,10 +1,8 @@
 /** 提取消息的 content 字段为统一的内容块数组 */
-export function extractContentBlocks(
-  content: unknown,
-): Array<Record<string, unknown>> {
+export function extractContentBlocks(content: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(content)) return content as Array<Record<string, unknown>>;
   if (typeof content === 'string') {
-    return [{type: 'text', text: content}];
+    return [{ type: 'text', text: content }];
   }
   return [];
 }

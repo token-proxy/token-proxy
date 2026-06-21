@@ -58,10 +58,7 @@ export default function AccordionSection({
         />
         <span className="accordion-title">{title}</span>
       </div>
-      <div
-        className="accordion-body"
-        style={{ display: expanded ? 'block' : 'none' }}
-      >
+      <div className="accordion-body" style={{ display: expanded ? 'block' : 'none' }}>
         {children}
       </div>
     </div>

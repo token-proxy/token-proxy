@@ -41,7 +41,7 @@ export default function RequestLogTable({
       title: 'ID',
       dataIndex: 'id',
       width: 240,
-      render: (id: string) => <CopyableIdText value={id}/>,
+      render: (id: string) => <CopyableIdText value={id} />,
     },
     {
       title: '时间',
@@ -54,7 +54,7 @@ export default function RequestLogTable({
       key: 'source',
       width: 80,
       render: (_: unknown, r: LogSummary) => (
-        <div style={{display: 'flex', gap: 4, flexWrap: 'wrap'}}>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           <Tag color={r.conversation_source === 'subagent' ? 'green' : 'blue'}>
             {r.conversation_source === 'subagent' ? '子代理' : '主代理'}
           </Tag>
@@ -65,14 +65,14 @@ export default function RequestLogTable({
       title: '会话 ID',
       dataIndex: 'session_id',
       width: 260,
-      render: (id: string) => <CopyableIdText value={id}/>,
+      render: (id: string) => <CopyableIdText value={id} />,
     },
     {
       title: '用户',
       key: 'user',
       width: 80,
       render: (_: unknown, r: LogSummary) =>
-        r.user_id ? (userMap[r.user_id] || truncateMiddle(r.user_id, 8)) : '-',
+        r.user_id ? userMap[r.user_id] || truncateMiddle(r.user_id, 8) : '-',
     },
     {
       title: '接入点',
@@ -88,7 +88,7 @@ export default function RequestLogTable({
           return <span className="nowrap-text">{accessPointName}</span>;
         }
 
-        return <CopyableIdText value={r.access_point_id}/>;
+        return <CopyableIdText value={r.access_point_id} />;
       },
     },
     {
@@ -105,7 +105,7 @@ export default function RequestLogTable({
           return <span className="nowrap-text">{providerName}</span>;
         }
 
-        return <CopyableIdText value={r.provider_id}/>;
+        return <CopyableIdText value={r.provider_id} />;
       },
     },
     {
@@ -122,16 +122,14 @@ export default function RequestLogTable({
           return <span className="nowrap-text">{accountName}</span>;
         }
 
-        return <CopyableIdText value={r.account_id}/>;
+        return <CopyableIdText value={r.account_id} />;
       },
     },
     {
       title: '中断',
       dataIndex: 'is_interrupted',
       width: 60,
-      render: (v: boolean) => (
-        <Tag color={v ? 'red' : undefined}>{v ? '是' : '否'}</Tag>
-      ),
+      render: (v: boolean) => <Tag color={v ? 'red' : undefined}>{v ? '是' : '否'}</Tag>,
     },
     {
       title: '原始模型',
@@ -150,9 +148,7 @@ export default function RequestLogTable({
       dataIndex: 'status_code',
       width: 80,
       render: (code?: number | null) => (
-        <Tag color={(code ?? 0) >= 400 ? 'red' : 'green'}>
-          {code ?? '-'}
-        </Tag>
+        <Tag color={(code ?? 0) >= 400 ? 'red' : 'green'}>{code ?? '-'}</Tag>
       ),
     },
     {
@@ -199,16 +195,14 @@ export default function RequestLogTable({
       dataSource={logs}
       loading={loading}
       rowKey="id"
-      scroll={{x: 'max-content'}}
+      scroll={{ x: 'max-content' }}
       pagination={{
         currentPage: page,
         pageSize,
         total,
         onChange: onPageChange,
       }}
-      empty={
-        <Empty description={loading ? '' : '暂无日志数据'}/>
-      }
+      empty={<Empty description={loading ? '' : '暂无日志数据'} />}
     />
   );
 }

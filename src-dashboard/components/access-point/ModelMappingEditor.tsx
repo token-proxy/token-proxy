@@ -13,10 +13,10 @@ interface ModelMappingEditorProps {
 }
 
 const ANTHROPIC_FAMILIES = [
-  {label: '未匹配', value: UNMATCHED_MODEL, matchType: 'prefix'},
-  {label: 'Claude Opus', value: 'claude-opus-', matchType: 'prefix'},
-  {label: 'Claude Sonnet', value: 'claude-sonnet-', matchType: 'prefix'},
-  {label: 'Claude Haiku', value: 'claude-haiku-', matchType: 'prefix'},
+  { label: '未匹配', value: UNMATCHED_MODEL, matchType: 'prefix' },
+  { label: 'Claude Opus', value: 'claude-opus-', matchType: 'prefix' },
+  { label: 'Claude Sonnet', value: 'claude-sonnet-', matchType: 'prefix' },
+  { label: 'Claude Haiku', value: 'claude-haiku-', matchType: 'prefix' },
 ];
 type MappingMatchType = 'exact' | 'prefix';
 
@@ -30,14 +30,15 @@ const labelForModel = (value: string) => {
   return ANTHROPIC_FAMILIES.find((family) => family.value === value)?.label ?? value;
 };
 
-const matchTypeForSource = (value: string): MappingMatchType => (
-  ANTHROPIC_FAMILIES.find((family) => family.value === value)?.matchType as MappingMatchType | undefined ?? 'exact'
-);
+const matchTypeForSource = (value: string): MappingMatchType =>
+  (ANTHROPIC_FAMILIES.find((family) => family.value === value)?.matchType as
+    | MappingMatchType
+    | undefined) ?? 'exact';
 
 const uniqueOptions = (values: string[]) => [...new Set(values.filter(Boolean))];
 
 const optionLabel = (type: MappingMatchType, value: string) => (
-  <span style={{display: 'inline-flex', alignItems: 'center', gap: 6}}>
+  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
     <Tag color={type === 'prefix' ? 'purple' : 'blue'} size="small">
       {MATCH_TYPE_LABELS[type]}
     </Tag>
@@ -79,18 +80,29 @@ export default function ModelMappingEditor({
   }));
 
   return (
-    <div style={{marginTop: 24}}>
-      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8}}>
-        <span style={{fontSize: 14, fontWeight: 500, color: 'var(--semi-color-text-0)'}}>模型映射</span>
-        <Button size="small" onClick={onAdd}>添加映射</Button>
+    <div style={{ marginTop: 24 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 8,
+        }}
+      >
+        <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>
+          模型映射
+        </span>
+        <Button size="small" onClick={onAdd}>
+          添加映射
+        </Button>
       </div>
       {mappings.length === 0 && (
-        <div style={{color: 'var(--semi-color-text-2)', fontSize: 13, padding: '8px 0'}}>
+        <div style={{ color: 'var(--semi-color-text-2)', fontSize: 13, padding: '8px 0' }}>
           暂无映射规则，点击 "添加映射" 新增
         </div>
       )}
       {mappings.map((mapping, index) => (
-        <div key={index} style={{display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center'}}>
+        <div key={index} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
           <Select
             key={`source-${sourceValues.join('|')}`}
             value={mapping.source_model || undefined}
@@ -98,20 +110,22 @@ export default function ModelMappingEditor({
             filter
             allowCreate
             optionList={sourceOptionList}
-            style={{flex: 1}}
+            style={{ flex: 1 }}
             onChange={(value) => onChange(index, 'source_model', value as string)}
           />
-          <span style={{color: 'var(--semi-color-text-2)'}}>→</span>
+          <span style={{ color: 'var(--semi-color-text-2)' }}>→</span>
           <Select
             key={`target-${targetValues.join('|')}`}
             value={mapping.target_model || undefined}
             placeholder="目标模型"
             filter
             optionList={targetOptionList}
-            style={{flex: 1}}
+            style={{ flex: 1 }}
             onChange={(value) => onChange(index, 'target_model', value as string)}
           />
-          <Button type="danger" icon={null} onClick={() => onRemove(index)} size="small">删除</Button>
+          <Button type="danger" icon={null} onClick={() => onRemove(index)} size="small">
+            删除
+          </Button>
         </div>
       ))}
     </div>

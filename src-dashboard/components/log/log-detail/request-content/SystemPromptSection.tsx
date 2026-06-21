@@ -12,9 +12,7 @@ interface SystemPromptSectionProps {
  *
  * 折叠展示请求中的 system 文本内容块，支持长内容折叠。
  */
-export default function SystemPromptSection({
-  system,
-}: SystemPromptSectionProps): ReactNode {
+export default function SystemPromptSection({ system }: SystemPromptSectionProps): ReactNode {
   const textBlocks = (system ?? []).filter(
     (block) => block.type === 'text' && typeof block.text === 'string',
   );
@@ -27,13 +25,15 @@ export default function SystemPromptSection({
       defaultExpanded={false}
     >
       {textBlocks.map((block, idx) => (
-        <SystemPromptBlock key={idx} block={block} index={idx}/>
+        <SystemPromptBlock key={idx} block={block} index={idx} />
       ))}
     </AccordionSection>
   );
 }
 
-function SystemPromptBlock({block}: {
+function SystemPromptBlock({
+  block,
+}: {
   block: Record<string, unknown>;
   index: number;
 }): ReactNode {
@@ -49,15 +49,12 @@ function SystemPromptBlock({block}: {
         borderRadius: 6,
       }}
     >
-      <div style={{marginBottom: 8}}>
+      <div style={{ marginBottom: 8 }}>
         <Tag size="small" type="light">
           文本
         </Tag>
       </div>
-      <ExpandableContentBlock
-        content={text}
-        collapseLabel="收起文本块"
-      />
+      <ExpandableContentBlock content={text} collapseLabel="收起文本块" />
     </div>
   );
 }

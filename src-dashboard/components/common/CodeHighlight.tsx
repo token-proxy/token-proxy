@@ -19,12 +19,7 @@ export default function CodeHighlight({
 }: CodeHighlightProps): ReactNode {
   return (
     <div className="code-highlight-wrapper">
-      <SemiCodeHighlight
-        code={content}
-        language={language}
-        lineNumber
-        style={{margin: 0}}
-      />
+      <SemiCodeHighlight code={content} language={language} lineNumber style={{ margin: 0 }} />
     </div>
   );
 }

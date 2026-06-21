@@ -1,4 +1,13 @@
-import { Button, Input, InputNumber, Select, SideSheet, Table, Tag, Tooltip } from '@douyinfe/semi-ui';
+import {
+  Button,
+  Input,
+  InputNumber,
+  Select,
+  SideSheet,
+  Table,
+  Tag,
+  Tooltip,
+} from '@douyinfe/semi-ui';
 import { type ReactNode, useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import type {
   AccessPoint,
@@ -30,15 +39,23 @@ interface AccessPointDrawerProps {
 /** 根据 disabled_reason 返回中文标签 */
 function disabledReasonLabel(reason: string): string {
   switch (reason) {
-    case 'rate_limited': return '配额耗尽';
-    case 'balance_exhausted': return '余额耗尽';
-    case 'fault': return '故障';
-    case 'manual': return '手动';
-    default: return reason;
+    case 'rate_limited':
+      return '配额耗尽';
+    case 'balance_exhausted':
+      return '余额耗尽';
+    case 'fault':
+      return '故障';
+    case 'manual':
+      return '手动';
+    default:
+      return reason;
   }
 }
 
-function providerIdsFromAccounts(accounts: AccountEntry[], accountOptions: AccountOption[]): string[] {
+function providerIdsFromAccounts(
+  accounts: AccountEntry[],
+  accountOptions: AccountOption[],
+): string[] {
   const ids = new Set<string>();
   for (const b of accounts) {
     const acct = accountOptions.find((a) => a.id === b.account_id);
@@ -133,7 +150,9 @@ function AccountRowEditor({
         {availAccounts.map((a) => (
           <Select.Option key={a.id} value={a.id}>
             {a.status === 'enabled' ? (
-              <Tag color="green" size="small" style={{ marginRight: 4 }}>已启用</Tag>
+              <Tag color="green" size="small" style={{ marginRight: 4 }}>
+                已启用
+              </Tag>
             ) : (
               <Tag color="grey" size="small" style={{ marginRight: 4 }}>
                 已禁用{a.disabled_reason ? `（${disabledReasonLabel(a.disabled_reason)}）` : ''}
@@ -272,8 +291,14 @@ function DraggableAccountList({
             index={index}
             rowKey={rowKeys[index]}
             selectedProvider={rowSelectedProviders[index]}
-            providerAccounts={rowSelectedProviders[index] ? accountsCache[rowSelectedProviders[index]!] ?? [] : []}
-            accountsLoading={rowSelectedProviders[index] ? loadingProviders.has(rowSelectedProviders[index]!) : false}
+            providerAccounts={
+              rowSelectedProviders[index] ? (accountsCache[rowSelectedProviders[index]!] ?? []) : []
+            }
+            accountsLoading={
+              rowSelectedProviders[index]
+                ? loadingProviders.has(rowSelectedProviders[index]!)
+                : false
+            }
             usedAccountIds={usedAccountIds}
             providers={providers}
             onProviderChange={onProviderChange}
@@ -395,9 +420,7 @@ export default function AccessPointDrawer({
       if (accountsCache[providerId] || loadingProviders.has(providerId)) return;
       setLoadingProviders((prev) => new Set(prev).add(providerId));
       try {
-        const data = await api.get<AccountOption[]>(
-          `/api/providers/${providerId}/accounts`,
-        );
+        const data = await api.get<AccountOption[]>(`/api/providers/${providerId}/accounts`);
         setAccountsCache((prev) => ({ ...prev, [providerId]: data }));
       } catch {
         console.warn(`[AccessPointDrawer] 加载服务商 ${providerId} 账号失败`);
@@ -440,7 +463,10 @@ export default function AccessPointDrawer({
   const handleFieldChange = useCallback(
     (index: number, field: 'weight' | 'priority', value: number | null) => {
       const accounts = [...formData.accounts];
-      accounts[index] = { ...accounts[index], [field]: value ?? (field === 'weight' ? 1 : index + 1) };
+      accounts[index] = {
+        ...accounts[index],
+        [field]: value ?? (field === 'weight' ? 1 : index + 1),
+      };
       // priority 模式下自动排序
       if (field === 'priority' && formData.routing_strategy === 'priority') {
         accounts.sort((a, b) => (a.priority ?? 1) - (b.priority ?? 1));
@@ -464,9 +490,7 @@ export default function AccessPointDrawer({
       const accounts = curData.accounts.filter(
         (_b: AccountEntry, i: number) => curKeys[i] !== rowKey,
       );
-      setRowSelectedProviders((prev) =>
-        prev.filter((_, i: number) => curKeys[i] !== rowKey),
-      );
+      setRowSelectedProviders((prev) => prev.filter((_, i: number) => curKeys[i] !== rowKey));
       onFormChange({ ...curData, accounts });
     },
     [onFormChange],
@@ -525,7 +549,9 @@ export default function AccessPointDrawer({
 
   const handleAddRow = () => {
     const targets: Record<string, string | null> = {};
-    gridProviderIds.forEach((pid) => { targets[pid] = null; });
+    gridProviderIds.forEach((pid) => {
+      targets[pid] = null;
+    });
     onFormChange({
       ...formData,
       model_routing_grid: {
@@ -560,7 +586,9 @@ export default function AccessPointDrawer({
     let rows = gridRows;
     if (!hasUnmatched) {
       const targets: Record<string, string | null> = {};
-      gridProviderIds.forEach((pid) => { targets[pid] = null; });
+      gridProviderIds.forEach((pid) => {
+        targets[pid] = null;
+      });
       rows = [{ source_model: UNMATCHED_MODEL, targets }, ...rows];
     }
     const synced = { provider_ids: gridProviderIds, rows };
@@ -595,7 +623,9 @@ export default function AccessPointDrawer({
           style={{ width: '100%' }}
         >
           {providers.map((p) => (
-            <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>
+            <Select.Option key={p.id} value={p.id}>
+              {p.name}
+            </Select.Option>
           ))}
         </Select>
       ),
@@ -624,7 +654,9 @@ export default function AccessPointDrawer({
             {avail.map((a) => (
               <Select.Option key={a.id} value={a.id}>
                 {a.status === 'enabled' ? (
-                  <Tag color="green" size="small" style={{ marginRight: 4 }}>已启用</Tag>
+                  <Tag color="green" size="small" style={{ marginRight: 4 }}>
+                    已启用
+                  </Tag>
                 ) : (
                   <Tag color="grey" size="small" style={{ marginRight: 4 }}>
                     已禁用{a.disabled_reason ? `（${disabledReasonLabel(a.disabled_reason)}）` : ''}
@@ -657,12 +689,7 @@ export default function AccessPointDrawer({
       key: 'actions',
       width: 60,
       render: (_: unknown, _record: AccountEntry, index: number) => (
-        <Button
-          size="small"
-          type="danger"
-          icon={null}
-          onClick={() => handleRemove(rowKeys[index])}
-        >
+        <Button size="small" type="danger" icon={null} onClick={() => handleRemove(rowKeys[index])}>
           −
         </Button>
       ),
@@ -670,12 +697,15 @@ export default function AccessPointDrawer({
   ];
 
   // 模型族预设
-  const MODEL_FAMILIES = useMemo(() => [
-    { label: '未匹配', value: UNMATCHED_MODEL, matchType: 'prefix' as const },
-    { label: 'Claude Opus', value: 'claude-opus-', matchType: 'prefix' as const },
-    { label: 'Claude Sonnet', value: 'claude-sonnet-', matchType: 'prefix' as const },
-    { label: 'Claude Haiku', value: 'claude-haiku-', matchType: 'prefix' as const },
-  ], []);
+  const MODEL_FAMILIES = useMemo(
+    () => [
+      { label: '未匹配', value: UNMATCHED_MODEL, matchType: 'prefix' as const },
+      { label: 'Claude Opus', value: 'claude-opus-', matchType: 'prefix' as const },
+      { label: 'Claude Sonnet', value: 'claude-sonnet-', matchType: 'prefix' as const },
+      { label: 'Claude Haiku', value: 'claude-haiku-', matchType: 'prefix' as const },
+    ],
+    [],
+  );
 
   const sourceModelOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -684,7 +714,9 @@ export default function AccessPointDrawer({
       value: f.value,
       label: (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Tag color="purple" size="small">模式匹配</Tag>
+          <Tag color="purple" size="small">
+            模式匹配
+          </Tag>
           <span>{f.label}</span>
         </span>
       ),
@@ -700,7 +732,9 @@ export default function AccessPointDrawer({
         value: r.source_model,
         label: (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Tag color="blue" size="small">精准匹配</Tag>
+            <Tag color="blue" size="small">
+              精准匹配
+            </Tag>
             <span>{r.source_model}</span>
           </span>
         ),
@@ -731,7 +765,9 @@ export default function AccessPointDrawer({
               boxSizing: 'border-box',
             }}
           >
-            <Tag color="purple" size="small">模式匹配</Tag>
+            <Tag color="purple" size="small">
+              模式匹配
+            </Tag>
             <span>未匹配</span>
           </span>
         ) : (
@@ -784,7 +820,11 @@ export default function AccessPointDrawer({
             </Button>
           </Tooltip>
         ) : (
-          <Button size="small" type="danger" onClick={() => handleRemoveRow(gridRows.indexOf(record))}>
+          <Button
+            size="small"
+            type="danger"
+            onClick={() => handleRemoveRow(gridRows.indexOf(record))}
+          >
             −
           </Button>
         ),
@@ -827,7 +867,9 @@ export default function AccessPointDrawer({
           style={{ width: '100%' }}
         >
           <Select.Option value="anthropic">Anthropic</Select.Option>
-          <Select.Option value="openai" disabled>OpenAI（尚未支持）</Select.Option>
+          <Select.Option value="openai" disabled>
+            OpenAI（尚未支持）
+          </Select.Option>
         </Select>
 
         {/* 区域 2: 路由策略 */}

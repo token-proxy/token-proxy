@@ -9,16 +9,17 @@ interface MessageBlockProps {
 }
 
 /** 单个消息内容块的独立卡片，类似 SystemPromptBlock */
-export default function MessageBlock({
-  block,
-  role,
-}: MessageBlockProps): ReactNode {
+export default function MessageBlock({ block, role }: MessageBlockProps): ReactNode {
   const blockType = String(block.type ?? '');
   const roleLabel = role === 'user' ? '用户' : role === 'assistant' ? '助手' : role;
   const roleColor =
-    role === 'user' ? 'blue' :
-      role === 'assistant' ? 'green' :
-        role === 'system' ? 'grey' : undefined;
+    role === 'user'
+      ? 'blue'
+      : role === 'assistant'
+        ? 'green'
+        : role === 'system'
+          ? 'grey'
+          : undefined;
 
   const cardStyle: React.CSSProperties = {
     marginBottom: 12,
@@ -42,10 +43,14 @@ export default function MessageBlock({
     return (
       <div style={cardStyle}>
         <div style={headerStyle}>
-          <Tag size="small" color={roleColor}>{roleLabel}</Tag>
-          <Tag size="small" type="light">文本</Tag>
+          <Tag size="small" color={roleColor}>
+            {roleLabel}
+          </Tag>
+          <Tag size="small" type="light">
+            文本
+          </Tag>
         </div>
-        <ExpandableContentBlock content={text} collapseLabel="收起文本"/>
+        <ExpandableContentBlock content={text} collapseLabel="收起文本" />
       </div>
     );
   }
@@ -57,10 +62,14 @@ export default function MessageBlock({
     return (
       <div style={cardStyle}>
         <div style={headerStyle}>
-          <Tag size="small" color={roleColor}>{roleLabel}</Tag>
-          <Tag size="small" type="light">思考</Tag>
+          <Tag size="small" color={roleColor}>
+            {roleLabel}
+          </Tag>
+          <Tag size="small" type="light">
+            思考
+          </Tag>
         </div>
-        <ExpandableContentBlock content={thought} collapseLabel="收起思考"/>
+        <ExpandableContentBlock content={thought} collapseLabel="收起思考" />
       </div>
     );
   }
@@ -72,8 +81,12 @@ export default function MessageBlock({
     return (
       <div style={cardStyle}>
         <div style={headerStyle}>
-          <Tag size="small" color={roleColor}>{roleLabel}</Tag>
-          <Tag size="small" color="orange">工具调用: {toolName}</Tag>
+          <Tag size="small" color={roleColor}>
+            {roleLabel}
+          </Tag>
+          <Tag size="small" color="orange">
+            工具调用: {toolName}
+          </Tag>
         </div>
         {input && Object.keys(input).length > 0 && (
           <Descriptions
@@ -100,9 +113,7 @@ export default function MessageBlock({
       textContent = rawContent;
     } else if (Array.isArray(rawContent)) {
       textContent = (rawContent as Array<Record<string, unknown>>)
-        .map((c) =>
-          c.type === 'text' && typeof c.text === 'string' ? c.text : '',
-        )
+        .map((c) => (c.type === 'text' && typeof c.text === 'string' ? c.text : ''))
         .filter(Boolean)
         .join('\n');
     } else if (rawContent && typeof rawContent === 'object') {
@@ -126,22 +137,19 @@ export default function MessageBlock({
     return (
       <div style={cardStyle}>
         <div style={headerStyle}>
-          <Tag size="small" color={roleColor}>{roleLabel}</Tag>
+          <Tag size="small" color={roleColor}>
+            {roleLabel}
+          </Tag>
           <Tag size="small" color="green">
             工具结果{toolUseId ? ` (${toolUseId})` : ''}
           </Tag>
         </div>
         {textContent ? (
-          <div style={{maxHeight: 400, overflow: 'auto'}}>
-            <CodeHighlight
-              content={textContent}
-              language={language}
-            />
+          <div style={{ maxHeight: 400, overflow: 'auto' }}>
+            <CodeHighlight content={textContent} language={language} />
           </div>
         ) : (
-          <div style={{color: 'var(--semi-color-text-2)', fontSize: 13}}>
-            (空结果)
-          </div>
+          <div style={{ color: 'var(--semi-color-text-2)', fontSize: 13 }}>(空结果)</div>
         )}
       </div>
     );

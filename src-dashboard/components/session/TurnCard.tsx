@@ -78,18 +78,21 @@ const paragraphStyle: React.CSSProperties = {
 // --- 单个 block 渲染函数 ---
 
 /** 渲染 thinking 块 */
-function renderThinkingBlock(block: TurnBlock & { type: 'thinking' }, defaultExpanded?: boolean): ReactNode {
+function renderThinkingBlock(
+  block: TurnBlock & { type: 'thinking' },
+  defaultExpanded?: boolean,
+): ReactNode {
   return (
     <div key={`think-${block.logId}-${block.timestamp}`} style={{ marginBottom: 12 }}>
       <Collapsible keepDOM defaultActiveKey={defaultExpanded ? '' : 'thinking'}>
         <div style={blockCardStyle}>
           <div style={blockHeaderStyle}>
             <Tag color="amber">思考过程</Tag>
-            <Text type="secondary" size="small">{formatDateTime(block.timestamp)}</Text>
+            <Text type="secondary" size="small">
+              {formatDateTime(block.timestamp)}
+            </Text>
           </div>
-          <pre style={{ ...preStyle, whiteSpace: 'pre-wrap' }}>
-            {block.content}
-          </pre>
+          <pre style={{ ...preStyle, whiteSpace: 'pre-wrap' }}>{block.content}</pre>
         </div>
       </Collapsible>
     </div>
@@ -97,19 +100,22 @@ function renderThinkingBlock(block: TurnBlock & { type: 'thinking' }, defaultExp
 }
 
 /** 渲染 tool_use 块 */
-function renderToolUseBlock(block: TurnBlock & { type: 'tool_use' }, defaultExpanded?: boolean): ReactNode {
+function renderToolUseBlock(
+  block: TurnBlock & { type: 'tool_use' },
+  defaultExpanded?: boolean,
+): ReactNode {
   return (
     <div key={`tool-${block.logId}-${block.timestamp}`} style={{ marginBottom: 12 }}>
       <Collapsible keepDOM defaultActiveKey={defaultExpanded ? '' : 'tool_use'}>
         <div style={blockCardStyle}>
           <div style={blockHeaderStyle}>
             <Tag color="violet">工具调用: {block.toolName}</Tag>
-            <Text type="secondary" size="small">{formatDateTime(block.timestamp)}</Text>
+            <Text type="secondary" size="small">
+              {formatDateTime(block.timestamp)}
+            </Text>
           </div>
           {block.input && Object.keys(block.input).length > 0 && (
-            <pre style={preStyle}>
-              {JSON.stringify(block.input, null, 2)}
-            </pre>
+            <pre style={preStyle}>{JSON.stringify(block.input, null, 2)}</pre>
           )}
         </div>
       </Collapsible>
@@ -118,11 +124,13 @@ function renderToolUseBlock(block: TurnBlock & { type: 'tool_use' }, defaultExpa
 }
 
 /** 渲染 tool_result 块（默认折叠，截断前 200 字符） */
-function renderToolResultBlock(block: TurnBlock & { type: 'tool_result' }, defaultExpanded?: boolean): ReactNode {
+function renderToolResultBlock(
+  block: TurnBlock & { type: 'tool_result' },
+  defaultExpanded?: boolean,
+): ReactNode {
   // 截断显示前 200 字符
-  const truncated = block.content.length > 200
-    ? block.content.slice(0, 200) + '...'
-    : block.content;
+  const truncated =
+    block.content.length > 200 ? block.content.slice(0, 200) + '...' : block.content;
 
   return (
     <div key={`result-${block.logId}-${block.timestamp}`} style={{ marginBottom: 12 }}>
@@ -131,7 +139,9 @@ function renderToolResultBlock(block: TurnBlock & { type: 'tool_result' }, defau
           <div style={blockHeaderStyle}>
             <Tag color="grey">工具结果</Tag>
             {block.isError && <Tag color="red">错误</Tag>}
-            <Text type="secondary" size="small">{formatDateTime(block.timestamp)}</Text>
+            <Text type="secondary" size="small">
+              {formatDateTime(block.timestamp)}
+            </Text>
           </div>
           {block.content.length > 200 && (
             <>
@@ -141,9 +151,7 @@ function renderToolResultBlock(block: TurnBlock & { type: 'tool_result' }, defau
               </Text>
             </>
           )}
-          {block.content.length <= 200 && (
-            <pre style={preStyle}>{block.content}</pre>
-          )}
+          {block.content.length <= 200 && <pre style={preStyle}>{block.content}</pre>}
         </div>
       </Collapsible>
     </div>
@@ -157,27 +165,30 @@ function renderAssistantMessageBlock(block: TurnBlock & { type: 'assistant_messa
       <div style={blockCardStyle}>
         <div style={blockHeaderStyle}>
           <Tag color="blue">助手</Tag>
-          <Text type="secondary" size="small">{formatDateTime(block.timestamp)}</Text>
+          <Text type="secondary" size="small">
+            {formatDateTime(block.timestamp)}
+          </Text>
         </div>
-        {block.content && (
-          <Paragraph style={paragraphStyle}>
-            {block.content}
-          </Paragraph>
-        )}
+        {block.content && <Paragraph style={paragraphStyle}>{block.content}</Paragraph>}
       </div>
     </div>
   );
 }
 
 /** 渲染 agent_call 块（默认折叠，递归渲染 children） */
-function renderAgentCallBlock(block: TurnBlock & { type: 'agent_call' }, defaultExpanded?: boolean): ReactNode {
+function renderAgentCallBlock(
+  block: TurnBlock & { type: 'agent_call' },
+  defaultExpanded?: boolean,
+): ReactNode {
   return (
     <div key={`agent-${block.logId}-${block.timestamp}`} style={{ marginBottom: 12 }}>
       <Collapsible keepDOM defaultActiveKey={defaultExpanded ? '' : 'agent_call'}>
         <div style={blockCardStyle}>
           <div style={blockHeaderStyle}>
             <Tag color="green">Agent: {block.agentType}</Tag>
-            <Text type="secondary" size="small">{formatDateTime(block.timestamp)}</Text>
+            <Text type="secondary" size="small">
+              {formatDateTime(block.timestamp)}
+            </Text>
           </div>
 
           {/* 摘要信息：子事件数量 + Token 小计 */}
@@ -291,11 +302,11 @@ export default function TurnCard({
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <Tag color="blue">用户</Tag>
-              <Text type="secondary" size="small">{formatDateTime(turn.startTime)}</Text>
+              <Text type="secondary" size="small">
+                {formatDateTime(turn.startTime)}
+              </Text>
             </div>
-            <Paragraph style={paragraphStyle}>
-              {turn.userMessage}
-            </Paragraph>
+            <Paragraph style={paragraphStyle}>{turn.userMessage}</Paragraph>
           </div>
 
           {/* 按顺序渲染 blocks */}
@@ -317,11 +328,7 @@ export default function TurnCard({
         <Button size="small" type="tertiary" onClick={() => onOpenRaw(turn.logIds[0])}>
           查看原始内容
         </Button>
-        <Button
-          size="small"
-          type="tertiary"
-          onClick={() => setCollapsed((v) => !v)}
-        >
+        <Button size="small" type="tertiary" onClick={() => setCollapsed((v) => !v)}>
           {collapsed ? '展开轮次' : '收起轮次'}
         </Button>
       </div>

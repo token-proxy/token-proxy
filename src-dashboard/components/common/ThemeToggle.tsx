@@ -13,9 +13,9 @@ const themeOptions: Array<{
   label: string;
   icon: ReactNode;
 }> = [
-  {mode: 'light', label: '明亮模式', icon: <IconSun/>},
-  {mode: 'dark', label: '黑暗模式', icon: <IconMoon/>},
-  {mode: 'system', label: '跟随系统', icon: <IconDesktop/>},
+  { mode: 'light', label: '明亮模式', icon: <IconSun /> },
+  { mode: 'dark', label: '黑暗模式', icon: <IconMoon /> },
+  { mode: 'system', label: '跟随系统', icon: <IconDesktop /> },
 ];
 
 /**
@@ -23,8 +23,8 @@ const themeOptions: Array<{
  *
  * 支持明亮/黑暗/跟随系统三种模式，使用 Dropdown 菜单选择。
  */
-export default function ThemeToggle({size = 'default'}: ThemeToggleProps): ReactNode {
-  const {mode, setMode} = useTheme();
+export default function ThemeToggle({ size = 'default' }: ThemeToggleProps): ReactNode {
+  const { mode, setMode } = useTheme();
   const currentOption = themeOptions.find((option) => option.mode === mode) ?? themeOptions[2];
 
   return (
@@ -40,9 +40,9 @@ export default function ThemeToggle({size = 'default'}: ThemeToggleProps): React
               icon={option.icon}
               onClick={() => setMode(option.mode)}
             >
-              <span style={{display: 'inline-flex', alignItems: 'center', gap: 8}}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 {option.label}
-                {mode === option.mode && <IconTick size="small"/>}
+                {mode === option.mode && <IconTick size="small" />}
               </span>
             </Dropdown.Item>
           ))}

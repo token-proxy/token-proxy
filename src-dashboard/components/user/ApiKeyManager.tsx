@@ -1,9 +1,20 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Form, Input, Modal, Popconfirm, Space, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import {
+  Button,
+  Form,
+  Input,
+  Modal,
+  Popconfirm,
+  Space,
+  Table,
+  Tag,
+  Toast,
+  Typography,
+} from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import api from '../../api.ts';
 
-const {Text} = Typography;
+const { Text } = Typography;
 
 /* ---- 类型定义 ---- */
 
@@ -108,10 +119,9 @@ export default function ApiKeyManager(): ReactNode {
     }
     setCreateSaving(true);
     try {
-      const data = await api.post<CreateApiKeyResponse>(
-        '/api/users/me/api-keys',
-        {description: values.description.trim()},
-      );
+      const data = await api.post<CreateApiKeyResponse>('/api/users/me/api-keys', {
+        description: values.description.trim(),
+      });
       setCreateModalVisible(false);
       setCreatedKey(data);
     } catch (err) {
@@ -171,7 +181,7 @@ export default function ApiKeyManager(): ReactNode {
 
   /* ---- API key 列定义 ---- */
   const apiKeyColumns = [
-    {title: '备注', dataIndex: 'description', key: 'description'},
+    { title: '备注', dataIndex: 'description', key: 'description' },
     {
       title: 'API Key',
       dataIndex: 'key_prefix',
@@ -213,10 +223,7 @@ export default function ApiKeyManager(): ReactNode {
         }
         return (
           <Space>
-            <Button
-              size="small"
-              onClick={() => handleOpenEditModal(record)}
-            >
+            <Button size="small" onClick={() => handleOpenEditModal(record)}>
               编辑
             </Button>
             <Popconfirm
@@ -259,8 +266,8 @@ export default function ApiKeyManager(): ReactNode {
         dataSource={apiKeys.filter((k) => k.status === 'enabled')}
         loading={apiKeysLoading}
         rowKey="id"
-        scroll={{x: 'max-content'}}
-        pagination={{pageSize: 20}}
+        scroll={{ x: 'max-content' }}
+        pagination={{ pageSize: 20 }}
         empty={<Text type="secondary">暂无 API Key</Text>}
       />
 
@@ -269,7 +276,7 @@ export default function ApiKeyManager(): ReactNode {
         visible={createModalVisible}
         onCancel={() => setCreateModalVisible(false)}
         footer={
-          <div style={{display: 'flex', justifyContent: 'flex-end', gap: 8}}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <Button disabled={createSaving} onClick={() => setCreateModalVisible(false)}>
               取消
             </Button>
@@ -287,13 +294,15 @@ export default function ApiKeyManager(): ReactNode {
       >
         <Form
           onSubmit={handleCreateApiKey}
-          getFormApi={(api) => { createFormRef.current = api; }}
+          getFormApi={(api) => {
+            createFormRef.current = api;
+          }}
         >
           <Form.Input
             field="description"
             label="备注"
             placeholder="请输入备注信息"
-            rules={[{required: true, message: '请输入备注'}]}
+            rules={[{ required: true, message: '请输入备注' }]}
           />
         </Form>
       </Modal>
@@ -306,7 +315,7 @@ export default function ApiKeyManager(): ReactNode {
           setEditingKey(null);
         }}
         footer={
-          <div style={{display: 'flex', justifyContent: 'flex-end', gap: 8}}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <Button disabled={editSaving} onClick={() => setEditModalVisible(false)}>
               取消
             </Button>
@@ -324,14 +333,16 @@ export default function ApiKeyManager(): ReactNode {
       >
         <Form
           onSubmit={handleEditApiKey}
-          getFormApi={(api) => { editFormRef.current = api; }}
-          initValues={editingKey ? {description: editingKey.description} : undefined}
+          getFormApi={(api) => {
+            editFormRef.current = api;
+          }}
+          initValues={editingKey ? { description: editingKey.description } : undefined}
         >
           <Form.Input
             field="description"
             label="备注"
             placeholder="请输入备注信息"
-            rules={[{required: true, message: '请输入备注'}]}
+            rules={[{ required: true, message: '请输入备注' }]}
           />
         </Form>
       </Modal>
@@ -350,17 +361,10 @@ export default function ApiKeyManager(): ReactNode {
       >
         {createdKey && (
           <div>
-            <Text
-              type="warning"
-              style={{display: 'block', marginBottom: 12}}
-            >
+            <Text type="warning" style={{ display: 'block', marginBottom: 12 }}>
               关闭此弹窗后将无法再次查看完整 Key，请立即复制并安全保存。
             </Text>
-            <Input
-              value={createdKey.full_key}
-              readOnly
-              style={{marginBottom: 8}}
-            />
+            <Input value={createdKey.full_key} readOnly style={{ marginBottom: 8 }} />
             <Button
               type="primary"
               onClick={() => {

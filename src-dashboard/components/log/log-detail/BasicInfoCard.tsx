@@ -27,21 +27,17 @@ interface BasicInfoCardProps {
  *
  * 展示请求 ID、时间、会话、用户、接入点、模型映射、状态码、耗时等关键信息。
  */
-export default function BasicInfoCard({data: d, style}: BasicInfoCardProps): ReactNode {
+export default function BasicInfoCard({ data: d, style }: BasicInfoCardProps): ReactNode {
   const items: Array<{ key: string; value: ReactNode }> = [
-    {key: '请求 ID', value: <CopyableIdText value={d.id}/>},
-    {key: '时间', value: formatDateTime(d.timestamp)},
-    {key: '会话 ID', value: <CopyableIdText value={d.session_id}/>},
+    { key: '请求 ID', value: <CopyableIdText value={d.id} /> },
+    { key: '时间', value: formatDateTime(d.timestamp) },
+    { key: '会话 ID', value: <CopyableIdText value={d.session_id} /> },
   ];
 
   if (d.user_id) {
     items.push({
       key: '用户',
-      value: d.user_name ? (
-        <span>{d.user_name}</span>
-      ) : (
-        <CopyableIdText value={d.user_id}/>
-      ),
+      value: d.user_name ? <span>{d.user_name}</span> : <CopyableIdText value={d.user_id} />,
     });
   }
 
@@ -51,7 +47,7 @@ export default function BasicInfoCard({data: d, style}: BasicInfoCardProps): Rea
       value: d.access_point_name ? (
         <span>{d.access_point_name}</span>
       ) : (
-        <CopyableIdText value={d.access_point_id}/>
+        <CopyableIdText value={d.access_point_id} />
       ),
     });
   }
@@ -60,9 +56,13 @@ export default function BasicInfoCard({data: d, style}: BasicInfoCardProps): Rea
     key: '模型映射',
     value: (
       <span>
-        <Tag color="blue" size="small">{d.model_original || '-'}</Tag>
+        <Tag color="blue" size="small">
+          {d.model_original || '-'}
+        </Tag>
         {' → '}
-        <Tag color="blue" size="small">{d.model_mapped || '-'}</Tag>
+        <Tag color="blue" size="small">
+          {d.model_mapped || '-'}
+        </Tag>
       </span>
     ),
   });
@@ -70,10 +70,7 @@ export default function BasicInfoCard({data: d, style}: BasicInfoCardProps): Rea
   items.push({
     key: '状态码',
     value: (
-      <Tag
-        color={(d.status_code ?? 0) >= 400 ? 'red' : 'green'}
-        size="small"
-      >
+      <Tag color={(d.status_code ?? 0) >= 400 ? 'red' : 'green'} size="small">
         {d.status_code ?? '-'}
       </Tag>
     ),
@@ -88,7 +85,7 @@ export default function BasicInfoCard({data: d, style}: BasicInfoCardProps): Rea
     key: '来源',
     value: (
       <Tag
-        color={(SOURCE_COLORS[d.conversation_source as keyof typeof SOURCE_COLORS] || 'grey')}
+        color={SOURCE_COLORS[d.conversation_source as keyof typeof SOURCE_COLORS] || 'grey'}
         size="small"
       >
         {SOURCE_LABELS[d.conversation_source] || d.conversation_source}
@@ -99,27 +96,20 @@ export default function BasicInfoCard({data: d, style}: BasicInfoCardProps): Rea
   if (d.agent_id) {
     items.push({
       key: 'Agent ID',
-      value: <CopyableIdText value={d.agent_id}/>,
+      value: <CopyableIdText value={d.agent_id} />,
     });
   }
 
-  const clientParts = [
-    d.client_name,
-    d.client_version,
-    d.client_channel,
-    d.client_platform,
-  ].filter(Boolean);
+  const clientParts = [d.client_name, d.client_version, d.client_channel, d.client_platform].filter(
+    Boolean,
+  );
   if (clientParts.length > 0) {
-    items.push({key: '客户端', value: clientParts.join(' / ')});
+    items.push({ key: '客户端', value: clientParts.join(' / ') });
   }
 
   return (
-    <Card
-      title="基础信息"
-      style={style}
-      bodyStyle={{padding: '20px 24px'}}
-    >
-      <Descriptions data={items} row size="small"/>
+    <Card title="基础信息" style={style} bodyStyle={{ padding: '20px 24px' }}>
+      <Descriptions data={items} row size="small" />
     </Card>
   );
 }

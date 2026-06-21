@@ -39,19 +39,15 @@ export default function AccessPointTable({
       dataIndex: 'id',
       key: 'id',
       width: 200,
-      render: (_: unknown, record: AccessPoint) => (
-        <CopyableIdText value={record.id}/>
-      ),
+      render: (_: unknown, record: AccessPoint) => <CopyableIdText value={record.id} />,
     },
-    {title: '名称', dataIndex: 'name', key: 'name', width: 100},
+    { title: '名称', dataIndex: 'name', key: 'name', width: 100 },
     {
       title: 'Short Code',
       dataIndex: 'short_code',
       key: 'short_code',
       width: 160,
-      render: (_: unknown, record: AccessPoint) => (
-        <CopyableIdText value={record.short_code}/>
-      ),
+      render: (_: unknown, record: AccessPoint) => <CopyableIdText value={record.short_code} />,
     },
     {
       title: '账号数量',
@@ -59,7 +55,7 @@ export default function AccessPointTable({
       width: 100,
       render: (_: unknown, record: AccessPoint) => record.accounts?.length ?? 0,
     },
-    {title: 'API 类型', dataIndex: 'api_type', key: 'api_type', width: 100},
+    { title: 'API 类型', dataIndex: 'api_type', key: 'api_type', width: 100 },
     {
       title: '状态',
       dataIndex: 'status',
@@ -82,10 +78,16 @@ export default function AccessPointTable({
           <Button size="small" onClick={() => onCopyUrl(record.short_code)} loading={copyingUrl}>
             复制链接
           </Button>
-          <Button size="small" onClick={() => onCopyClaudeCodeCommand(record.short_code)} loading={copyingUrl}>
+          <Button
+            size="small"
+            onClick={() => onCopyClaudeCodeCommand(record.short_code)}
+            loading={copyingUrl}
+          >
             复制命令
           </Button>
-          <Button size="small" onClick={() => onEdit(record)}>编辑</Button>
+          <Button size="small" onClick={() => onEdit(record)}>
+            编辑
+          </Button>
           <Popconfirm
             title="确认删除此接入点?"
             onConfirm={() => onDelete(record.id)}
@@ -106,8 +108,8 @@ export default function AccessPointTable({
       dataSource={accessPoints}
       loading={loading}
       rowKey="id"
-      scroll={{x: 'max-content'}}
-      pagination={{pageSize: 20}}
+      scroll={{ x: 'max-content' }}
+      pagination={{ pageSize: 20 }}
     />
   );
 }

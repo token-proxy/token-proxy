@@ -19,8 +19,10 @@ export default function ThinkingBlockCard({
     <Collapse.Panel
       itemKey={itemKey}
       header={
-        <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-          <Tag color="blue" size="small">思考过程</Tag>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Tag color="blue" size="small">
+            思考过程
+          </Tag>
         </div>
       }
     >

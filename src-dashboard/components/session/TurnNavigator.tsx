@@ -26,7 +26,10 @@ export default function TurnNavigator({
   const hasAgentCall = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const turn of turns) {
-      map.set(turn.id, turn.blocks.some((b) => b.type === 'agent_call'));
+      map.set(
+        turn.id,
+        turn.blocks.some((b) => b.type === 'agent_call'),
+      );
     }
     return map;
   }, [turns]);
@@ -54,13 +57,13 @@ export default function TurnNavigator({
         const showAgentTag = hasAgentCall.get(turn.id) ?? false;
 
         const label = (
-          <span style={{display: 'inline-flex', alignItems: 'center', gap: 4}}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <span>{`轮次 ${turn.turnIndex}`}</span>
             {showAgentTag && (
               <Tag
                 size="small"
                 color="green"
-                style={{margin: 0, padding: '0 4px', lineHeight: '16px', fontSize: 11}}
+                style={{ margin: 0, padding: '0 4px', lineHeight: '16px', fontSize: 11 }}
               >
                 子代理
               </Tag>
@@ -71,11 +74,13 @@ export default function TurnNavigator({
         return (
           <Tooltip
             key={turn.id}
-            content={turn.userMessage
-              ? turn.userMessage.length > 60
-                ? turn.userMessage.slice(0, 60) + '...'
-                : turn.userMessage
-              : '(空消息)'}
+            content={
+              turn.userMessage
+                ? turn.userMessage.length > 60
+                  ? turn.userMessage.slice(0, 60) + '...'
+                  : turn.userMessage
+                : '(空消息)'
+            }
             mouseEnterDelay={300}
           >
             <Button

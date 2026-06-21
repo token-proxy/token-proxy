@@ -23,15 +23,19 @@ export default function CollapsibleCard({
   const handleHeaderClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     // 不拦截交互元素自身的点击行为
-    if (target.closest('button, input, select, a, label, [role="button"], [role="switch"], [role="checkbox"], .semi-switch, .semi-button')) {
+    if (
+      target.closest(
+        'button, input, select, a, label, [role="button"], [role="switch"], [role="checkbox"], .semi-switch, .semi-button',
+      )
+    ) {
       return;
     }
     if (target.closest('.semi-card-header')) {
-      setCollapsed(prev => !prev);
+      setCollapsed((prev) => !prev);
     }
   };
 
-  const collapsedIcon = collapsed ? <IconChevronDown/> : <IconChevronUp/>;
+  const collapsedIcon = collapsed ? <IconChevronDown /> : <IconChevronUp />;
 
   return (
     <div onClick={handleHeaderClick}>
@@ -50,7 +54,7 @@ export default function CollapsibleCard({
           display: collapsed ? 'none' : undefined,
         }}
         title={
-          <span style={{display: 'inline-flex', alignItems: 'center', gap: 4}}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             {collapsedIcon}
             {props.title}
           </span>

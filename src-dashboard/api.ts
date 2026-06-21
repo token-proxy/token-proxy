@@ -43,8 +43,8 @@ async function doRefresh(): Promise<string> {
 
   const res = await fetch('/api/tokens:refresh', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({refresh_token: refreshToken}),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
   });
 
   if (!res.ok) {
@@ -98,7 +98,7 @@ async function buildHeaders(extra?: HeadersInit): Promise<HeadersInit> {
   const token = await ensureFreshToken();
   return {
     'Content-Type': 'application/json',
-    ...(token ? {Authorization: `Bearer ${token}`} : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(extra ?? {}),
   };
 }
@@ -109,13 +109,9 @@ async function buildHeaders(extra?: HeadersInit): Promise<HeadersInit> {
  * 自动注入认证头，401 时触发一次刷新重试。
  * 请求失败时输出 console.error 并 throw 错误。
  */
-async function request<T>(
-  url: string,
-  options: RequestInit = {},
-  retried = false,
-): Promise<T> {
+async function request<T>(url: string, options: RequestInit = {}, retried = false): Promise<T> {
   const headers = await buildHeaders(options.headers);
-  const res = await fetch(url, {...options, headers});
+  const res = await fetch(url, { ...options, headers });
 
   // 401 兜底：体检漏判（如时钟漂移、服务端密钥轮换）时再尝试刷新一次
   if (res.status === 401 && !retried) {
@@ -132,7 +128,9 @@ async function request<T>(
     const method = (options.method ?? 'GET').toUpperCase();
     const body = await res.json().catch(() => ({}));
     const errorMsg = body.error || `请求失败 (${res.status})`;
-    console.error(`[API] ${method} ${url} 失败: ${res.status} - ${errorMsg}`, { request_id: body.request_id });
+    console.error(`[API] ${method} ${url} 失败: ${res.status} - ${errorMsg}`, {
+      request_id: body.request_id,
+    });
     throw new Error(errorMsg);
   }
 
@@ -166,7 +164,7 @@ const api = {
 
   /** DELETE 请求 */
   async delete(url: string): Promise<void> {
-    await request<void>(url, {method: 'DELETE'});
+    await request<void>(url, { method: 'DELETE' });
   },
 };
 

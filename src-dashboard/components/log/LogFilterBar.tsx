@@ -2,7 +2,7 @@ import { Button, DatePicker, Select, Typography } from '@douyinfe/semi-ui';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import type { ReactNode } from 'react';
 
-const {Text} = Typography;
+const { Text } = Typography;
 
 /** 筛选选项 */
 interface FilterOption {
@@ -63,48 +63,54 @@ export default function LogFilterBar({
       }}
     >
       <div>
-        <Text style={{display: 'block', marginBottom: 4, fontSize: 13}}>时间范围</Text>
+        <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>时间范围</Text>
         <DatePicker
           type="dateTimeRange"
           onChange={onDateChange}
-          style={{width: datePickerWidth}}
+          style={{ width: datePickerWidth }}
         />
       </div>
       {children}
       {!hideUserSelect && (
         <div>
-          <Text style={{display: 'block', marginBottom: 4, fontSize: 13}}>用户</Text>
+          <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>用户</Text>
           <Select
             placeholder="选择用户"
             value={userId}
             onChange={(value) => onUserChange(value == null ? undefined : String(value))}
-            style={{width: selectWidth}}
+            style={{ width: selectWidth }}
             showClear
           >
             {users.map((user) => (
-              <Select.Option key={user.id} value={user.id}>{user.label}</Select.Option>
+              <Select.Option key={user.id} value={user.id}>
+                {user.label}
+              </Select.Option>
             ))}
           </Select>
         </div>
       )}
       {!hideAccessPointSelect && (
         <div>
-          <Text style={{display: 'block', marginBottom: 4, fontSize: 13}}>接入点</Text>
+          <Text style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>接入点</Text>
           <Select
             placeholder="选择接入点"
             value={accessPointId}
             onChange={(value) => onAccessPointChange(value == null ? undefined : String(value))}
-            style={{width: selectWidth}}
+            style={{ width: selectWidth }}
             showClear
           >
             {accessPoints.map((accessPoint) => (
-              <Select.Option key={accessPoint.id} value={accessPoint.id}>{accessPoint.label}</Select.Option>
+              <Select.Option key={accessPoint.id} value={accessPoint.id}>
+                {accessPoint.label}
+              </Select.Option>
             ))}
           </Select>
         </div>
       )}
       {beforeReset}
-      <Button type="tertiary" onClick={onReset}>重置</Button>
+      <Button type="tertiary" onClick={onReset}>
+        重置
+      </Button>
     </div>
   );
 }

@@ -219,11 +219,31 @@ export interface TurnTokenSummary {
  */
 export type TurnBlock =
   | { type: 'thinking'; content: string; logId: string; timestamp: string }
-  | { type: 'tool_use'; toolName: string; input: Record<string, unknown>; logId: string; timestamp: string }
-  | { type: 'tool_result'; toolUseId: string; content: string; isError: boolean; logId: string; timestamp: string }
+  | {
+      type: 'tool_use';
+      toolName: string;
+      input: Record<string, unknown>;
+      logId: string;
+      timestamp: string;
+    }
+  | {
+      type: 'tool_result';
+      toolUseId: string;
+      content: string;
+      isError: boolean;
+      logId: string;
+      timestamp: string;
+    }
   | { type: 'assistant_message'; content: string; logId: string; timestamp: string }
-  | { type: 'agent_call'; agentType: string; children: TurnBlock[]; logIds: string[];
-      tokenSummary: TurnTokenSummary; logId: string; timestamp: string };
+  | {
+      type: 'agent_call';
+      agentType: string;
+      children: TurnBlock[];
+      logIds: string[];
+      tokenSummary: TurnTokenSummary;
+      logId: string;
+      timestamp: string;
+    };
 
 /**
  * 对话轮次

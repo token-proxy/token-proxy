@@ -221,9 +221,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let user_service = Arc::new(UserService::new(user_repo.clone(), audit_log_repo.clone()));
 
-    let access_point_service = Arc::new(AccessPointService::new(
-        access_point_repo.clone(),
-    ));
+    let access_point_service = Arc::new(AccessPointService::new(access_point_repo.clone()));
 
     let auth_service = Arc::new(AuthService::new(
         user_repo.clone(),
@@ -260,15 +258,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 启动后台定时任务：清理过期的 session_affinity
     let sa_repo_cleanup = session_affinity_repo.clone();
-    let sa_cleanup_interval =
-        std::time::Duration::from_secs(config.partition_check_interval_secs);
+    let sa_cleanup_interval = std::time::Duration::from_secs(config.partition_check_interval_secs);
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(sa_cleanup_interval);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         interval.tick().await;
         loop {
             interval.tick().await;
-            match sa_repo_cleanup.delete_stale(chrono::Duration::days(7)).await {
+            match sa_repo_cleanup
+                .delete_stale(chrono::Duration::days(7))
+                .await
+            {
                 Ok(n) if n > 0 => {
                     tracing::info!(count = %n, "清理过期 session_affinity");
                 }
@@ -366,15 +366,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ─── HTTP 请求日志 ───
     // TraceLayer 仅为每个请求记录 method、uri、status、latency 和 request_id。
     // 不记录请求/响应 header 和 body，避免泄露 Authorization、API key 等敏感信息。
-    let trace_layer = TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
-        let request_id = Uuid::new_v4().to_string();
-        info_span!(
-            "http_request",
-            http.method = %request.method(),
-            http.uri = %request.uri(),
-            request_id = %request_id,
-        )
-    });
+    let trace_layer =
+        TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
+            let request_id = Uuid::new_v4().to_string();
+            info_span!(
+                "http_request",
+                http.method = %request.method(),
+                http.uri = %request.uri(),
+                request_id = %request_id,
+            )
+        });
 
     let app = Router::new()
         .merge(routes::build(state))

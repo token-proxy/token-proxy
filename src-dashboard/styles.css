@@ -1,122 +1,130 @@
 body {
-  margin           : 0;
-  color            : var(--semi-color-text-0);
-  background-color : var(--semi-color-bg-0);
+  margin: 0;
+  color: var(--semi-color-text-0);
+  background-color: var(--semi-color-bg-0);
 }
 
 /* Semi Table: 当 scroll.x 启用后，Semi 切换为 table-layout: fixed 并通过内联 width 控制表格宽度，
    但当容器宽于列总宽时，内联 width 会导致表格无法铺满容器。
    此规则强制 semi-table 元素始终占满容器宽度，仅在内容溢出时才由 scroll 触发水平滚动。 */
 .semi-table {
-  width : 100% !important;
+  width: 100% !important;
 }
 
 .monospace-text {
-  font-family : ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
 }
 
 .nowrap-text {
-  white-space : nowrap;
+  white-space: nowrap;
 }
 
 .copyable-id-icon {
-  display         : inline-flex;
-  align-items     : center;
-  justify-content : center;
-  width           : 16px;
-  height          : 16px;
-  margin-left     : 4px;
-  color           : var(--semi-color-primary);
-  vertical-align  : -0.125em;
-  cursor          : pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  color: var(--semi-color-primary);
+  vertical-align: -0.125em;
+  cursor: pointer;
 }
 
 .copyable-id-icon-success {
-  color : var(--semi-color-success);
+  color: var(--semi-color-success);
 }
 
 /* Markdown 渲染样式 */
 .markdown-render {
-  line-height : 1.6;
-  word-break  : break-word;
+  line-height: 1.6;
+  word-break: break-word;
 }
 
 .markdown-render p {
-  margin : 0 0 8px;
+  margin: 0 0 8px;
 }
 
 .markdown-render p:last-child {
-  margin-bottom : 0;
+  margin-bottom: 0;
 }
 
 .markdown-render .markdown-code-block {
-  background    : var(--semi-color-fill-0);
-  padding       : 12px;
-  border-radius : 4px;
-  font-size     : 12px;
-  overflow      : auto;
-  max-height    : 400px;
-  white-space   : pre-wrap;
-  word-break    : break-all;
-  margin        : 8px 0;
+  background: var(--semi-color-fill-0);
+  padding: 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  overflow: auto;
+  max-height: 400px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 8px 0;
 }
 
 .markdown-render code {
-  background    : var(--semi-color-fill-0);
-  padding       : 2px 4px;
-  border-radius : 3px;
-  font-size     : 12px;
-  font-family   : ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: var(--semi-color-fill-0);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .markdown-render pre code {
-  background : none;
-  padding    : 0;
+  background: none;
+  padding: 0;
 }
 
-.markdown-render ul, .markdown-render ol {
-  margin       : 8px 0;
-  padding-left : 20px;
+.markdown-render ul,
+.markdown-render ol {
+  margin: 8px 0;
+  padding-left: 20px;
 }
 
 .markdown-render blockquote {
-  border-left  : 3px solid var(--semi-color-border);
-  margin       : 8px 0;
-  padding-left : 12px;
-  color        : var(--semi-color-text-2);
+  border-left: 3px solid var(--semi-color-border);
+  margin: 8px 0;
+  padding-left: 12px;
+  color: var(--semi-color-text-2);
 }
 
 .markdown-render table {
-  border-collapse : collapse;
-  margin          : 8px 0;
-  width           : 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
 }
 
-.markdown-render th, .markdown-render td {
-  border     : 1px solid var(--semi-color-border);
-  padding    : 6px 12px;
-  text-align : left;
+.markdown-render th,
+.markdown-render td {
+  border: 1px solid var(--semi-color-border);
+  padding: 6px 12px;
+  text-align: left;
 }
 
 .markdown-render th {
-  background : var(--semi-color-fill-0);
+  background: var(--semi-color-fill-0);
 }
 
-.markdown-render h1, .markdown-render h2, .markdown-render h3,
-.markdown-render h4, .markdown-render h5, .markdown-render h6 {
-  margin      : 12px 0 8px;
-  font-weight : 600;
+.markdown-render h1,
+.markdown-render h2,
+.markdown-render h3,
+.markdown-render h4,
+.markdown-render h5,
+.markdown-render h6 {
+  margin: 12px 0 8px;
+  font-weight: 600;
 }
 
 /* CodeHighlight 换行：覆盖 prismjs 默认的 white-space: pre + overflow: auto */
 /* 特异度需高于 .semi-codeHighlight-defaultTheme pre[class*="language-"] (0,0,2,1) */
-.code-highlight-wrapper .semi-codeHighlight pre[class*="language-"] {
-  white-space : pre-wrap !important;
-  word-break  : break-word;
-  overflow    : hidden;
+.code-highlight-wrapper .semi-codeHighlight pre[class*='language-'] {
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  overflow: hidden;
 }
 
-.code-highlight-wrapper .semi-codeHighlight code[class*="language-"] {
-  white-space : pre-wrap !important;
-  word-break  : break-word;
+.code-highlight-wrapper .semi-codeHighlight code[class*='language-'] {
+  white-space: pre-wrap !important;
+  word-break: break-word;
 }

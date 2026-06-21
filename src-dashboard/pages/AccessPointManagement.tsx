@@ -5,7 +5,7 @@ import AccessPointTable from '@components/access-point/AccessPointTable';
 import useAccessPoints from '../hooks/useAccessPoints.ts';
 import { type AccessPoint } from '../types/accessPoint.ts';
 
-const {Title} = Typography;
+const { Title } = Typography;
 
 /**
  * AccessPointManagement - 接入点管理页面
@@ -37,7 +37,7 @@ export default function AccessPointManagement(): ReactNode {
 
   const openCreateDrawer = () => {
     setEditingAccessPoint(null);
-    setFormData({...emptyForm});
+    setFormData({ ...emptyForm });
     clearAccounts();
     setDrawerVisible(true);
   };
@@ -50,7 +50,7 @@ export default function AccessPointManagement(): ReactNode {
       api_type: accessPoint.api_type,
       accounts: accessPoint.accounts ?? [],
       routing_strategy: accessPoint.routing_strategy ?? 'weighted',
-      model_routing_grid: accessPoint.model_routing_grid ?? {provider_ids: [], rows: []},
+      model_routing_grid: accessPoint.model_routing_grid ?? { provider_ids: [], rows: [] },
     });
     setDrawerVisible(true);
   };
@@ -69,9 +69,18 @@ export default function AccessPointManagement(): ReactNode {
 
   return (
     <div>
-      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
         <Title heading={3}>接入点管理</Title>
-        <Button type="primary" onClick={openCreateDrawer}>创建接入点</Button>
+        <Button type="primary" onClick={openCreateDrawer}>
+          创建接入点
+        </Button>
       </div>
 
       <AccessPointTable

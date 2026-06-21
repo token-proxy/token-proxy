@@ -13,7 +13,7 @@ interface RawResponseViewProps {
  *
  * 展示原始 SSE 响应文本，支持一键复制。
  */
-export default function RawResponseView({body}: RawResponseViewProps): ReactNode {
+export default function RawResponseView({ body }: RawResponseViewProps): ReactNode {
   const [copying, setCopying] = useState(false);
 
   const handleCopy = async () => {
@@ -38,7 +38,7 @@ export default function RawResponseView({body}: RawResponseViewProps): ReactNode
         }}
       >
         <Button
-          icon={<IconCopy/>}
+          icon={<IconCopy />}
           size="small"
           type="tertiary"
           loading={copying}
@@ -47,7 +47,7 @@ export default function RawResponseView({body}: RawResponseViewProps): ReactNode
           复制
         </Button>
       </div>
-      <CodeHighlight content={body || '(空)'}/>
+      <CodeHighlight content={body || '(空)'} />
     </>
   );
 }

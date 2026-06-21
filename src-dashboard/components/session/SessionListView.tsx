@@ -3,10 +3,15 @@ import { Button, Empty, Table, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import CopyableIdText from '@components/common/CopyableIdText';
 import LogFilterBar from '@components/log/LogFilterBar';
-import type { AccessPointItem, SessionListFilters, SessionSummary, UserItem } from '../../types/log.ts';
+import type {
+  AccessPointItem,
+  SessionListFilters,
+  SessionSummary,
+  UserItem,
+} from '../../types/log.ts';
 import { formatDateTime, formatNumber } from '../../utils/format.ts';
 
-const {Text} = Typography;
+const { Text } = Typography;
 
 /** SessionListView 组件 Props */
 interface SessionListViewProps {
@@ -55,8 +60,11 @@ export default function SessionListView({
   return (
     <div>
       <LogFilterBar
-        users={users.map((user) => ({id: user.id, label: user.display_name}))}
-        accessPoints={accessPoints.map((accessPoint) => ({id: accessPoint.id, label: accessPoint.name}))}
+        users={users.map((user) => ({ id: user.id, label: user.display_name }))}
+        accessPoints={accessPoints.map((accessPoint) => ({
+          id: accessPoint.id,
+          label: accessPoint.name,
+        }))}
         userId={filters.userId}
         accessPointId={filters.accessPointId}
         datePickerWidth={360}
@@ -75,9 +83,7 @@ export default function SessionListView({
             dataIndex: 'session_id',
             key: 'session_id',
             width: 280,
-            render: (id: string) => (
-              <CopyableIdText value={id}/>
-            ),
+            render: (id: string) => <CopyableIdText value={id} />,
           },
           {
             title: '用户',
@@ -86,9 +92,11 @@ export default function SessionListView({
             render: (_: unknown, r: SessionSummary) => {
               if (!r.user_id) return '-';
               const name = userMap[r.user_id];
-              return name
-                ? <span style={{whiteSpace: 'nowrap'}}>{name}</span>
-                : <CopyableIdText value={r.user_id}/>;
+              return name ? (
+                <span style={{ whiteSpace: 'nowrap' }}>{name}</span>
+              ) : (
+                <CopyableIdText value={r.user_id} />
+              );
             },
           },
           {
@@ -98,23 +106,29 @@ export default function SessionListView({
             render: (_: unknown, r: SessionSummary) => {
               if (!r.access_point_id) return '-';
               const name = apMap[r.access_point_id];
-              return name
-                ? <Text ellipsis style={{maxWidth: 110}}>{name}</Text>
-                : <CopyableIdText value={r.access_point_id}/>;
+              return name ? (
+                <Text ellipsis style={{ maxWidth: 110 }}>
+                  {name}
+                </Text>
+              ) : (
+                <CopyableIdText value={r.access_point_id} />
+              );
             },
           },
           {
             title: '开始时间',
             dataIndex: 'start_time',
             width: 180,
-            render: (t: string) => <span style={{whiteSpace: 'nowrap'}}>{formatDateTime(t)}</span>,
+            render: (t: string) => (
+              <span style={{ whiteSpace: 'nowrap' }}>{formatDateTime(t)}</span>
+            ),
           },
           {
             title: '请求次数',
             dataIndex: 'request_count',
             width: 100,
             render: (v: number) => (
-              <span style={{whiteSpace: 'nowrap', display: 'block', maxWidth: 90}}>{v}</span>
+              <span style={{ whiteSpace: 'nowrap', display: 'block', maxWidth: 90 }}>{v}</span>
             ),
           },
           {
@@ -123,11 +137,11 @@ export default function SessionListView({
             width: 150,
             render: (_: unknown, record: SessionSummary) => {
               const hasToken = record.total_input_tokens > 0 || record.total_output_tokens > 0;
-              if (!hasToken) return <span style={{color: 'var(--semi-color-text-2)'}}>-</span>;
+              if (!hasToken) return <span style={{ color: 'var(--semi-color-text-2)' }}>-</span>;
               return (
                 <Tooltip
                   content={
-                    <div style={{fontSize: 12, lineHeight: 1.6}}>
+                    <div style={{ fontSize: 12, lineHeight: 1.6 }}>
                       <div>总输入: {formatNumber(record.total_input_tokens)}</div>
                       <div>总输出: {formatNumber(record.total_output_tokens)}</div>
                       <div>缓存创建: {formatNumber(record.total_cache_creation_input_tokens)}</div>
@@ -137,8 +151,9 @@ export default function SessionListView({
                     </div>
                   }
                 >
-                  <span style={{whiteSpace: 'nowrap', cursor: 'default'}}>
-                    &uarr;{formatNumber(record.total_input_tokens)} / &darr;{formatNumber(record.total_output_tokens)}
+                  <span style={{ whiteSpace: 'nowrap', cursor: 'default' }}>
+                    &uarr;{formatNumber(record.total_input_tokens)} / &darr;
+                    {formatNumber(record.total_output_tokens)}
                   </span>
                 </Tooltip>
               );
@@ -167,16 +182,14 @@ export default function SessionListView({
         dataSource={sessions}
         loading={loading}
         rowKey="session_id"
-        scroll={{x: 'max-content'}}
+        scroll={{ x: 'max-content' }}
         pagination={{
           currentPage: page,
           pageSize,
           total,
           onChange: onPageChange,
         }}
-        empty={
-          <Empty description={loading ? '' : '暂无会话数据'}/>
-        }
+        empty={<Empty description={loading ? '' : '暂无会话数据'} />}
       />
     </div>
   );

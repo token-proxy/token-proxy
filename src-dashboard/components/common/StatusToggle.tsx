@@ -23,7 +23,7 @@ export default function StatusToggle({
   const tag = (
     <Tag
       color={enabled ? 'green' : 'red'}
-      style={{cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1}}
+      style={{ cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}
     >
       {enabled ? '启用' : '禁用'}
     </Tag>

@@ -20,21 +20,21 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<LoginPage/>}/>
-        <Route path="/" element={<AdminLayout/>}>
-          <Route index element={<Navigate to="/dashboard" replace/>}/>
-          <Route path="dashboard" element={<DashboardPage/>}/>
-          <Route path="providers/*" element={<ProviderManagement/>}/>
-          <Route path="access-points" element={<AccessPointManagement/>}/>
-          <Route path="sessions" element={<SessionLogPage/>}/>
-          <Route path="sessions/:sessionId" element={<SessionLogPage/>}/>
-          <Route path="logs" element={<RequestLogPage/>}/>
-          <Route path="logs/:id" element={<LogDetailPage/>}/>
-          <Route path="users" element={<UserManagement/>}/>
-          <Route path="settings" element={<SettingsPage/>}/>
-          <Route path="settings/profile" element={<ProfilePage/>}/>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/" element={<AdminLayout />}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="providers/*" element={<ProviderManagement />} />
+          <Route path="access-points" element={<AccessPointManagement />} />
+          <Route path="sessions" element={<SessionLogPage />} />
+          <Route path="sessions/:sessionId" element={<SessionLogPage />} />
+          <Route path="logs" element={<RequestLogPage />} />
+          <Route path="logs/:id" element={<LogDetailPage />} />
+          <Route path="users" element={<UserManagement />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings/profile" element={<ProfilePage />} />
         </Route>
-        <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
   );

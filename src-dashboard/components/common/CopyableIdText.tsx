@@ -2,7 +2,7 @@ import { type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Typography } from '@douyinfe/semi-ui';
 import { IconCopy, IconTick } from '@douyinfe/semi-icons';
 
-const {Text} = Typography;
+const { Text } = Typography;
 
 /** CopyableIdText 组件 Props */
 type CopyableIdTextProps = {
@@ -15,21 +15,15 @@ type CopyableIdTextProps = {
  *
  * 使用 Semi Typography Text 的 copyable 功能，展示 monospace 样式的 ID。
  */
-export default function CopyableIdText({value}: CopyableIdTextProps): ReactNode {
+export default function CopyableIdText({ value }: CopyableIdTextProps): ReactNode {
   return (
-    <Text
-      className="nowrap-text"
-      copyable={{content: value, render: renderCopyIcon}}
-    >
+    <Text className="nowrap-text" copyable={{ content: value, render: renderCopyIcon }}>
       <span className="monospace-text">{value}</span>
     </Text>
   );
 }
 
-function renderCopyIcon(
-  copied: boolean,
-  doCopy: (e: MouseEvent) => void,
-) {
+function renderCopyIcon(copied: boolean, doCopy: (e: MouseEvent) => void) {
   const Icon = copied ? IconTick : IconCopy;
   const className = copied ? 'copyable-id-icon copyable-id-icon-success' : 'copyable-id-icon';
 
@@ -45,7 +39,7 @@ function renderCopyIcon(
         }
       }}
     >
-      <Icon/>
+      <Icon />
     </span>
   );
 }

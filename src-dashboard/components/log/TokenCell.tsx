@@ -14,12 +14,12 @@ interface TokenCellProps {
 
 /** Token 分类显示配置，按 label 排序展示在 Tooltip 中 */
 const CATEGORIES = [
-  { label: '总计',        value: (_v: Values) => _v.total },
-  { label: '新输入',      value: (_v: Values) => _v.input },
-  { label: '缓存创建',    value: (_v: Values) => _v.cacheCreate },
-  { label: '缓存读取',    value: (_v: Values) => _v.cacheRead },
-  { label: '输出',        value: (_v: Values) => _v.output },
-  { label: '思考',        value: (_v: Values) => _v.thinking },
+  { label: '总计', value: (_v: Values) => _v.total },
+  { label: '新输入', value: (_v: Values) => _v.input },
+  { label: '缓存创建', value: (_v: Values) => _v.cacheCreate },
+  { label: '缓存读取', value: (_v: Values) => _v.cacheRead },
+  { label: '输出', value: (_v: Values) => _v.output },
+  { label: '思考', value: (_v: Values) => _v.thinking },
 ];
 
 interface Values {
@@ -65,10 +65,14 @@ export default function TokenCell(props: TokenCellProps): ReactNode {
 
   const tooltipContent = (
     <div style={{ fontSize: 12, lineHeight: 1.8, whiteSpace: 'nowrap' }}>
-      {CATEGORIES.map(c => {
+      {CATEGORIES.map((c) => {
         const n = c.value(v);
         if (n <= 0) return null;
-        return <div key={c.label}>{c.label}：{formatNumber(n)}</div>;
+        return (
+          <div key={c.label}>
+            {c.label}：{formatNumber(n)}
+          </div>
+        );
       })}
     </div>
   );

@@ -14,7 +14,7 @@ import { ThemeProvider } from './hooks/useTheme.ts';
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
-      <App/>
+      <App />
     </ThemeProvider>
   </StrictMode>,
 );

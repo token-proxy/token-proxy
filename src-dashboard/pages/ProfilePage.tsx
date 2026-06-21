@@ -4,7 +4,7 @@ import { Button, Card, Form, TabPane, Tabs, Toast, Typography } from '@douyinfe/
 import ApiKeyManager from '@components/user/ApiKeyManager';
 import api from '../api.ts';
 
-const {Title, Text} = Typography;
+const { Title, Text } = Typography;
 
 /* ---- 类型定义 ---- */
 
@@ -104,18 +104,20 @@ export default function ProfilePage(): ReactNode {
 
   return (
     <div>
-      <Title heading={3} style={{marginBottom: 24}}>个人设置</Title>
+      <Title heading={3} style={{ marginBottom: 24 }}>
+        个人设置
+      </Title>
 
       <Card>
         <Tabs type="line" defaultActiveKey="profile">
           <TabPane tab="个人资料" itemKey="profile">
-            <div style={{maxWidth: 480, marginTop: 16}}>
+            <div style={{ maxWidth: 480, marginTop: 16 }}>
               {profileLoading && !profile ? (
                 <Text type="secondary">加载中...</Text>
               ) : profile ? (
                 <Form
                   onSubmit={handleSaveProfile}
-                  initValues={{display_name: profile.display_name}}
+                  initValues={{ display_name: profile.display_name }}
                 >
                   <Form.Input
                     field="username"
@@ -128,13 +130,13 @@ export default function ProfilePage(): ReactNode {
                     field="display_name"
                     label="姓名"
                     placeholder="请输入显示名称"
-                    rules={[{required: true, message: '请输入显示名称'}]}
+                    rules={[{ required: true, message: '请输入显示名称' }]}
                   />
                   <Button
                     type="primary"
                     htmlType="submit"
                     loading={profileSaving}
-                    style={{marginTop: 16}}
+                    style={{ marginTop: 16 }}
                   >
                     保存
                   </Button>
@@ -146,34 +148,34 @@ export default function ProfilePage(): ReactNode {
           </TabPane>
 
           <TabPane tab="修改密码" itemKey="password">
-            <div style={{maxWidth: 480, marginTop: 16}}>
+            <div style={{ maxWidth: 480, marginTop: 16 }}>
               <Form onSubmit={handleChangePassword}>
                 <Form.Input
                   field="old_password"
                   label="旧密码"
                   mode="password"
                   placeholder="请输入旧密码"
-                  rules={[{required: true, message: '请输入旧密码'}]}
+                  rules={[{ required: true, message: '请输入旧密码' }]}
                 />
                 <Form.Input
                   field="new_password"
                   label="新密码"
                   mode="password"
                   placeholder="请输入新密码（不少于 6 位）"
-                  rules={[{required: true, message: '请输入新密码'}]}
+                  rules={[{ required: true, message: '请输入新密码' }]}
                 />
                 <Form.Input
                   field="confirm_password"
                   label="确认新密码"
                   mode="password"
                   placeholder="请再次输入新密码"
-                  rules={[{required: true, message: '请再次输入新密码'}]}
+                  rules={[{ required: true, message: '请再次输入新密码' }]}
                 />
                 <Button
                   type="primary"
                   htmlType="submit"
                   loading={passwordSaving}
-                  style={{marginTop: 16}}
+                  style={{ marginTop: 16 }}
                 >
                   修改密码
                 </Button>
@@ -182,8 +184,8 @@ export default function ProfilePage(): ReactNode {
           </TabPane>
 
           <TabPane tab="API Key 管理" itemKey="api-keys">
-            <div style={{marginTop: 16}}>
-              <ApiKeyManager/>
+            <div style={{ marginTop: 16 }}>
+              <ApiKeyManager />
             </div>
           </TabPane>
         </Tabs>
