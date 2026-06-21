@@ -1,0 +1,84 @@
+name: PR 检查
+
+on:
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  backend:
+    name: 后端 (fmt + clippy + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: 格式检查
+        run: cargo fmt --check
+
+      - name: Clippy 检查
+        run: cargo clippy -- -D warnings
+
+      - name: 编译检查
+        run: cargo build
+
+  frontend:
+    name: 前端 (lint + tsc + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 安装依赖
+        run: npm install
+
+      - name: Lint 检查
+        run: npm run lint
+
+      - name: TypeScript 类型检查
+        run: npx tsc --noEmit
+
+      - name: 前端构建
+        run: npm run build
+
+  test:
+    name: 测试 (PostgreSQL 集成)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: token_proxy_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: 运行测试
+        run: cargo test
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/token_proxy_test
