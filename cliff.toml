@@ -29,7 +29,4 @@ ignore_tags = ""
 topo_order = false
 sort_commits = "newest"
 
-[remote.github]
-owner = "{{ github.owner }}"
-repo = "{{ github.repo }}"
-token = "{{ github.token }}"
+# [remote.github] — git-cliff 自动从 git remote 推断 owner/repo，无需手动配置

@@ -30,11 +30,8 @@ description: 执行完整的发布流程。当用户输入 /release <version> [<
 - main 分支版本号为占位 `0.0.0`，版本号只在 release 分支上变更
 - CHANGELOG 按发布日期倒序排列
 - 使用 rebase 策略，无 merge commit
-- 发布流程在 release 分支上拆分为两个独立提交：
-  - 提交 A：仅 CHANGELOG.md
-  - 提交 B：仅版本号变更（Cargo.toml + package.json）
-  - tag 打在提交 B 上
-- cherry-pick 提交 A 回 main（不带版本号）
+- **先打 tag，后生成 CHANGELOG**：release 分支只做版本号变更 + 打 tag；切回 main 后使用 git-cliff 生成 CHANGELOG（tag 已存在，git-cliff 有明确的参照点）
+- release 分支上只有一个提交（版本号变更）；tag 打在这个提交上
 - 使用 git-cliff 生成 CHANGELOG
 - 使用 gh CLI 创建 GitHub Release
 - RC 版本：如果 release/<major>.<minor> 分支已存在，则 checkout 已有分支而非创建新分支
@@ -56,7 +53,7 @@ echo "<version>" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'
 MAJOR_MINOR=$(echo "<version>" | grep -oE '^[0-9]+\.[0-9]+')
 ```
 
-解析 `<description>` 参数（可选），如未提供则后续使用 CHANGELOG 内容。
+解析 `<description>` 参数（可选），如未提供则后续使用 CHANGELOG 内容填充 GitHub Release。
 
 ### Phase 1：前置检查
 
@@ -117,6 +114,7 @@ cd /home/viktor/dev/projects/github/token-proxy/token-proxy
    如未登录则中止，提示用户登录：`gh auth login`
 
 7. **检查 CHANGELOG.md 是否存在，不存在则创建空文件**
+
    ```bash
    test -f CHANGELOG.md || echo "" > CHANGELOG.md
    ```
@@ -150,37 +148,17 @@ else
   # 分支不存在 —— 正常发布，从 main 创建新分支
   git checkout -b "release/${MAJOR_MINOR}" main
 fi
-
-# 确保版本号一致：rebase main 的最新提交
-# 注意：仅在从 main 创建分支时需要；复用分支时不需要
 ```
 
-### Phase 3：生成 CHANGELOG（提交 A）
+### Phase 3：Bump 版本号 + Tag
 
-```bash
-cd /home/viktor/dev/projects/github/token-proxy/token-proxy
-
-# 使用 git-cliff 生成 CHANGELOG（prepend 模式，将新内容插入文件头部）
-git cliff --tag "<version>" --prepend CHANGELOG.md
-
-# 创建仅包含 CHANGELOG.md 的提交
-git add CHANGELOG.md
-git commit -m "chore(release): add CHANGELOG for <version>"
-
-# 记录提交 A 的 hash 以便后续 cherry-pick
-COMMIT_A_HASH=$(git rev-parse HEAD)
-```
-
-**注意：** 如果初次使用 git-cliff，可能需要确保项目根目录存在 `cliff.toml` 配置文件。如不存在，git-cliff 会使用默认配置。
-
-### Phase 4：Bump 版本号（提交 B） + Tag
+在 release 分支上执行版本号变更并打 tag。
 
 ```bash
 cd /home/viktor/dev/projects/github/token-proxy/token-proxy
 
 # 1. 修改 Cargo.toml 的 version 字段
-# 将 version = "0.0.0" 替换为 version = "<version>"
-# 使用 sed 确保只修改 [package] 段的 version 字段
+# 将 version = "0.0.0"（或旧版本号）替换为 version = "<version>"
 sed -i 's/^version = ".*"/version = "<version>"/' Cargo.toml
 
 # 2. 修改 package.json 的 version 字段
@@ -194,7 +172,9 @@ git commit -m "chore(release): bump version to <version>"
 git tag "<version>"
 ```
 
-### Phase 5：推送分支和 tag
+**注意：** 此阶段不生成 CHANGELOG。CHANGELOG 将在 Phase 5（切回 main 后）基于已存在的 tag 生成。
+
+### Phase 4：推送 release 分支和 tag
 
 ```bash
 cd /home/viktor/dev/projects/github/token-proxy/token-proxy
@@ -206,33 +186,9 @@ git push origin "release/${MAJOR_MINOR}"
 git push origin "<version>"
 ```
 
-### Phase 6：创建 GitHub Release
+### Phase 5：切回 main 生成 CHANGELOG
 
-```bash
-cd /home/viktor/dev/projects/github/token-proxy/token-proxy
-
-# 获取 CHANGELOG 中当前版本的发布说明
-# 根据 git-cliff 生成的格式提取版本对应的正文内容
-if [ -z "$RELEASE_DESCRIPTION" ]; then
-  # 从 CHANGELOG.md 提取当前版本的发布说明
-  # 假设 git-cliff 标准格式：## [version] - date
-  RELEASE_DESCRIPTION=$(awk "/^## \\[${version}\\]/,/^## \\[/{if(!/^## \\[${version}\\]/ && !/^## \\[/) print}" CHANGELOG.md)
-fi
-
-# 创建 GitHub Release
-gh release create "<version>" \
-  --title "<version>" \
-  --notes "详细内容请查看 [CHANGELOG.md](https://github.com/OWNER/REPO/blob/main/CHANGELOG.md)" \
-  --target "release/${MAJOR_MINOR}"
-```
-
-**注意：**
-
-- 发布说明指向 CHANGELOG.md 链接
-- `OWNER/REPO` 需要根据实际项目替换，可通过 `gh repo view --json nameWithOwner --jq .nameWithOwner` 获取
-- 如果提供了 `[<description>]` 参数，可将描述附加到 release notes 中
-
-### Phase 7：Cherry-pick 提交 A 回 main
+tag 已存在于远端，git-cliff 可以将其作为参照点精确计算版本范围。
 
 ```bash
 cd /home/viktor/dev/projects/github/token-proxy/token-proxy
@@ -243,18 +199,55 @@ git checkout main
 # 确保 main 是最新的
 git pull origin main
 
-# Cherry-pick 提交 A（仅 CHANGELOG.md 变更）
-git cherry-pick "$COMMIT_A_HASH"
+# 使用 git-cliff 生成 CHANGELOG
+# -l (latest)：从上一个 tag 到当前指定 tag 的提交范围
+# -t：指定当前版本的 tag
+# -p：prepend 模式，将新内容插入文件头部
+git-cliff -l -t "<version>" -p CHANGELOG.md
+
+# 提交 CHANGELOG
+git add CHANGELOG.md
+git commit -m "chore(release): add CHANGELOG for <version>"
 ```
 
-### Phase 8：推送 main
+**首次发布说明：** 如果仓库没有历史 tag，`-l` 会处理从初始提交到 `<version>` 的所有提交。
+
+### Phase 6：推送 main
 
 ```bash
 cd /home/viktor/dev/projects/github/token-proxy/token-proxy
 
-# 推送 main（cherry-pick 后的 CHANGELOG 更新）
 git push origin main
 ```
+
+### Phase 7：创建 GitHub Release
+
+```bash
+cd /home/viktor/dev/projects/github/token-proxy/token-proxy
+
+# 动态获取 OWNER/REPO
+REPO_FULL_NAME=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+
+# 判断是否为 RC 版本
+IS_RC=false
+echo "<version>" | grep -q "rc" && IS_RC=true
+PRERELEASE_FLAG=""
+$IS_RC && PRERELEASE_FLAG="--prerelease"
+
+# 创建 GitHub Release
+# release notes 指向 main 分支的 CHANGELOG.md（Phase 5 已提交）
+gh release create "<version>" \
+  --title "<version>" \
+  --notes "详细内容请查看 [CHANGELOG.md](https://github.com/${REPO_FULL_NAME}/blob/main/CHANGELOG.md)" \
+  $PRERELEASE_FLAG \
+  --target "release/${MAJOR_MINOR}"
+```
+
+**注意：**
+
+- `REPO_FULL_NAME` 通过 `gh repo view --json nameWithOwner --jq .nameWithOwner` 动态获取
+- 如果用户提供了 `[<description>]` 参数，可将其附加到 `--notes` 中 CHANGELOG 链接之前
+- RC 版本必须添加 `--prerelease` 标志
 
 ## 错误处理
 
@@ -304,35 +297,28 @@ gh auth login
 
 **登录完成后重新执行命令。**
 
-### cherry-pick 冲突
+### git-cliff 生成 CHANGELOG 为空
 
-**症状：** `git cherry-pick` 报告冲突
+**症状：** Phase 5 执行 `git-cliff -l` 后 CHANGELOG.md 仅包含 header，没有提交条目
 
-**处理：** 冲突通常出现在 CHANGELOG.md 中，因为 main 分支可能已有其他改动。按以下步骤解决：
+**可能原因：**
 
-1. 检查冲突文件：
+1. `cliff.toml` 中 `conventional_commits = true` 且 `filter_commits = true` — git-cliff 严格要求约定式提交格式才会纳入。检查提交历史是否符合 `feat:` / `fix:` 等前缀。
+2. `cliff.toml` 中 `tag_pattern` 与 tag 格式不匹配。
 
-   ```bash
-   git status
-   ```
+**排查步骤：**
 
-2. 如果只有 CHANGELOG.md 冲突（最常见），手动打开文件解决冲突。
+```bash
+# 1. 直接输出（不写入文件）查看 git-cliff 实际生成内容
+git-cliff -l -t "<version>" 2>&1
 
-3. **冲突解决策略：按发布日期倒序排列。**
-   - CHANGELOG 的格式是最近的版本在最顶部
-   - cherry-pick 过来的内容应该插入到文件头部（最新的位置）
-   - 如果 main 上已有其他版本的 CHANGELOG 条目，需要确保当前版本的条目放在正确的位置（按日期倒序，最新的在上面）
+# 2. 检查提交是否符合约定式提交格式
+git log --oneline main
 
-4. 标记冲突已解决：
+# 3. 如果提交格式不匹配，临时调整 cliff.toml 中的 filter_commits 或 commit_parsers
+```
 
-   ```bash
-   git add CHANGELOG.md
-   git cherry-pick --continue
-   ```
-
-   保持原始提交消息不变。
-
-5. 如果有其他文件的冲突，逐文件解决后标记完成。
+**临时绕过：** 如果提交格式确实不匹配且不想大改 cliff.toml，可以手动编写 CHANGELOG 条目后继续。
 
 ### release 分支已存在（RC 场景）
 
@@ -341,8 +327,8 @@ gh auth login
 **处理：** 这是正常的 RC 发布场景。分支已存在意味着之前的版本（如 `0.1.0` 的 release/0.1 分支）已被创建。
 
 1. checkout 已有分支而非创建新分支
-2. 确保分支已 rebase 到 main 的最新提交（注意：如果多人协作，rebase 已推送的分支需要 force push）
-3. 继续执行 Phase 3-8
+2. 在已有分支上叠加新的版本号变更和 tag
+3. 继续执行 Phase 3-7
 
 **注意：** release 分支从 main 创建后不再同步 main 的变更。RC 版本的发布总是在已有分支上叠加新的提交。
 
@@ -377,10 +363,10 @@ RC（Release Candidate）版本有着与正式版本不同的流程：
 1. **分支复用逻辑：**
    - `0.1.0-rc.1` → major.minor 为 `0.1`，检测 `release/0.1` 是否已存在
    - 如果 `release/0.1` 已存在（从之前 `0.1.0` 的发布创建），则 checkout 该分支
-   - 在已有分支上叠加新的 CHANGELOG 和版本号变更
+   - 在已有分支上叠加新的版本号变更和 tag
 
 2. **git-cliff 配置：**
-   - 确保 git-cliff 配置中包含 RC 版本的标签匹配规则
+   - 确保 `cliff.toml` 中的 `tag_pattern` 能匹配 RC 版本格式（如 `[0-9]*` 可匹配 `0.2.0-rc.1`）
    - 默认配置通常能正确处理 `0.2.0-rc.1` 格式的 tag
 
 3. **GitHub Release 标记：**
@@ -431,49 +417,49 @@ else
   git checkout -b "release/${MAJOR_MINOR}" main
 fi
 
-# Phase 3：CHANGELOG 提交（提交 A）
-echo "=== Phase 3: 生成 CHANGELOG ==="
-git cliff --tag "$VERSION" --prepend CHANGELOG.md
-git add CHANGELOG.md
-git commit -m "chore(release): add CHANGELOG for $VERSION"
-COMMIT_A_HASH=$(git rev-parse HEAD)
-echo "提交 A hash: $COMMIT_A_HASH"
-
-# Phase 4：版本号变更（提交 B）+ tag
-echo "=== Phase 4: Bump 版本号 + Tag ==="
+# Phase 3：Bump 版本号 + Tag
+echo "=== Phase 3: Bump 版本号 + Tag ==="
 sed -i 's/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml
 sed -i 's/"version": ".*"/"version": "'"$VERSION"'"/' package.json
 git add Cargo.toml package.json
 git commit -m "chore(release): bump version to $VERSION"
 git tag "$VERSION"
 
-# Phase 5：推送
-echo "=== Phase 5: 推送分支和 tag ==="
+# Phase 4：推送 release 分支和 tag
+echo "=== Phase 4: 推送分支和 tag ==="
 git push origin "release/${MAJOR_MINOR}"
 git push origin "$VERSION"
 
-# Phase 6：GitHub Release
-echo "=== Phase 6: 创建 GitHub Release ==="
+# Phase 5：切回 main 生成 CHANGELOG
+echo "=== Phase 5: 生成 CHANGELOG ==="
+git checkout main
+git pull origin main
+git-cliff -l -t "$VERSION" -p CHANGELOG.md
+git add CHANGELOG.md
+git commit -m "chore(release): add CHANGELOG for $VERSION"
+
+# Phase 6：推送 main
+echo "=== Phase 6: 推送 main ==="
+git push origin main
+
+# Phase 7：创建 GitHub Release
+echo "=== Phase 7: 创建 GitHub Release ==="
+REPO_FULL_NAME=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 IS_RC=false
 echo "$VERSION" | grep -q "rc" && IS_RC=true
 PRERELEASE_FLAG=""
 $IS_RC && PRERELEASE_FLAG="--prerelease"
 
+RELEASE_NOTES="详细内容请查看 [CHANGELOG.md](https://github.com/${REPO_FULL_NAME}/blob/main/CHANGELOG.md)"
+if [ -n "$DESCRIPTION" ]; then
+  RELEASE_NOTES="${DESCRIPTION}\n\n${RELEASE_NOTES}"
+fi
+
 gh release create "$VERSION" \
   --title "$VERSION" \
-  --notes "详细内容请查看 [CHANGELOG.md](https://github.com/OWNER/REPO/blob/main/CHANGELOG.md)" \
+  --notes "$RELEASE_NOTES" \
   $PRERELEASE_FLAG \
   --target "release/${MAJOR_MINOR}"
-
-# Phase 7：Cherry-pick 回 main
-echo "=== Phase 7: Cherry-pick 回 main ==="
-git checkout main
-git pull origin main
-git cherry-pick "$COMMIT_A_HASH"
-
-# Phase 8：推送 main
-echo "=== Phase 8: 推送 main ==="
-git push origin main
 
 echo "=== 发布完成: $VERSION ==="
 ```
@@ -482,10 +468,11 @@ echo "=== 发布完成: $VERSION ==="
 
 - 所有命令必须使用 `cd /home/viktor/dev/projects/github/token-proxy/token-proxy && <command>` 格式，遵循终端命令使用规范
 - 版本号不要包含 `v` 前缀
-- tag 打在版本号变更提交（提交 B）上，而不是 CHANGELOG 提交（提交 A）上
-- CHANGELOG 按发布日期倒序排列，最新版本在最顶部
-- Cherry-pick 只带回 CHANGELOG 变更，不带版本号变更
-- 创建 GitHub Release 时，`OWNER/REPO` 应通过 `gh repo view --json nameWithOwner --jq .nameWithOwner` 动态获取
+- tag 打在版本号变更提交上（release 分支唯一的提交）
+- CHANGELOG 在 tag 推送后才生成（在 main 分支上），按发布日期倒序排列，最新版本在最顶部
+- release 分支只包含版本号变更，不包含 CHANGELOG
+- 创建 GitHub Release 时，`REPO_FULL_NAME` 通过 `gh repo view --json nameWithOwner --jq .nameWithOwner` 动态获取
+- `cliff.toml` 中的 `[remote.github]` 段已注释掉 — git-cliff 能从 SSH remote 自动推断 owner/repo
 - 发布流程执行完毕后，建议验证：
   1. 确认 GitHub Release 已创建成功
   2. 确认 main 分支的 CHANGELOG.md 已更新
