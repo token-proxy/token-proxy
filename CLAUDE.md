@@ -9,20 +9,23 @@
 - **后端**: Rust (edition 2021) + axum 0.8 + SeaORM 2 + tokio
 - **前端**: React 19 + TypeScript + Vite + Semi Design 2.97
 - **数据库**: PostgreSQL 17 (应用层按月分区管理)
-- **构建**: cargo-make + Docker 多阶段构建
+- **代码质量**: Prettier (前端/JSON/MD)、lint-staged + simple-git-hooks (pre-commit 自动格式化)、cargo fmt/clippy
+- **CI/CD**: GitHub Actions (fmt + clippy + build + PostgreSQL 集成测试)、Dependabot (每周依赖检查)
+- **构建**: cargo-make + Docker 多阶段构建 (.dockerignore 优化构建上下文)
+- **工具链**: Rust 工具链固定 (rust-toolchain.toml, channel = "1.96")
 
 ## 架构概要
 
 DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentation/`
 
-| 层 | 路径 | 职责 |
-|---|---|---|
-| 领域层 | `src/domain/{access_point,provider,user,log,system,shared}/` | 实体、值对象、Repository trait |
-| 应用层 | `src/application/{access_point,auth,log,provider,proxy,system,user}/` | 用例编排、DTO |
+| 层         | 路径                                                                    | 职责                             |
+| ---------- | ----------------------------------------------------------------------- | -------------------------------- |
+| 领域层     | `src/domain/{access_point,provider,user,log,system,shared}/`            | 实体、值对象、Repository trait   |
+| 应用层     | `src/application/{access_point,auth,log,provider,proxy,system,user}/`   | 用例编排、DTO                    |
 | 基础设施层 | `src/infrastructure/{persistence,encryption,auth,http_client,parsers}/` | Repository 实现、加密、JWT、HTTP |
-| 展示层 | `src/presentation/{routes,middleware}/` | axum handlers、认证中间件 |
-| 共享 | `src/shared/` | AppError (9 种)、PaginatedResult |
-| 前端 | `src-dashboard/` | React SPA，构建产物嵌入二进制 |
+| 展示层     | `src/presentation/{routes,middleware}/`                                 | axum handlers、认证中间件        |
+| 共享       | `src/shared/`                                                           | AppError (9 种)、PaginatedResult |
+| 前端       | `src-dashboard/`                                                        | React SPA，构建产物嵌入二进制    |
 
 - **依赖注入**: `Arc<dyn Trait>`，`main.rs` 组装；应用层 Service 注入 Repository trait，不直接依赖 SeaORM
 - **聚合根**: `AccessPointEx` = 接入点 + 账户池 + 路由网格，ProxyPipeline 唯一交互入口
@@ -50,28 +53,61 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 
 ## Makefile 任务
 
-| 命令 | 说明 |
-|---|---|
-| `cargo make dev` | 并行启动前端 Vite HMR + 后端 |
-| `cargo make build` | 顺序构建前端 + 后端 release |
-| `cargo make check` | 并行 cargo check + tsc --noEmit |
-| `cargo make preview` | build 并运行 release 二进制 |
-| `cargo make fmt` | cargo fmt |
-| `cargo make clippy` | clippy (deny warnings) |
-| `cargo make test` | cargo test |
+| 命令                 | 说明                            |
+| -------------------- | ------------------------------- |
+| `cargo make dev`     | 并行启动前端 Vite HMR + 后端    |
+| `cargo make build`   | 顺序构建前端 + 后端 release     |
+| `cargo make check`   | 并行 cargo check + tsc --noEmit |
+| `cargo make preview` | build 并运行 release 二进制     |
+| `cargo make fmt`     | cargo fmt (Rust)                |
+| `cargo make clippy`  | clippy (deny warnings)          |
+| `cargo make test`    | cargo test                      |
+
+### Pre-commit 自动格式化
+
+- `simple-git-hooks` + `lint-staged` 管理 pre-commit hook，`npm run prepare` 初始化
+- pre-commit 自动运行：`eslint --fix` + `prettier --write` 处理 `.ts/.tsx`、`prettier --write` 处理 `.json/.css/.md`、`cargo fmt` 处理 `.rs`
+- 安装依赖后首次执行 `npm run prepare` 以激活 hook
 
 ## 环境变量
 
-| 变量 | 说明 | 默认值 |
-|---|---|---|
-| DATABASE_URL | PostgreSQL 连接串 | 必填 |
-| JWT_SECRET | JWT 签名密钥 | 必填 |
-| ENCRYPTION_KEY | 64 hex chars (32 字节) | 必填 |
-| SERVER_PORT | 监听端口 | 3000 |
-| LOG_LEVEL | 日志级别 | info |
-| PARTITION_CHECK_INTERVAL_SECS | 分区检查间隔 (秒) | 3600 |
-| PARTITION_PREMAKE_MONTHS | 提前创建未来分区月数 | 3 |
-| PARTITION_RETENTION_MONTHS | 分区保留月数 | 12 |
+| 变量                          | 说明                   | 默认值 |
+| ----------------------------- | ---------------------- | ------ |
+| DATABASE_URL                  | PostgreSQL 连接串      | 必填   |
+| JWT_SECRET                    | JWT 签名密钥           | 必填   |
+| ENCRYPTION_KEY                | 64 hex chars (32 字节) | 必填   |
+| SERVER_PORT                   | 监听端口               | 3000   |
+| LOG_LEVEL                     | 日志级别               | info   |
+| PARTITION_CHECK_INTERVAL_SECS | 分区检查间隔 (秒)      | 3600   |
+| PARTITION_PREMAKE_MONTHS      | 提前创建未来分区月数   | 3      |
+| PARTITION_RETENTION_MONTHS    | 分区保留月数           | 12     |
+
+## 发布流程
+
+### 版本号策略
+
+- **main 分支**: 版本号为占位 `0.0.0`，不设置实际版本，只在 release 分支设定
+- **Release 分支**: 仅在 release 分支上设置实际版本号（如 `0.1.0`、`0.2.0-rc.1`）
+- **Git tag 格式**: 无 `v` 前缀（`0.1.0`、`0.2.0-rc.1`）
+
+### 发布步骤
+
+1. 从 main 创建 release 分支
+2. 提交 A：运行 `cliff generate` 生成 CHANGELOG，仅提交 CHANGELOG.md
+3. 提交 B：将 `Cargo.toml` 版本号更新为目标版本，tag 打在本次提交上
+4. 合并 release 分支（使用 rebase 策略，无 merge commit）
+5. 将提交 A（仅 CHANGELOG）cherry-pick 回 main 分支
+
+### CHANGELOG 管理
+
+- 使用 `git-cliff` 自动生成，配置见 `cliff.toml`
+- 分类映射：`feat` → Added、`fix` → Fixed、`perf`/`refactor` → Changed
+- 按发布日期倒序排列
+
+### 发布技能
+
+- 使用 `/release <version> [<description>]` 命令执行发布流程
+- 技能文件位于 `.claude/skills/release/SKILL.md`
 
 ## 前端路由
 
@@ -146,13 +182,13 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 
 **级别使用规则：**
 
-| 级别 | 使用场景 |
-|---|---|
-| `error!` | 不可恢复的错误，需要人工介入（数据库连接失败、加密失败、分区维护失败） |
-| `warn!` | 可恢复的异常，自动降级或重试成功（账号禁用、会话保存失败、token 解析失败、审计日志写入失败） |
-| `info!` | 关键业务事件和生命周期（启动/关闭、请求到达/完成、账号池选择、分区创建/清理、模型发现结果） |
-| `debug!` | 诊断细节，生产环境默认关闭（具体账号选择过程、URL 构造、请求变换前后对比） |
-| `trace!` | 极细粒度调试（逐 chunk SSE 转发、JSON 解析中间态） |
+| 级别     | 使用场景                                                                                     |
+| -------- | -------------------------------------------------------------------------------------------- |
+| `error!` | 不可恢复的错误，需要人工介入（数据库连接失败、加密失败、分区维护失败）                       |
+| `warn!`  | 可恢复的异常，自动降级或重试成功（账号禁用、会话保存失败、token 解析失败、审计日志写入失败） |
+| `info!`  | 关键业务事件和生命周期（启动/关闭、请求到达/完成、账号池选择、分区创建/清理、模型发现结果）  |
+| `debug!` | 诊断细节，生产环境默认关闭（具体账号选择过程、URL 构造、请求变换前后对比）                   |
+| `trace!` | 极细粒度调试（逐 chunk SSE 转发、JSON 解析中间态）                                           |
 
 **结构化字段（强制）：**
 
@@ -253,36 +289,43 @@ aggr.resolve(x, y)
 
 ### 逻辑归属决策速查
 
-| 问题 | 归属 |
-|------|------|
-| 操作单个实体自身字段？ | 实体方法（如 `Account::disable_for`） |
-| 操作值对象数据 + 外部数据？ | 值对象方法（如 `RecoverType::calculate_available_at`） |
-| 协调两个或多个领域对象？ | 领域服务（如 `FaultService::detect`） |
-| 涉及 Repository / HTTP / 加密？ | 应用服务（如 `ProxyPipeline`） |
-| 纯粹 HTTP / 序列化 / 外部 API？ | 基础设施层（如 `ProxyClient`） |
+| 问题                            | 归属                                                   |
+| ------------------------------- | ------------------------------------------------------ |
+| 操作单个实体自身字段？          | 实体方法（如 `Account::disable_for`）                  |
+| 操作值对象数据 + 外部数据？     | 值对象方法（如 `RecoverType::calculate_available_at`） |
+| 协调两个或多个领域对象？        | 领域服务（如 `FaultService::detect`）                  |
+| 涉及 Repository / HTTP / 加密？ | 应用服务（如 `ProxyPipeline`）                         |
+| 纯粹 HTTP / 序列化 / 外部 API？ | 基础设施层（如 `ProxyClient`）                         |
 
 ## 核心文件速查
 
-| 文件 | 说明 |
-|---|---|
-| `src/main.rs` | 启动入口 (依赖组装 + 路由 + 分区 + 后台任务) |
-| `src/application/proxy/proxy_pipeline.rs` | 代理转发管道 (薄编排层，领域逻辑在 domain/) |
-| `src/domain/provider/fault_config.rs` | 故障配置值对象 (matches_status + calculate_available_at + extract) |
-| `src/domain/provider/fault_service.rs` | 故障检测领域服务 (FaultService::detect + disable_account) |
-| `src/domain/access_point/access_point.rs` | AccessPointEx 聚合根 (sort_accounts + apply_session_affinity + transform) |
-| `src/domain/access_point/routing_strategy.rs` | 路由策略值对象 (sort_accounts) |
-| `src/domain/shared/request_snapshot.rs` | 请求快照值对象 (parse + transform_headers + HOP_BY_HOP_HEADERS) |
-| `src/infrastructure/http_client/proxy_logger.rs` | 日志积累器 (Drop 自动 flush) |
-| `src/infrastructure/http_client/processed_request.rs` | 上游请求变换 (防腐) |
-| `src/application/log/log_service.rs` | 日志写入/查询 (三阶段) |
-| `src/application/user/api_key_service.rs` | 用户 API key 管理 |
-| `src/presentation/middleware/jwt_auth.rs` | JWT 认证中间件 + CurrentUser |
-| `src/presentation/middleware/user_api_key_auth.rs` | 用户 API key 认证 |
-| `src/infrastructure/persistence/partition_manager.rs` | 分区管理 |
-| `src-dashboard/api.ts` | 前端 API 封装 (JWT 自动刷新) |
-| `src-dashboard/utils/parseLogs.ts` | 日志/会话解析工具 (buildConversationEvents + buildConversationTurns) |
-| `src-dashboard/components/session/TurnCard.tsx` | 轮次卡片组件 (递归渲染内容块, 最大深度 5 层) |
-| `src-dashboard/components/session/TurnNavigator.tsx` | Sticky 轮次导航条 |
+| 文件                                                  | 说明                                                                      |
+| ----------------------------------------------------- | ------------------------------------------------------------------------- |
+| `src/main.rs`                                         | 启动入口 (依赖组装 + 路由 + 分区 + 后台任务)                              |
+| `src/application/proxy/proxy_pipeline.rs`             | 代理转发管道 (薄编排层，领域逻辑在 domain/)                               |
+| `src/domain/provider/fault_config.rs`                 | 故障配置值对象 (matches_status + calculate_available_at + extract)        |
+| `src/domain/provider/fault_service.rs`                | 故障检测领域服务 (FaultService::detect + disable_account)                 |
+| `src/domain/access_point/access_point.rs`             | AccessPointEx 聚合根 (sort_accounts + apply_session_affinity + transform) |
+| `src/domain/access_point/routing_strategy.rs`         | 路由策略值对象 (sort_accounts)                                            |
+| `src/domain/shared/request_snapshot.rs`               | 请求快照值对象 (parse + transform_headers + HOP_BY_HOP_HEADERS)           |
+| `src/infrastructure/http_client/proxy_logger.rs`      | 日志积累器 (Drop 自动 flush)                                              |
+| `src/infrastructure/http_client/processed_request.rs` | 上游请求变换 (防腐)                                                       |
+| `src/application/log/log_service.rs`                  | 日志写入/查询 (三阶段)                                                    |
+| `src/application/user/api_key_service.rs`             | 用户 API key 管理                                                         |
+| `src/presentation/middleware/jwt_auth.rs`             | JWT 认证中间件 + CurrentUser                                              |
+| `src/presentation/middleware/user_api_key_auth.rs`    | 用户 API key 认证                                                         |
+| `src/infrastructure/persistence/partition_manager.rs` | 分区管理                                                                  |
+| `src-dashboard/api.ts`                                | 前端 API 封装 (JWT 自动刷新)                                              |
+| `src-dashboard/utils/parseLogs.ts`                    | 日志/会话解析工具 (buildConversationEvents + buildConversationTurns)      |
+| `src-dashboard/components/session/TurnCard.tsx`       | 轮次卡片组件 (递归渲染内容块, 最大深度 5 层)                              |
+| `src-dashboard/components/session/TurnNavigator.tsx`  | Sticky 轮次导航条                                                         |
+| `cliff.toml`                                          | CHANGELOG 自动生成配置 (git-cliff, feat→Added / fix→Fixed / perf→Changed) |
+| `rust-toolchain.toml`                                 | Rust 工具链版本固定 (channel = "1.96")                                    |
+| `.prettierrc` / `.prettierignore`                     | Prettier 格式化配置与排除规则                                             |
+| `.dockerignore`                                       | Docker 构建上下文排除规则                                                 |
+| `.github/workflows/ci.yml`                            | CI 流水线 (fmt + clippy + build + PostgreSQL 集成测试)                    |
+| `.github/dependabot.yml`                              | 依赖自动更新配置 (cargo + npm 每周)                                       |
+| `.claude/skills/release/SKILL.md`                     | 发布管理技能 (/release 命令)                                              |
 
 ## 注意事项（易错点）
 
