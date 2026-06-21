@@ -47,7 +47,7 @@
       "prettier --write"
     ],
     "*.rs": [
-      "cargo fmt"
+      "cargo fmt --"
     ]
   }
 }
