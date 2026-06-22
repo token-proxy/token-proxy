@@ -28,7 +28,6 @@
 ├── rust-toolchain.toml     # Rust 工具链固定 (1.96, clippy + rustfmt)
 ├── Makefile.toml           # cargo-make 任务编排
 ├── Dockerfile              # 多阶段 Docker 构建 (Node 22 → Rust 1.89 → Alpine 3.21)
-├── docker-compose.yml      # PostgreSQL 17 + App 容器编排
 ├── .dockerignore           # Docker 构建上下文优化
 └── product.md              # 产品需求文档
 ```
@@ -579,9 +578,7 @@ Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules
 2. **backend-builder**: Rust 1.96 Alpine — cargo build --release (reqwest 使用 rustls TLS, 无需 OpenSSL 系统库; 嵌入前端产物)
 3. **runtime**: Alpine 3.22 — 仅包含二进制和运行时依赖 (ca-certificates + tzdata + libgcc)
 
-```bash
-docker compose up -d    # 启动 PostgreSQL + App
-```
+镜像通过 CI 发布到 `ghcr.io/your-org/token-proxy:latest`，直接 `docker run` 即可启动。
 
 ## CI/CD
 
@@ -685,8 +682,8 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 后端        | 163 个 .rs 文件, cargo check 零错误零警告                                     |
 | 前端        | 67 个 .ts/.tsx 源文件, tsc --noEmit 零错误                                    |
 | Schema 迁移 | 2 个迁移文件 (初始表 + 账户池)                                                |
-| Docker 构建 | 多阶段构建就绪 (含 .dockerignore)                                             |
-| 容器编排    | docker-compose.yml 就绪                                                       |
+| Docker 构建 | 多阶段构建就绪 (含 .dockerignore + HEALTHCHECK)                               |
+| 镜像分发    | GitHub Container Registry (`ghcr.io/your-org/token-proxy`)                    |
 | CI          | GitHub Actions 3 并行 job (后端检查 + 前端检查 + 集成测试)                    |
 | 依赖更新    | Dependabot 每周自动检查 cargo 和 npm                                          |
 | 代码格式化  | Prettier (前端) + rustfmt (后端), pre-commit hook 自动执行                    |

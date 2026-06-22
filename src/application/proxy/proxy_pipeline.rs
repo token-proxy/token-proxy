@@ -4,6 +4,8 @@
 //! 领域逻辑委托给 `AccessPointEx`、`FaultService`、`RoutingStrategy` 等，
 //! 本层仅负责加载数据、调用领域行为、转发 HTTP、构造响应。
 
+use std::sync::atomic::AtomicI64;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -39,9 +41,12 @@ pub struct ProxyPipeline {
     proxy_client: Arc<ProxyClient>,
     log_service: Arc<LogService>,
     session_affinity_repo: Arc<dyn SessionAffinityRepository>,
+    /// 飞行中异步写入计数器（代理日志 + 会话粘滞），支持优雅关闭等待落库
+    in_flight_writes: Arc<AtomicI64>,
 }
 
 impl ProxyPipeline {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         access_point_repo: Arc<dyn AccessPointRepository>,
         provider_repo: Arc<dyn ProviderRepository>,
@@ -50,6 +55,7 @@ impl ProxyPipeline {
         proxy_client: Arc<ProxyClient>,
         log_service: Arc<LogService>,
         session_affinity_repo: Arc<dyn SessionAffinityRepository>,
+        in_flight_writes: Arc<AtomicI64>,
     ) -> Self {
         ProxyPipeline {
             access_point_repo,
@@ -59,6 +65,7 @@ impl ProxyPipeline {
             proxy_client,
             log_service,
             session_affinity_repo,
+            in_flight_writes,
         }
     }
 
@@ -188,7 +195,12 @@ impl ProxyPipeline {
                     provider.id,
                     account_entry.account_id,
                 );
-                let logger = ProxyLogger::new(log_data, self.log_service.clone(), start);
+                let logger = ProxyLogger::new(
+                    log_data,
+                    self.log_service.clone(),
+                    start,
+                    self.in_flight_writes.clone(),
+                );
 
                 if is_sse {
                     let byte_stream = upstream_resp.bytes_stream();
@@ -215,6 +227,7 @@ impl ProxyPipeline {
                         access_point.id,
                         &session_id,
                         account_entry.account_id,
+                        self.in_flight_writes.clone(),
                     );
 
                     return response_builder
@@ -237,6 +250,7 @@ impl ProxyPipeline {
                         access_point.id,
                         &session_id,
                         account_entry.account_id,
+                        self.in_flight_writes.clone(),
                     );
 
                     return response_builder
@@ -266,7 +280,12 @@ impl ProxyPipeline {
                         provider.id,
                         account_entry.account_id,
                     );
-                    let logger = ProxyLogger::new(log_data, self.log_service.clone(), start);
+                    let logger = ProxyLogger::new(
+                        log_data,
+                        self.log_service.clone(),
+                        start,
+                        self.in_flight_writes.clone(),
+                    );
 
                     let byte_stream = upstream_resp.bytes_stream();
                     let stream = async_stream::stream! {
@@ -325,7 +344,12 @@ impl ProxyPipeline {
                     provider.id,
                     account_entry.account_id,
                 );
-                let mut logger = ProxyLogger::new(log_data, self.log_service.clone(), start);
+                let mut logger = ProxyLogger::new(
+                    log_data,
+                    self.log_service.clone(),
+                    start,
+                    self.in_flight_writes.clone(),
+                );
                 logger.set_body(&resp_body);
                 logger.flush();
 
@@ -440,19 +464,24 @@ fn build_proxy_log_data(
 }
 
 /// 异步保存会话粘滞绑定（spawn 到后台，不阻塞响应返回）
+///
+/// 通过 `in_flight_writes` 计数器追踪，优雅关闭时等待落库。
 fn spawn_save_affinity(
     repo: Arc<dyn SessionAffinityRepository>,
     access_point_id: Uuid,
     session_id: &str,
     account_id: Uuid,
+    in_flight_writes: Arc<AtomicI64>,
 ) {
     if session_id == "unknown" {
         return;
     }
     let sid = session_id.to_string();
+    in_flight_writes.fetch_add(1, Ordering::Release);
     tokio::spawn(async move {
         if let Err(e) = repo.upsert(access_point_id, &sid, account_id).await {
             tracing::warn!(error = %e, "会话绑定保存失败");
         }
+        in_flight_writes.fetch_sub(1, Ordering::Release);
     });
 }

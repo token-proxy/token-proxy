@@ -1,4 +1,9 @@
+use std::sync::atomic::Ordering;
+
+use axum::extract::State;
+use axum::http::StatusCode;
 use axum::{middleware, routing::get, Json, Router};
+use sea_orm::ConnectionTrait;
 
 use crate::application::AppState;
 use crate::presentation::frontend;
@@ -30,6 +35,7 @@ pub fn build(state: AppState) -> Router {
     // 公开路由 — 不应用任何认证中间件
     let public = auth_routes::public_routes()
         .route("/api/health", get(health_check))
+        .route("/api/ready", get(readiness_check))
         .with_state(state.clone());
 
     // JWT 保护的路由
@@ -63,9 +69,40 @@ pub fn build(state: AppState) -> Router {
         .fallback(get(frontend::serve_frontend))
 }
 
-/// GET /api/health
+/// GET /api/health — 存活探针（liveness）
 ///
-/// 健康检查端点（公开）
-async fn health_check() -> Json<serde_json::Value> {
+/// 仅判断进程是否存活：
+/// - 正常运行 → 200 `{"status": "ok"}`
+/// - 优雅关闭中 → 200 `{"status": "shutting_down"}`（仍然存活，但不就绪）
+///
+/// 关闭中返回 200 是有意为之 — liveness 失败会触发 K8s 重启 Pod，
+/// 而我们正在主动关闭，不希望被重启。摘除流量交给 readiness 处理。
+async fn health_check(State(state): State<AppState>) -> Json<serde_json::Value> {
+    if state.shutting_down.load(Ordering::Acquire) {
+        return Json(serde_json::json!({"status": "shutting_down"}));
+    }
     Json(serde_json::json!({"status": "ok"}))
+}
+
+/// GET /api/ready — 就绪探针（readiness）
+///
+/// 判断当前是否可以接收新请求：
+/// - 关闭中 → 503（K8s 从 Service 摘除 Pod）
+/// - 数据库不可达 → 503
+/// - 一切正常 → 200 `{"status": "ready"}`
+async fn readiness_check(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if state.shutting_down.load(Ordering::Acquire) {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    // 数据库连通性探测：执行最轻量的 SQL
+    state
+        .db
+        .execute_unprepared("SELECT 1")
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+
+    Ok(Json(serde_json::json!({"status": "ready"})))
 }

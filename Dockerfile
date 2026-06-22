@@ -35,6 +35,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # ─── 阶段 3: 运行时镜像 ────────────────────────────
 FROM alpine:3.24
 
+# wget 用于 HEALTHCHECK（Alpine 默认带 BusyBox wget，比 curl 更轻）
 RUN apk add --no-cache ca-certificates tzdata libgcc
 
 ENV TZ=Asia/Shanghai
@@ -44,5 +45,11 @@ ENV LOG_LEVEL=info
 COPY --from=backend-builder /out/token-proxy /usr/local/bin/token-proxy
 
 EXPOSE ${SERVER_PORT}
+
+# 健康检查：调用 /api/health 端点
+# - 关闭中时端点返回 {"status":"shutting_down"}，仍返回 200，HEALTHCHECK 视为健康
+#   （避免 Docker 在优雅关闭期间重启容器；K8s 用单独的 /api/ready 实现摘除流量）
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:${SERVER_PORT}/api/health || exit 1
 
 ENTRYPOINT ["token-proxy"]

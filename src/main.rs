@@ -1,7 +1,12 @@
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicI64;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use axum::Router;
 use sea_orm::Database;
+use tokio::signal;
+use tokio::sync::watch;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info_span;
@@ -116,6 +121,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     token_proxy::migrations::Migrator::up(&*db, None).await?;
     tracing::info!("数据库迁移完成");
 
+    // ─── 优雅关闭信号协调 ───
+    //
+    // `shutdown_tx`：广播关闭信号到 axum 和所有后台任务
+    // `shutting_down`：供健康检查端点查询当前状态
+    // `in_flight_writes`：追踪所有 fire-and-forget 的数据库写入任务（代理日志、会话粘滞），
+    //                    主线程在 axum 排空连接后轮询此计数归零，确保数据落库再退出
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let shutting_down = Arc::new(AtomicBool::new(false));
+    let in_flight_writes = Arc::new(AtomicI64::new(0));
+
+    // 注册 SIGTERM 监听（K8s 滚动更新发送的标准信号）
+    {
+        let tx = shutdown_tx.clone();
+        let flag = shutting_down.clone();
+        tokio::spawn(async move {
+            let mut sig = signal::unix::signal(signal::unix::SignalKind::terminate())
+                .expect("无法注册 SIGTERM 信号处理");
+            sig.recv().await;
+            tracing::info!("收到 SIGTERM 信号，开始优雅关闭");
+            flag.store(true, Ordering::Release);
+            let _ = tx.send(true);
+        });
+    }
+
+    // 注册 SIGINT 监听（本地开发 Ctrl+C）
+    {
+        let tx = shutdown_tx.clone();
+        let flag = shutting_down.clone();
+        tokio::spawn(async move {
+            let mut sig = signal::unix::signal(signal::unix::SignalKind::interrupt())
+                .expect("无法注册 SIGINT 信号处理");
+            sig.recv().await;
+            tracing::info!("收到 SIGINT 信号，开始优雅关闭");
+            flag.store(true, Ordering::Release);
+            let _ = tx.send(true);
+        });
+    }
+
     // ─── 分区管理器初始化 ───
 
     let partition_manager = Arc::new(PartitionManager::new(
@@ -173,24 +216,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token_repo_cleanup = refresh_token_repo.clone();
     let token_cleanup_interval =
         std::time::Duration::from_secs(config.partition_check_interval_secs);
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(token_cleanup_interval);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        // 首个 tick 立即触发，跳过它避免启动瞬间执行
-        interval.tick().await;
-        loop {
+    {
+        let mut task_shutdown_rx = shutdown_rx.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(token_cleanup_interval);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            // 首个 tick 立即触发，跳过它避免启动瞬间执行
             interval.tick().await;
-            match token_repo_cleanup.delete_expired().await {
-                Ok(n) if n > 0 => {
-                    tracing::info!(count = %n, "清理过期 refresh_token");
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::error!(error = %e, "清理过期 refresh_token 失败");
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        match token_repo_cleanup.delete_expired().await {
+                            Ok(n) if n > 0 => {
+                                tracing::info!(count = %n, "清理过期 refresh_token");
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::error!(error = %e, "清理过期 refresh_token 失败");
+                            }
+                        }
+                    }
+                    _ = task_shutdown_rx.changed() => {
+                        tracing::info!("后台任务退出：refresh_token 清理");
+                        break;
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 
     let log_repo: Arc<dyn LogRepository> = Arc::new(SeaOrmLogRepository::new(db.clone()));
 
@@ -250,6 +303,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         proxy_client.clone(),
         log_service.clone(),
         session_affinity_repo.clone(),
+        in_flight_writes.clone(),
     ));
 
     let user_api_key_service = Arc::new(UserApiKeyService::new(
@@ -265,56 +319,76 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 启动后台定时任务：清理过期的 session_affinity
     let sa_repo_cleanup = session_affinity_repo.clone();
     let sa_cleanup_interval = std::time::Duration::from_secs(config.partition_check_interval_secs);
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(sa_cleanup_interval);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        interval.tick().await;
-        loop {
+    {
+        let mut task_shutdown_rx = shutdown_rx.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(sa_cleanup_interval);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             interval.tick().await;
-            match sa_repo_cleanup
-                .delete_stale(chrono::Duration::days(7))
-                .await
-            {
-                Ok(n) if n > 0 => {
-                    tracing::info!(count = %n, "清理过期 session_affinity");
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::error!(error = %e, "清理 session_affinity 失败");
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        match sa_repo_cleanup
+                            .delete_stale(chrono::Duration::days(7))
+                            .await
+                        {
+                            Ok(n) if n > 0 => {
+                                tracing::info!(count = %n, "清理过期 session_affinity");
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::error!(error = %e, "清理 session_affinity 失败");
+                            }
+                        }
+                    }
+                    _ = task_shutdown_rx.changed() => {
+                        tracing::info!("后台任务退出：session_affinity 清理");
+                        break;
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 
     // 启动后台定时分区维护任务
     let pm = partition_manager.clone();
     let ss_repo = system_settings_repo.clone();
     let check_interval = std::time::Duration::from_secs(config.partition_check_interval_secs);
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(check_interval);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            interval.tick().await;
-            let retention = ss_repo
-                .get()
-                .await
-                .map(|s| s.log_retention_months)
-                .unwrap_or(12);
-            match pm.run_maintenance_with_lock(retention).await {
-                Ok(result) => {
-                    if !result.created.is_empty() {
-                        tracing::info!(created = ?result.created, "分区维护创建分区");
+    {
+        let mut task_shutdown_rx = shutdown_rx.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(check_interval);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        let retention = ss_repo
+                            .get()
+                            .await
+                            .map(|s| s.log_retention_months)
+                            .unwrap_or(12);
+                        match pm.run_maintenance_with_lock(retention).await {
+                            Ok(result) => {
+                                if !result.created.is_empty() {
+                                    tracing::info!(created = ?result.created, "分区维护创建分区");
+                                }
+                                if !result.dropped.is_empty() {
+                                    tracing::info!(dropped = ?result.dropped, "分区维护清理过期分区");
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!(error = %e, "分区维护失败");
+                            }
+                        }
                     }
-                    if !result.dropped.is_empty() {
-                        tracing::info!(dropped = ?result.dropped, "分区维护清理过期分区");
+                    _ = task_shutdown_rx.changed() => {
+                        tracing::info!("后台任务退出：分区维护");
+                        break;
                     }
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "分区维护失败");
                 }
             }
-        }
-    });
+        });
+    }
 
     // ─── 首次启动：创建默认 admin 用户 ───
 
@@ -365,6 +439,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         jwt_service,
         proxy_client,
         session_affinity_repo,
+        shutting_down: shutting_down.clone(),
+        in_flight_writes: in_flight_writes.clone(),
     };
 
     // ─── 构建 Router ───
@@ -394,7 +470,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(address = %addr, "服务开始监听");
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
+
+    // ─── 启动 axum 并接入优雅关闭 ───
+    //
+    // `with_graceful_shutdown` 会在 shutdown 信号到达时停止接受新连接，
+    // 并等待所有现有 HTTP handler 自然返回（包括 SSE 流自然结束）。
+    {
+        let mut axum_shutdown_rx = shutdown_rx.clone();
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                // watch::Receiver::changed() 在 sender 发送新值后立即 resolve
+                while !*axum_shutdown_rx.borrow_and_update() {
+                    if axum_shutdown_rx.changed().await.is_err() {
+                        break;
+                    }
+                }
+                tracing::info!("已停止接受新连接，等待现有请求完成...");
+            })
+            .await?;
+    }
+
+    tracing::info!("所有 HTTP 连接已关闭");
+
+    // ─── 等待异步数据库写入落库 ───
+    //
+    // axum 的 graceful shutdown 只保证 handler 返回，
+    // 但 handler 内部通过 `tokio::spawn` 提交的代理日志、会话粘滞写入仍在飞行中。
+    // 通过 `in_flight_writes` 计数器轮询，确保全部落库再退出进程。
+    let poll_interval = std::time::Duration::from_millis(100);
+    loop {
+        let remaining = in_flight_writes.load(Ordering::Acquire);
+        if remaining == 0 {
+            break;
+        }
+        tracing::info!(remaining = %remaining, "等待异步数据库写入完成...");
+        tokio::time::sleep(poll_interval).await;
+    }
+
+    tracing::info!("服务已完全关闭");
 
     Ok(())
 }
