@@ -219,7 +219,7 @@ infrastructure/
 ├── encryption/             # 加密实现
 │   └── aes256_gcm_encryption_service.rs # Aes256GcmEncryptionService
 ├── auth/                   # 认证实现
-│   ├── jwt_service.rs      # JwtService (jsonwebtoken, 含 refresh_expiry_secs 访问器)
+│   ├── jwt_service.rs      # JwtService (jsonwebtoken 10 + aws-lc-rs 加密后端, 含 refresh_expiry_secs 访问器)
 │   ├── password.rs         # argon2 密码哈希
 │   └── claims.rs           # JWT Claims 定义
 ├── parsers/                # 响应体解析器
@@ -229,7 +229,7 @@ infrastructure/
 │   └── mod.rs
 └── http_client/            # HTTP 客户端
     ├── processed_request.rs # ProcessedRequest: 入站→上游请求变换 (接受 provider_id 参数)
-    ├── proxy_client.rs     # ProxyClient (reqwest 连接池, 纯 HTTP 执行器)
+    ├── proxy_client.rs     # ProxyClient (reqwest 连接池 + rustls TLS, 纯 HTTP 执行器)
     └── proxy_logger.rs     # ProxyLogger: 代理日志积累器, Drop 自动标记中断并 flush
 ```
 
@@ -527,6 +527,7 @@ POST /ap/{short_code}/v1/messages  (Authorization: Bearer <user_api_key>)
 | 错误隔离     | 加密/数据库错误不暴露原始详情                                                                                  |
 | Header 构造  | 上游请求独立构建，入站 `authorization` 只用于用户 API key 认证，provider 认证由账号 API key 单独生成           |
 | 传输安全     | 建议部署时配置 HTTPS 反向代理                                                                                  |
+| TLS 实现     | reqwest 0.13 默认使用 rustls（纯 Rust TLS），替代 native-tls (OpenSSL)；JWT 签名使用 aws-lc-rs 加密后端        |
 | JWT 自动刷新 | 前端「双层防御」: 请求前体检 + 401 兜底，模块级 Promise 并发去重                                               |
 | 过期令牌清理 | tokio 后台任务每小时物理删除过期 refresh_token，不引入 Redis 或 pg_cron; 多副本部署时通过 advisory lock 防冲突 |
 
@@ -552,8 +553,8 @@ cargo make preview      # 构建并运行 release 版本
 Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules/` 等构建上下文中的无关文件，加速远程构建:
 
 1. **frontend-builder**: Node 22 Alpine — npm ci + npm run build
-2. **backend-builder**: Rust 1.89 Alpine — cargo build --release (嵌入前端产物)
-3. **runtime**: Alpine 3.21 — 仅包含二进制和运行时依赖
+2. **backend-builder**: Rust 1.96 Alpine — cargo build --release (reqwest 使用 rustls TLS, 无需 OpenSSL 系统库; 嵌入前端产物)
+3. **runtime**: Alpine 3.22 — 仅包含二进制和运行时依赖 (ca-certificates + tzdata + libgcc)
 
 ```bash
 docker compose up -d    # 启动 PostgreSQL + App
@@ -693,3 +694,4 @@ docker compose up -d    # 启动 PostgreSQL + App
 | 2026-06-17       | Proxy 防腐层重构: 新增 `log_anti_corruption.rs` 实现 LogContext 防腐层，从 ProcessedRequest 和 AccessPointEx 中一次性提取所有日志参数。pipeline.rs 将日志数据提取、LogEntry 构造、LogTaskContext 组装和 InterruptGuard 创建全部委托给防腐层处理。InterruptGuard 从 7 个独立字段简化为持有 LogContext。遵循 DDD 防腐层模式，保证代理转发逻辑不被日志格式细节侵蚀                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 2026-06-17       | 透明代理 + ProxyLogger 日志架构重写: 确立透明代理原则——上游响应原样透传，仅过滤 hop-by-hop 头；传输方式判断由请求体 `stream` 字段改为响应头 `content-type`；日志架构从双路径（InterruptGuard + spawn_log_task）简化为 ProxyLogger 积累器模式（统一 flush，Drop 自动检测中断）；删除 `interrupt_guard.rs` 和 `ProcessedRequest.is_streaming`；`record_proxy_log` 强化三阶段独立错误处理；同步更新基础设施层目录结构（新增 parsers/、http_client/ 拆为 processed_request + proxy_client）为实际文件布局                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | 2026-06-20       | 会话详情视图重构: 新增 TurnCard（轮次卡片）、TurnNavigator（轮次导航条）两个组件；删除 ClaudeSessionTimeline（被 TurnCard 替代）；SessionDetailView 从事件流+摘要表格改为轮次导航+轮次卡片列表；types/log.ts 新增 ConversationTurn / TurnBlock / TurnTokenSummary 轮次-块-摘要三级类型；parseLogs.ts 新增 buildConversationTurns() 核心函数                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 2026-06-22       | Rust 依赖批量升级 (12 个依赖): reqwest 0.12→0.13（默认 TLS 从 native-tls 切换为 rustls, 不再需要 OpenSSL 系统库）、jsonwebtoken 9→10 并新增 aws-lc-rs 加密后端、tower-http 0.6→0.7、sea-orm rc.38→rc.41、rand 0.8→0.10 (RngCore→Rng API 迁移)、sha2 0.10→0.11 (finalize 返回类型变更); 新增 hex 0.4 依赖。5 个 .rs 文件 API 迁移, 逻辑零变更                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
