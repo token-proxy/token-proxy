@@ -1,4 +1,4 @@
-use aes_gcm::aead::{Aead, KeyInit, OsRng};
+use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
 use async_trait::async_trait;
 
@@ -65,9 +65,9 @@ impl EncryptionService for Aes256GcmEncryptionService {
 impl Aes256GcmEncryptionService {
     /// 生成 12 字节随机 nonce
     fn generate_nonce() -> [u8; 12] {
-        use rand::RngCore;
+        use rand::Rng;
         let mut nonce = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce);
+        rand::rng().fill_bytes(&mut nonce);
         nonce
     }
 }
