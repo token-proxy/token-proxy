@@ -9,6 +9,7 @@ body = """
 {%- if commit.breaking %} **BREAKING**{% endif %}
 {%- endfor %}
 {% endfor %}
+
 """
 trim = true
 footer = ""

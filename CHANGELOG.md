@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.1] - 2026-06-22
+
+### Fixed
+
+- 修复创建接入点表单账号池无法选择服务商及模型路由未自动添加未匹配行
+
+### Miscellaneous
+
+- Bump version to 1.0.1
+
 ## [1.0.0] - 2026-06-22
 
 ### Added
