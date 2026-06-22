@@ -1,5 +1,5 @@
 # ─── 阶段 1: 构建前端 ─────────────────────────────
-FROM node:22-alpine AS frontend-builder
+FROM node:26-alpine AS frontend-builder
 
 WORKDIR /app
 COPY package.json ./
@@ -27,7 +27,7 @@ COPY --from=frontend-builder /app/dist dist/
 RUN cargo build --release
 
 # ─── 阶段 3: 运行时镜像 ────────────────────────────
-FROM alpine:3.22
+FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates tzdata libgcc
 
