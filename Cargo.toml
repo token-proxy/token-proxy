@@ -18,7 +18,7 @@ sea-orm = { version = "2.0.0-rc.38", features = ["sqlx-postgres", "runtime-tokio
 sea-orm-migration = { version = "2.0.0-rc.38", features = ["sqlx-postgres", "runtime-tokio-rustls"] }
 aes-gcm = "0.10"
 argon2 = "0.5"
-jsonwebtoken = { version = "10", features = ["aws-lc-rs"] }
+jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 reqwest = { version = "0.13", features = ["json", "stream", "gzip", "brotli", "deflate"] }
 rand = "0.10"
 base64 = "0.22"

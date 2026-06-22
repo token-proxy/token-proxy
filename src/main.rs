@@ -50,6 +50,12 @@ use token_proxy::presentation::routes;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // jsonwebtoken 10.x 不再自动选择加密后端，必须在任何 JWT 操作之前显式安装
+    // 否则 CryptoProvider::from_crate_features() 会 panic
+    jsonwebtoken::crypto::aws_lc::DEFAULT_PROVIDER
+        .install_default()
+        .ok();
+
     // 加载 .env（可选）
     dotenvy::dotenv().ok();
 
