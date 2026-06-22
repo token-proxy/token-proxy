@@ -1,6 +1,14 @@
 [changelog]
 header = "# CHANGELOG\n\n本项目的所有重要变更均会记录在此文件中。\n\n格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，\n项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。\n\n"
-body = ""
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }}\
+{%- if commit.breaking %} **BREAKING**{% endif %}
+{%- endfor %}
+{% endfor %}
+"""
 trim = true
 footer = ""
 
