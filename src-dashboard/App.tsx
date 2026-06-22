@@ -32,7 +32,7 @@ function App() {
           <Route path="logs/:id" element={<LogDetailPage />} />
           <Route path="users" element={<UserManagement />} />
           <Route path="settings" element={<SettingsPage />} />
-          <Route path="settings/profile" element={<ProfilePage />} />
+          <Route path="profile" element={<ProfilePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

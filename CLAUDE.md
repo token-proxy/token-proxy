@@ -119,7 +119,8 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 /sessions → /sessions/:sessionId (SessionLogPage)
 /logs → /logs/:id (LogDetailPage)
 /users (UserManagement)
-/settings → /settings/profile (ProfilePage)
+/settings (SettingsPage)
+/profile (ProfilePage)
 ```
 
 管理侧边栏: Dashboard, 服务商管理, 接入点管理, 会话日志, 请求日志, 用户管理, 系统设置
