@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.2] - 2026-06-22
+
+### Fixed
+
+- 修复上游响应超时控制并增强响应体格式支持
+
+### Miscellaneous
+
+- Bump version to 1.0.2
+
 ## [1.0.1] - 2026-06-22
 
 ### Fixed
