@@ -32,7 +32,7 @@ commit_parsers = [
   { message = ".*", group = "Miscellaneous" },
 ]
 protect_breaking_commits = false
-filter_commits = true
+filter_commits = false
 tag_pattern = "[0-9]*"
 skip_tags = ""
 ignore_tags = ""
