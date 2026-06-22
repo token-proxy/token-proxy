@@ -193,7 +193,7 @@ function AccountRowEditor({
 function DraggableAccountList({
   accounts,
   rowKeys,
-  rowSelectedProviders,
+  effectiveSelectedProviders,
   accountsCache,
   loadingProviders,
   usedAccountIds,
@@ -206,7 +206,7 @@ function DraggableAccountList({
 }: {
   accounts: AccountEntry[];
   rowKeys: string[];
-  rowSelectedProviders: (string | null)[];
+  effectiveSelectedProviders: (string | null)[];
   accountsCache: Record<string, AccountOption[]>;
   loadingProviders: Set<string>;
   usedAccountIds: Set<string>;
@@ -290,13 +290,15 @@ function DraggableAccountList({
             accountEntry={accountEntry}
             index={index}
             rowKey={rowKeys[index]}
-            selectedProvider={rowSelectedProviders[index]}
+            selectedProvider={effectiveSelectedProviders[index]}
             providerAccounts={
-              rowSelectedProviders[index] ? (accountsCache[rowSelectedProviders[index]!] ?? []) : []
+              effectiveSelectedProviders[index]
+                ? (accountsCache[effectiveSelectedProviders[index]!] ?? [])
+                : []
             }
             accountsLoading={
-              rowSelectedProviders[index]
-                ? loadingProviders.has(rowSelectedProviders[index]!)
+              effectiveSelectedProviders[index]
+                ? loadingProviders.has(effectiveSelectedProviders[index]!)
                 : false
             }
             usedAccountIds={usedAccountIds}
@@ -337,6 +339,24 @@ export default function AccessPointDrawer({
   const [accountsCache, setAccountsCache] = useState<Record<string, AccountOption[]>>({});
   const [loadingProviders, setLoadingProviders] = useState<Set<string>>(new Set());
 
+  // 手动选择的 provider 映射（rowKey → provider_id）
+  // 解决 AccountEntry 无 provider_id 字段导致的循环依赖：
+  // 用户需先选服务商才能加载账号，但 provider 选择原仅可从已选账号派生，
+  // 造成"选服务商 → 清空账号 → provider 回弹为空"的死循环。
+  const [manualProviderSelections, setManualProviderSelections] = useState<Record<string, string>>(
+    {},
+  );
+
+  // 重新打开创建抽屉时清除手动 provider 选择残留
+  // 防止上一次会话的 __row_0 / __row_1 键在新会话中错误回显
+  const prevVisibleRef = useRef(visible);
+  useEffect(() => {
+    if (visible && !prevVisibleRef.current && !editingAccessPoint) {
+      setManualProviderSelections({});
+    }
+    prevVisibleRef.current = visible;
+  }, [visible, editingAccessPoint]);
+
   // 合并全局 accounts 和本地缓存
   const allKnownAccounts = useMemo(() => {
     const merged = [...accounts];
@@ -361,6 +381,14 @@ export default function AccessPointDrawer({
         : null,
     );
   }, [formData.accounts, allKnownAccounts]);
+
+  // 每行实际生效的 provider 选择：手动选择优先，其次从已选账号派生
+  const effectiveSelectedProviders = useMemo(() => {
+    return formData.accounts.map((_b, i) => {
+      const rk = rowKeys[i];
+      return manualProviderSelections[rk] ?? rowSelectedProviders[i];
+    });
+  }, [formData.accounts, rowKeys, manualProviderSelections, rowSelectedProviders]);
 
   // 编辑时预加载所有服务商账号，用于回显已有账号的 provider
   const preloadedRef = useRef(false);
@@ -407,8 +435,24 @@ export default function AccessPointDrawer({
     [accountsCache, loadingProviders],
   );
 
+  // ref 避免闭包陈旧导致删除错行
+  // NOTE: ref 声明和同步 effect 必须在所有读取 rowKeysRef / formDataRef 的
+  // useCallback 之前，否则 react-hooks/immutability 规则会报"修改已传入 hook 的值"错误
+  const formDataRef = useRef(formData);
+  const rowKeysRef = useRef(rowKeys);
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+  useEffect(() => {
+    rowKeysRef.current = rowKeys;
+  }, [rowKeys]);
+
   const handleProviderChange = useCallback(
     (index: number, providerId: string) => {
+      // 暂存 provider 选择（使用 rowKey 避免索引漂移），解决 AccountEntry 无 provider_id
+      // 字段导致的循环依赖：选服务商 → 清空账号 → rowSelectedProviders 回弹为空
+      const rk = rowKeysRef.current[index];
+      setManualProviderSelections((prev) => ({ ...prev, [rk]: providerId }));
       // 清除该行的 account 选择
       const accounts = [...formData.accounts];
       accounts[index] = { ...accounts[index], account_id: '' };
@@ -424,6 +468,16 @@ export default function AccessPointDrawer({
       const accounts = [...formData.accounts];
       accounts[index] = { ...accounts[index], account_id: accountId };
       onFormChange({ ...formData, accounts });
+      // 账号已选定，清除手动 provider 选择（现在可从已选账号派生 provider）
+      if (accountId) {
+        const rk = rowKeysRef.current[index];
+        setManualProviderSelections((prev) => {
+          if (!(rk in prev)) return prev;
+          const next = { ...prev };
+          delete next[rk];
+          return next;
+        });
+      }
     },
     [formData, onFormChange],
   );
@@ -443,17 +497,6 @@ export default function AccessPointDrawer({
     },
     [formData, onFormChange],
   );
-
-  // ref 避免闭包陈旧导致删除错行
-  const formDataRef = useRef(formData);
-  const rowKeysRef = useRef(rowKeys);
-  // 每次渲染后同步 ref 值，确保 handleRemove 使用的 ref 是最新的
-  useEffect(() => {
-    formDataRef.current = formData;
-  }, [formData]);
-  useEffect(() => {
-    rowKeysRef.current = rowKeys;
-  }, [rowKeys]);
 
   const handleRemove = useCallback(
     (rowKey: string) => {
@@ -583,7 +626,7 @@ export default function AccessPointDrawer({
       render: (_: unknown, _record: AccountEntry, index: number) => (
         <Select
           placeholder="选择服务商"
-          value={rowSelectedProviders[index]}
+          value={effectiveSelectedProviders[index]}
           onChange={(v) => handleProviderChange(index, v as string)}
           size="small"
           style={{ width: '100%' }}
@@ -601,7 +644,7 @@ export default function AccessPointDrawer({
       key: 'account',
       width: 260,
       render: (_: unknown, record: AccountEntry, index: number) => {
-        const sp = rowSelectedProviders[index];
+        const sp = effectiveSelectedProviders[index];
         const provAccounts = sp ? (accountsCache[sp] ?? []) : [];
         const isLoading = sp ? loadingProviders.has(sp) : false;
         const avail = provAccounts.filter(
@@ -884,7 +927,7 @@ export default function AccessPointDrawer({
             <DraggableAccountList
               accounts={formData.accounts}
               rowKeys={rowKeys}
-              rowSelectedProviders={rowSelectedProviders}
+              effectiveSelectedProviders={effectiveSelectedProviders}
               accountsCache={accountsCache}
               loadingProviders={loadingProviders}
               usedAccountIds={usedAccountIds}
