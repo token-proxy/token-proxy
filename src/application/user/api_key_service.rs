@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{distr::Alphanumeric, RngExt};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -51,11 +51,11 @@ impl UserApiKeyService {
     fn hash_key(key: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(key.as_bytes());
-        format!("{:x}", hasher.finalize())
+        hex::encode(hasher.finalize())
     }
 
     fn generate_key() -> String {
-        let random: String = rand::thread_rng()
+        let random: String = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(TOKEN_RANDOM_LEN)
             .map(char::from)

@@ -4,7 +4,7 @@
 //! 提供校验、随机生成和字符串转换能力。
 
 use crate::shared::error::AppError;
-use rand::Rng;
+use rand::RngExt;
 use sea_orm::DeriveValueType;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -43,10 +43,10 @@ impl ShortCode {
 
     /// 随机生成 16 位字母数字短码
     pub fn generate() -> Self {
-        let mut rng = rand::rngs::OsRng;
+        let mut rng = rand::rng();
         let code: String = (0..GENERATED_LENGTH)
             .map(|_| {
-                let idx = rng.gen_range(0..CHARSET.len());
+                let idx = rng.random_range(0..CHARSET.len());
                 CHARSET[idx] as char
             })
             .collect();

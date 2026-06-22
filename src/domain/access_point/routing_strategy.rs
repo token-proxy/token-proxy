@@ -3,7 +3,7 @@
 //! 定义 `RoutingStrategy` 枚举（Priority / Weighted），
 //! 封装账户池排序逻辑作为领域行为，而不是放在应用层编排中。
 
-use rand::distributions::Distribution;
+use rand::distr::Distribution;
 use sea_orm::prelude::StringLen;
 use sea_orm::DeriveActiveEnum;
 use sea_orm::EnumIter;
@@ -52,8 +52,8 @@ impl RoutingStrategy {
                     .iter()
                     .map(|a| if a.weight > 0 { a.weight as u32 } else { 0 })
                     .collect();
-                if let Ok(dist) = rand::distributions::WeightedIndex::new(&weights) {
-                    let selected = dist.sample(&mut rand::thread_rng());
+                if let Ok(dist) = rand::distr::weighted::WeightedIndex::new(&weights) {
+                    let selected = dist.sample(&mut rand::rng());
                     accounts.swap(0, selected);
                 }
                 // 2. 其余账户按 priority 升序排列作为降级回退
