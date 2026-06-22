@@ -15,6 +15,9 @@ import type {
 
 // ─── 类型 ───
 
+/** 响应体格式类型 */
+export type ResponseFormat = 'sse' | 'json';
+
 export interface ParsedContentBlock {
   block_type: 'text' | 'thinking' | 'tool_use' | 'redacted_thinking' | 'tool_result';
   content?: string;
@@ -234,6 +237,147 @@ export function createMessagePreview(
   return singleLine.length > 200 ? singleLine.slice(0, 200) + '...' : singleLine;
 }
 
+// ─── 格式检测 ───
+
+/**
+ * 通过 JSON.parse 试探自动判定响应体格式（内部辅助函数）
+ *
+ * 仅当调用方未显式传入 format 时使用。
+ * SSE 格式（event:/data: 行）无法被 JSON.parse 成功解析，
+ * JSON 格式则一定能被成功解析。
+ */
+function isJsonFormat(responseBody: string): boolean {
+  try {
+    JSON.parse(responseBody);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 从响应头中检测响应体格式
+ *
+ * 根据 Content-Type 响应头判定：
+ * - `text/event-stream` → SSE 流式格式
+ * - 其他（含 `application/json`、缺失等）→ JSON 格式
+ *
+ * @param responseHeaders - 响应头键值对（key 为小写）
+ * @returns 响应体格式类型
+ */
+export function detectResponseFormat(
+  responseHeaders: Record<string, unknown> | null | undefined,
+): ResponseFormat {
+  if (!responseHeaders) return 'json';
+
+  const contentType = responseHeaders['content-type'];
+  if (typeof contentType === 'string' && contentType.includes('text/event-stream')) {
+    return 'sse';
+  }
+
+  return 'json';
+}
+
+// ─── JSON 响应体解析 ───
+
+/**
+ * 解析 JSON 格式响应体为结构化 content blocks
+ *
+ * JSON 格式的 content 数组中每个元素已是完整 block（含 type、text、name、id、input 等），
+ * 不需要像 SSE 那样按 index 分组拼接 delta，直接映射为 ContentBlockInfo 即可。
+ *
+ * 示例响应：
+ * ```json
+ * {
+ *   "id": "...",
+ *   "type": "message",
+ *   "model": "deepseek-v4-pro",
+ *   "content": [
+ *     {"type": "text", "text": "..."},
+ *     {"type": "tool_use", "name": "...", "id": "...", "input": {...}}
+ *   ],
+ *   "stop_reason": "end_turn",
+ *   "usage": {...}
+ * }
+ * ```
+ *
+ * 映射规则：
+ * - content[i].type → ContentBlockInfo.block_type
+ * - content[i].text → ContentBlockInfo.text
+ * - content[i].thinking → ContentBlockInfo.thinking
+ * - content[i].name → ContentBlockInfo.tool_name
+ * - content[i].id → ContentBlockInfo.tool_use_id
+ * - content[i].input → ContentBlockInfo.input
+ * - 数组索引 → ContentBlockInfo.index
+ */
+function parseJsonResponse(responseBody: string): StructuredSSEResult {
+  const json = JSON.parse(responseBody);
+  const contentArray = Array.isArray(json.content)
+    ? (json.content as Array<Record<string, unknown>>)
+    : [];
+  const result: StructuredSSEResult = {
+    content_blocks: [],
+  };
+
+  // 提取 message_start 信息（模型、消息 ID、usage）
+  result.message_start = {
+    model: typeof json.model === 'string' ? json.model : undefined,
+    message_id: typeof json.id === 'string' ? json.id : undefined,
+    usage: json.usage as Record<string, unknown> | undefined,
+  };
+
+  // 映射 content 数组为 ContentBlockInfo[]
+  result.content_blocks = contentArray.map(
+    (block: Record<string, unknown>, idx: number): ContentBlockInfo => {
+      const blockType = String(block.type ?? '');
+      const mappedType =
+        blockType === 'thinking' ? 'thinking' : blockType === 'tool_use' ? 'tool_use' : 'text'; // 'text' 和未知类型均按 text 处理
+
+      const info: ContentBlockInfo = {
+        index: idx,
+        block_type: mappedType,
+      };
+
+      if (mappedType === 'text' && typeof block.text === 'string') {
+        info.text = block.text;
+      }
+      if (mappedType === 'thinking') {
+        if (typeof block.thinking === 'string') {
+          info.thinking = block.thinking;
+        }
+        // 部分实现把 thinking 内容放在 text 字段，兼容处理
+        if (typeof block.text === 'string' && !info.thinking) {
+          info.thinking = block.text;
+        }
+      }
+      if (mappedType === 'tool_use') {
+        if (typeof block.name === 'string') {
+          info.tool_name = block.name;
+        }
+        if (typeof block.id === 'string') {
+          info.tool_use_id = block.id;
+        }
+        if (block.input && typeof block.input === 'object') {
+          info.input = block.input as Record<string, unknown>;
+        }
+      }
+
+      return info;
+    },
+  );
+
+  // 提取 message_delta 信息（stop_reason、usage）
+  const stopReason = json.stop_reason;
+  if (typeof stopReason === 'string' || json.usage) {
+    result.message_delta = {
+      stop_reason: typeof stopReason === 'string' ? stopReason : undefined,
+      usage: json.usage as Record<string, unknown> | undefined,
+    };
+  }
+
+  return result;
+}
+
 // ─── SSE 响应体解析 ───
 
 interface SseEvent {
@@ -286,8 +430,30 @@ function parseSSE(responseBody: string): SseEvent[] {
   return events;
 }
 
-/** 检测 SSE 响应中是否包含 thinking 块 */
-export function detectHasThinking(responseBody: string): boolean {
+/**
+ * 检测响应中是否包含 thinking 块
+ *
+ * SSE 格式检查 content_block_start 事件，JSON 格式遍历 content 数组。
+ *
+ * @param responseBody - 响应体原始字符串
+ * @param format - 响应体格式（可选），缺省时自动检测
+ */
+export function detectHasThinking(responseBody: string, format?: ResponseFormat): boolean {
+  const resolvedFormat = format ?? (isJsonFormat(responseBody) ? 'json' : 'sse');
+
+  if (resolvedFormat === 'json') {
+    try {
+      const json = JSON.parse(responseBody);
+      const content = Array.isArray(json.content)
+        ? (json.content as Array<Record<string, unknown>>)
+        : [];
+      return content.some((block) => block.type === 'thinking');
+    } catch {
+      return false;
+    }
+  }
+
+  // SSE 格式
   const events = parseSSE(responseBody);
   return events.some((e) => {
     if (e.kind === 'content_block_start') {
@@ -298,8 +464,30 @@ export function detectHasThinking(responseBody: string): boolean {
   });
 }
 
-/** 检测 SSE 响应中是否包含 tool_use 块 */
-export function detectHasToolUse(responseBody: string): boolean {
+/**
+ * 检测响应中是否包含 tool_use 块
+ *
+ * SSE 格式检查 content_block_start 事件，JSON 格式遍历 content 数组。
+ *
+ * @param responseBody - 响应体原始字符串
+ * @param format - 响应体格式（可选），缺省时自动检测
+ */
+export function detectHasToolUse(responseBody: string, format?: ResponseFormat): boolean {
+  const resolvedFormat = format ?? (isJsonFormat(responseBody) ? 'json' : 'sse');
+
+  if (resolvedFormat === 'json') {
+    try {
+      const json = JSON.parse(responseBody);
+      const content = Array.isArray(json.content)
+        ? (json.content as Array<Record<string, unknown>>)
+        : [];
+      return content.some((block) => block.type === 'tool_use');
+    } catch {
+      return false;
+    }
+  }
+
+  // SSE 格式
   const events = parseSSE(responseBody);
   return events.some((e) => {
     if (e.kind === 'content_block_start') {
@@ -310,8 +498,36 @@ export function detectHasToolUse(responseBody: string): boolean {
   });
 }
 
-/** 从 SSE 响应中提取助手回复文本（拼接所有 text_delta） */
-export function extractAssistantTextFromSSE(responseBody: string): string | null {
+/**
+ * 从响应中提取助手回复文本
+ *
+ * SSE 格式拼接所有 text_delta，JSON 格式提取所有 type=text 块的 text 字段。
+ *
+ * @param responseBody - 响应体原始字符串
+ * @param format - 响应体格式（可选），缺省时自动检测
+ */
+export function extractAssistantTextFromSSE(
+  responseBody: string,
+  format?: ResponseFormat,
+): string | null {
+  const resolvedFormat = format ?? (isJsonFormat(responseBody) ? 'json' : 'sse');
+
+  if (resolvedFormat === 'json') {
+    try {
+      const json = JSON.parse(responseBody);
+      const content = Array.isArray(json.content)
+        ? (json.content as Array<Record<string, unknown>>)
+        : [];
+      const texts = content
+        .filter((b) => b.type === 'text' && typeof b.text === 'string')
+        .map((b) => b.text as string);
+      return texts.length > 0 ? texts.join('') : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // SSE 格式
   const events = parseSSE(responseBody);
   const textParts: string[] = [];
 
@@ -327,8 +543,36 @@ export function extractAssistantTextFromSSE(responseBody: string): string | null
   return textParts.length > 0 ? textParts.join('') : null;
 }
 
-/** 从 SSE 响应中提取思考内容（拼接所有 thinking_delta） */
-export function extractThinkingFromSSE(responseBody: string): string | null {
+/**
+ * 从响应中提取思考内容
+ *
+ * SSE 格式拼接所有 thinking_delta，JSON 格式提取所有 type=thinking 块的 thinking 字段。
+ *
+ * @param responseBody - 响应体原始字符串
+ * @param format - 响应体格式（可选），缺省时自动检测
+ */
+export function extractThinkingFromSSE(
+  responseBody: string,
+  format?: ResponseFormat,
+): string | null {
+  const resolvedFormat = format ?? (isJsonFormat(responseBody) ? 'json' : 'sse');
+
+  if (resolvedFormat === 'json') {
+    try {
+      const json = JSON.parse(responseBody);
+      const content = Array.isArray(json.content)
+        ? (json.content as Array<Record<string, unknown>>)
+        : [];
+      const parts = content
+        .filter((b) => b.type === 'thinking' && typeof b.thinking === 'string')
+        .map((b) => b.thinking as string);
+      return parts.length > 0 ? parts.join('') : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // SSE 格式
   const events = parseSSE(responseBody);
   const parts: string[] = [];
 
@@ -344,8 +588,42 @@ export function extractThinkingFromSSE(responseBody: string): string | null {
   return parts.length > 0 ? parts.join('') : null;
 }
 
-/** 从 SSE 响应中提取子代理类型（检测 tool_use name=Agent） */
-export function extractAgentTypeFromSSE(responseBody: string): string | null {
+/**
+ * 从响应中提取子代理类型（检测 tool_use name=Agent）
+ *
+ * SSE 格式检查 content_block_start 事件，JSON 格式遍历 content 数组。
+ *
+ * @param responseBody - 响应体原始字符串
+ * @param format - 响应体格式（可选），缺省时自动检测
+ */
+export function extractAgentTypeFromSSE(
+  responseBody: string,
+  format?: ResponseFormat,
+): string | null {
+  const resolvedFormat = format ?? (isJsonFormat(responseBody) ? 'json' : 'sse');
+
+  if (resolvedFormat === 'json') {
+    try {
+      const json = JSON.parse(responseBody);
+      const content = Array.isArray(json.content)
+        ? (json.content as Array<Record<string, unknown>>)
+        : [];
+      for (const block of content) {
+        if (block.type === 'tool_use' && block.name === 'Agent') {
+          const input = block.input;
+          if (input && typeof input === 'object') {
+            const subagentType = (input as Record<string, unknown>).subagent_type;
+            if (typeof subagentType === 'string') return subagentType;
+          }
+        }
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  // SSE 格式
   const events = parseSSE(responseBody);
 
   for (const ev of events) {
@@ -402,12 +680,31 @@ export interface StructuredSSEResult {
 }
 
 /**
- * 将 SSE 响应体字符串解析为结构化 content blocks
+ * 将响应体字符串解析为结构化 content blocks
  *
- * 逐行解析 SSE → 按 index 分组将 delta 拼接为完整 content block
- * → 输出结构化 blocks 数组，同时提取 message_start / message_delta 信息。
+ * 支持 SSE 流式格式和 JSON 非流式格式。
+ * 格式检测由调用方通过 responseHeaders 的 Content-Type 完成，
+ * 缺省时内部通过 JSON.parse 试探自动判定。
+ *
+ * SSE 路径：逐行解析 → 按 index 分组将 delta 拼接为完整 content block
+ * JSON 路径：JSON.parse → 遍历 content 数组直接映射
+ * → 输出统一的结构化 blocks 数组，同时提取 message_start / message_delta 信息。
+ *
+ * @param responseBody - 响应体原始字符串
+ * @param format - 响应体格式（可选），缺省时自动检测
  */
-export function parseStructuredBlocks(responseBody: string): StructuredSSEResult {
+export function parseStructuredBlocks(
+  responseBody: string,
+  format?: ResponseFormat,
+): StructuredSSEResult {
+  // 格式检测：显式传入 > Content-Type 判定 > JSON.parse 试探
+  const resolvedFormat = format ?? (isJsonFormat(responseBody) ? 'json' : 'sse');
+
+  if (resolvedFormat === 'json') {
+    return parseJsonResponse(responseBody);
+  }
+
+  // SSE 格式：保持原有逻辑不变
   const events = parseSSE(responseBody);
   const result: StructuredSSEResult = {
     content_blocks: [],
@@ -539,13 +836,19 @@ interface BuildEventsMeta {
 /**
  * 构建会话事件数组
  *
- * 从请求体和 SSE 响应体中提取用户消息和助手消息（含 thinking、tool_use、agent_call），
- * 按 event_index 排序输出。全部在客户端完成，不依赖后端预解析。
+ * 从请求体和响应体中提取用户消息和助手消息（含 thinking、tool_use、agent_call），
+ * 按 event_index 排序输出。支持 SSE 和 JSON 两种响应体格式，全部在客户端完成。
+ *
+ * @param requestBody - 请求体
+ * @param responseBody - 响应体原始字符串
+ * @param meta - 元数据（log_id、timestamp 等）
+ * @param format - 响应体格式（可选），缺省时自动检测
  */
 export function buildConversationEvents(
   requestBody: Record<string, unknown> | null | undefined,
   responseBody: string,
   meta: BuildEventsMeta,
+  format?: ResponseFormat,
 ): ConversationEvent[] {
   const events: ConversationEvent[] = [];
   let eventIndex = 0;
@@ -567,7 +870,113 @@ export function buildConversationEvents(
     });
   }
 
-  // 2. 解析 SSE 构建 content blocks
+  const resolvedFormat = format ?? (isJsonFormat(responseBody) ? 'json' : 'sse');
+
+  if (resolvedFormat === 'json') {
+    // JSON 格式：遍历 content 数组直接构建事件
+    buildEventsFromJson(responseBody, meta, events, eventIndex);
+  } else {
+    // SSE 格式：保持原有逻辑
+    buildEventsFromSse(responseBody, meta, events, eventIndex);
+  }
+
+  return events;
+}
+
+/**
+ * 从 JSON 格式响应体构建事件（辅助函数）
+ *
+ * 遍历 content 数组，按 block type 生成对应的会话事件。
+ * eventIndex 由外层管理，此处通过闭包修改。
+ */
+function buildEventsFromJson(
+  responseBody: string,
+  meta: BuildEventsMeta,
+  events: ConversationEvent[],
+  startIndex: number,
+): void {
+  let eventIndex = startIndex;
+
+  try {
+    const json = JSON.parse(responseBody);
+    const content = Array.isArray(json.content)
+      ? (json.content as Array<Record<string, unknown>>)
+      : [];
+
+    for (const block of content) {
+      const blockType = String(block.type ?? '');
+
+      if (blockType === 'thinking' && typeof block.thinking === 'string') {
+        events.push({
+          id: uid(),
+          log_id: meta.log_id,
+          timestamp: meta.timestamp,
+          event_index: eventIndex++,
+          source: meta.conversation_source,
+          role: 'assistant',
+          event_type: 'assistant_thinking',
+          agent_id: meta.agent_id,
+          agent_type: meta.agent_type,
+          thinking_content: block.thinking,
+        });
+      }
+
+      if (blockType === 'tool_use' && typeof block.name === 'string') {
+        const isAgent = block.name === 'Agent';
+        const input = (block.input && typeof block.input === 'object' ? block.input : undefined) as
+          | Record<string, unknown>
+          | undefined;
+
+        events.push({
+          id: uid(),
+          log_id: meta.log_id,
+          timestamp: meta.timestamp,
+          event_index: eventIndex++,
+          source: meta.conversation_source,
+          role: 'assistant',
+          event_type: isAgent ? 'agent_call' : 'tool_use',
+          agent_id: meta.agent_id,
+          agent_type:
+            meta.agent_type || (isAgent && input ? String(input.subagent_type || '') : undefined),
+          tool_use_id: typeof block.id === 'string' ? block.id : undefined,
+          tool_name: block.name,
+          title: isAgent ? `Agent 调用: ${block.name}` : `工具调用: ${block.name}`,
+          display_payload: input,
+        });
+      }
+
+      if (blockType === 'text' && typeof block.text === 'string') {
+        events.push({
+          id: uid(),
+          log_id: meta.log_id,
+          timestamp: meta.timestamp,
+          event_index: eventIndex++,
+          source: meta.conversation_source,
+          role: 'assistant',
+          event_type: 'assistant_message',
+          agent_id: meta.agent_id,
+          agent_type: meta.agent_type,
+          content: block.text,
+        });
+      }
+    }
+  } catch {
+    // JSON 解析失败，静默处理
+  }
+}
+
+/**
+ * 从 SSE 格式响应体构建事件（辅助函数，原有逻辑提取）
+ */
+function buildEventsFromSse(
+  responseBody: string,
+  meta: BuildEventsMeta,
+  events: ConversationEvent[],
+  startIndex: number,
+): void {
+  let eventIndex = startIndex;
+
+  // 解析 SSE 构建 content blocks
   const sseEvents = parseSSE(responseBody);
 
   // 按 index 分组 content blocks
@@ -611,7 +1020,6 @@ export function buildConversationEvents(
       }
       if (delta?.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
         existing.input = existing.input || {};
-        // 仅保存最后一段 partial_json 作为近似
         try {
           const parsed = JSON.parse(delta.partial_json);
           Object.assign(existing.input, parsed);
@@ -622,7 +1030,7 @@ export function buildConversationEvents(
     }
   }
 
-  // 3. 按 index 排序输出事件
+  // 按 index 排序输出事件
   const sortedIndices = Array.from(blocks.keys()).sort((a, b) => a - b);
   for (const idx of sortedIndices) {
     const block = blocks.get(idx)!;
@@ -680,8 +1088,6 @@ export function buildConversationEvents(
       });
     }
   }
-
-  return events;
 }
 
 // ─── 轮次构建 ───

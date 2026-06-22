@@ -24,13 +24,17 @@ impl ProxyClient {
     /// 创建新的代理客户端
     ///
     /// - 连接超时: 30 秒
-    /// - 请求超时: 300 秒
-    /// - 保持活动连接
+    /// - **不设置全局请求超时**：上游 LLM API 的 SSE 流式响应可能持续数十分钟
+    ///   （extended thinking + 多轮 tool call），总耗时不可预测。
+    ///   超时控制在调用方按需应用：非流式路径使用 `tokio::time::timeout` 单独限制，
+    ///   流式路径依赖 TCP keepalive 检测死连接
+    /// - 连接池空闲超时: 300 秒（超过后清理空闲连接，避免过期连接被复用）
+    /// - TCP keepalive: 60 秒（检测死连接）
     pub fn new() -> Self {
         let client = Client::builder()
-            .timeout(Duration::from_secs(300))
             .connect_timeout(Duration::from_secs(30))
             .pool_max_idle_per_host(32)
+            .pool_idle_timeout(Duration::from_secs(300))
             .tcp_keepalive(Duration::from_secs(60))
             .build()
             .expect("创建 HTTP 客户端失败");
