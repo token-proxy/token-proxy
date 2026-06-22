@@ -66,5 +66,5 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false
           sbom: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=buildkit-release
+          cache-to: type=gha,scope=buildkit-release,mode=max
