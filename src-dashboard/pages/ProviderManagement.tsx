@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
+import { useFetch } from '../hooks/useFetch.ts';
 import {
   Button,
   Collapse,
@@ -376,8 +377,12 @@ function FaultConfigEditor({
  * 服务商的增删改查、模型管理（自动发现 + 手动编辑）、账号管理、账户异常处置配置。
  */
 export default function ProviderManagement(): ReactNode {
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [loading, setLoading] = useState(false);
+  const {
+    data: providers,
+    loading,
+    refetch: loadProviders,
+  } = useFetch(() => api.get<Provider[]>('/api/providers'), []);
+  const providersList = providers ?? [];
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [saving, setSaving] = useState(false);
@@ -409,22 +414,6 @@ export default function ProviderManagement(): ReactNode {
     operatingIdsRef.current = next;
     setOperatingIds([...next]);
   };
-
-  const loadProviders = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.get<Provider[]>('/api/providers');
-      setProviders(data);
-    } catch (err) {
-      Toast.error(err instanceof Error ? err.message : '获取服务商列表失败');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadProviders();
-  }, [loadProviders]);
 
   const openCreateDrawer = () => {
     setEditingProvider(null);
@@ -682,7 +671,7 @@ export default function ProviderManagement(): ReactNode {
 
       <Table
         columns={columns}
-        dataSource={providers}
+        dataSource={providersList}
         loading={loading}
         rowKey="id"
         scroll={{ x: 'max-content' }}

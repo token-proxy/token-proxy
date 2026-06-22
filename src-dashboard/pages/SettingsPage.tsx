@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useState } from 'react';
+import { useFetch } from '../hooks/useFetch.ts';
 import { Button, Card, Form, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import api from '../api.ts';
 
@@ -14,25 +15,12 @@ interface Settings {
  * 提供全局系统配置的查看和修改功能（如日志保留月数）。
  */
 export default function SettingsPage(): ReactNode {
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [loading, setLoading] = useState(false);
+  const {
+    data: settings,
+    loading,
+    refetch: loadSettings,
+  } = useFetch(() => api.get<Settings>('/api/settings'), []);
   const [saving, setSaving] = useState(false);
-
-  const loadSettings = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.get<Settings>('/api/settings');
-      setSettings(data);
-    } catch (err) {
-      Toast.error(err instanceof Error ? err.message : '获取设置失败');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
 
   const handleSave = async (values: Settings) => {
     setSaving(true);

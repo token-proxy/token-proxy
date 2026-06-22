@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { useFetch } from '../hooks/useFetch.ts';
 import { Button, Input, Select, Typography } from '@douyinfe/semi-ui';
 import { IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
@@ -51,9 +52,6 @@ export default function RequestLogPage(): ReactNode {
   const [accounts, setAccounts] = useState<Account[]>([]);
 
   // 列表状态
-  const [logs, setLogs] = useState<LogSummary[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [filters, setFilters] = useState<LogFilters>({});
@@ -122,37 +120,28 @@ export default function RequestLogPage(): ReactNode {
 
   // ─── 加载日志 ───
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const qs = buildQueryString({
-        page,
-        page_size: pageSize,
-        start_time: filters.startTime,
-        end_time: filters.endTime,
-        session_id: filters.sessionId,
-        user_id: filters.userId,
-        access_point_id: filters.accessPointId,
-        status_code: filters.statusCode,
-        provider_id: filters.providerId,
-        account_id: filters.accountId,
-        is_interrupted: filters.isInterrupted,
-      });
-      const result = await api.get<PaginatedResult<LogSummary>>(`/api/logs?${qs}`);
-      setLogs(result.items);
-      setTotal(result.total);
-    } catch {
-      console.warn('[RequestLogPage] 加载日志列表失败');
-      setLogs([]);
-      setTotal(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, filters]);
-
-  useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+  const {
+    data: logsData,
+    loading,
+    refetch: fetchLogs,
+  } = useFetch(async () => {
+    const qs = buildQueryString({
+      page,
+      page_size: pageSize,
+      start_time: filters.startTime,
+      end_time: filters.endTime,
+      session_id: filters.sessionId,
+      user_id: filters.userId,
+      access_point_id: filters.accessPointId,
+      status_code: filters.statusCode,
+      provider_id: filters.providerId,
+      account_id: filters.accountId,
+      is_interrupted: filters.isInterrupted,
+    });
+    return api.get<PaginatedResult<LogSummary>>(`/api/logs?${qs}`);
+  }, [page, pageSize, JSON.stringify(filters)]);
+  const logs = logsData?.items ?? [];
+  const total = logsData?.total ?? 0;
 
   // ─── 筛选处理 ───
 

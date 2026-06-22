@@ -13,9 +13,8 @@ interface ToolsSectionProps {
  * 展示请求中的工具定义列表，支持点击展开查看具体参数描述。
  */
 export default function ToolsSection({ tools }: ToolsSectionProps): ReactNode {
-  if (!tools || tools.length === 0) return null;
-
   const [expandedToolIdx, setExpandedToolIdx] = useState<number | null>(null);
+  if (!tools || tools.length === 0) return null;
 
   const handleTagClick = (idx: number) => {
     setExpandedToolIdx((prev) => (prev === idx ? null : idx));

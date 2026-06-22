@@ -1,6 +1,7 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { useFetch } from '../hooks/useFetch.ts';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Typography } from '@douyinfe/semi-ui';
 import { IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import api from '../api.ts';
@@ -40,16 +41,11 @@ export default function SessionLogPage(): ReactNode {
   const [accessPoints, setAccessPoints] = useState<AccessPointItem[]>([]);
 
   // 列表模式状态
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [filters, setFilters] = useState<SessionListFilters>({});
 
   // 详情模式状态
-  const [sessionTurns, setSessionTurns] = useState<ConversationTurn[]>([]);
-  const [detailLoading, setDetailLoading] = useState(false);
   const [rawModalVisible, setRawModalVisible] = useState(false);
   const [rawModalTitle, setRawModalTitle] = useState('');
   const [rawModalContent, setRawModalContent] = useState('');
@@ -87,71 +83,55 @@ export default function SessionLogPage(): ReactNode {
 
   // ─── 加载会话（列表模式） ───
 
-  const fetchSessions = useCallback(async () => {
-    setSessionsLoading(true);
-    try {
-      const qs = buildQueryString({
-        page,
+  const {
+    data: sessionsData,
+    loading: sessionsLoading,
+    refetch: fetchSessions,
+  } = useFetch(async () => {
+    if (sessionId)
+      return {
+        items: [],
+        total: 0,
+        page: 1,
         page_size: pageSize,
-        start_time: filters.startTime,
-        end_time: filters.endTime,
-        user_id: filters.userId,
-        access_point_id: filters.accessPointId,
-      });
-      const result = await api.get<PaginatedResult<SessionSummary>>(`/api/logs/sessions?${qs}`);
-      setSessions(result.items);
-      setTotal(result.total);
-    } catch {
-      console.warn('[SessionLogPage] 加载会话列表失败');
-      setSessions([]);
-      setTotal(0);
-    } finally {
-      setSessionsLoading(false);
-    }
-  }, [page, pageSize, filters]);
-
-  useEffect(() => {
-    if (!sessionId) {
-      fetchSessions();
-    }
-  }, [sessionId, fetchSessions]);
+      } satisfies PaginatedResult<SessionSummary>;
+    const qs = buildQueryString({
+      page,
+      page_size: pageSize,
+      start_time: filters.startTime,
+      end_time: filters.endTime,
+      user_id: filters.userId,
+      access_point_id: filters.accessPointId,
+    });
+    return api.get<PaginatedResult<SessionSummary>>(`/api/logs/sessions?${qs}`);
+  }, [sessionId, page, pageSize, filters]);
+  const sessions = sessionsData?.items ?? [];
+  const total = sessionsData?.total ?? 0;
 
   // ─── 加载会话详情 ───
 
-  const loadSessionDetail = useCallback(async (sid: string) => {
-    setDetailLoading(true);
-    try {
-      // 1. 并行加载会话内容和 Token 用量
-      const [contents, usage] = await Promise.all([
-        api.get<SessionContentItem[]>(`/api/logs/sessions/${encodeURIComponent(sid)}/contents`),
-        api.get<TokenUsage[]>(`/api/logs/sessions/${encodeURIComponent(sid)}/token-usage`),
-      ]);
+  const {
+    data: sessionTurnsData,
+    loading: detailLoading,
+    refetch: loadSessionDetail,
+  } = useFetch(async () => {
+    if (!sessionId) return [] as ConversationTurn[];
+    // 1. 并行加载会话内容和 Token 用量
+    const [contents, usage] = await Promise.all([
+      api.get<SessionContentItem[]>(`/api/logs/sessions/${encodeURIComponent(sessionId)}/contents`),
+      api.get<TokenUsage[]>(`/api/logs/sessions/${encodeURIComponent(sessionId)}/token-usage`),
+    ]);
 
-      // 2. 构建 Token 用量映射
-      const usageMap: Record<string, TokenUsage> = {};
-      usage.forEach((tu) => {
-        usageMap[tu.log_id] = tu;
-      });
+    // 2. 构建 Token 用量映射
+    const usageMap: Record<string, TokenUsage> = {};
+    usage.forEach((tu) => {
+      usageMap[tu.log_id] = tu;
+    });
 
-      // 3. 使用 buildConversationTurns 构建轮次数据（Token 聚合在内部完成）
-      const turns = buildConversationTurns(contents, usageMap);
-      setSessionTurns(turns);
-    } catch (err) {
-      Toast.error(err instanceof Error ? err.message : '加载会话详情失败');
-      setSessionTurns([]);
-    } finally {
-      setDetailLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (sessionId) {
-      loadSessionDetail(sessionId);
-    }
-    return () => {
-      setSessionTurns([]);
-    };
-  }, [sessionId, loadSessionDetail]);
+    // 3. 使用 buildConversationTurns 构建轮次数据（Token 聚合在内部完成）
+    return buildConversationTurns(contents, usageMap);
+  }, [sessionId]);
+  const sessionTurns = sessionTurnsData ?? [];
 
   // ─── 弹窗辅助 ───
 
@@ -214,7 +194,7 @@ export default function SessionLogPage(): ReactNode {
         turns={sessionTurns}
         detailLoading={detailLoading}
         onBack={() => navigate('/sessions')}
-        onRefresh={() => loadSessionDetail(sessionId)}
+        onRefresh={loadSessionDetail}
         onOpenRaw={openRawModal}
         rawModalVisible={rawModalVisible}
         rawModalTitle={rawModalTitle}
@@ -246,7 +226,7 @@ export default function SessionLogPage(): ReactNode {
         pageSize={pageSize}
         filters={filters}
         beforeReset={
-          <Button icon={<IconRefresh />} loading={sessionsLoading} onClick={() => fetchSessions()}>
+          <Button icon={<IconRefresh />} loading={sessionsLoading} onClick={fetchSessions}>
             刷新
           </Button>
         }

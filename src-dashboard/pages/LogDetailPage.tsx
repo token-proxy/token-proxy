@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { type ReactNode } from 'react';
+import { useFetch } from '../hooks/useFetch.ts';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Breadcrumb, Button, Card, Empty, Skeleton } from '@douyinfe/semi-ui';
 import type { LogDetailFull } from '../types/log.ts';
@@ -19,32 +20,15 @@ export default function LogDetailPage(): ReactNode {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const [data, setData] = useState<LogDetailFull | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchDetail = useCallback(async () => {
-    if (!id) {
-      setError('日志 ID 不存在');
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await api.get<LogDetailFull>(`/api/logs/${id}`);
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '加载日志详情失败');
-    } finally {
-      setLoading(false);
-    }
+  const {
+    data,
+    loading,
+    error,
+    refetch: fetchDetail,
+  } = useFetch(async () => {
+    if (!id) throw new Error('日志 ID 不存在');
+    return api.get<LogDetailFull>(`/api/logs/${id}`);
   }, [id]);
-
-  useEffect(() => {
-    fetchDetail();
-  }, [fetchDetail]);
 
   // ── 加载中状态 ──
 

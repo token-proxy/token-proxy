@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useState } from 'react';
+import { useFetch } from '../hooks/useFetch.ts';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Form, TabPane, Tabs, Toast, Typography } from '@douyinfe/semi-ui';
 import ApiKeyManager from '@components/user/ApiKeyManager';
@@ -29,36 +30,22 @@ export default function ProfilePage(): ReactNode {
   const navigate = useNavigate();
 
   /* ---- Profile 状态 ---- */
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
+  const {
+    data: profile,
+    loading: profileLoading,
+    refetch: loadProfile,
+  } = useFetch(() => api.get<UserProfile>('/api/users/me'), []);
   const [profileSaving, setProfileSaving] = useState(false);
 
   /* ---- 密码状态 ---- */
   const [passwordSaving, setPasswordSaving] = useState(false);
-
-  /* ---- 加载 Profile ---- */
-  const loadProfile = useCallback(async () => {
-    setProfileLoading(true);
-    try {
-      const data = await api.get<UserProfile>('/api/users/me');
-      setProfile(data);
-    } catch (err) {
-      Toast.error(err instanceof Error ? err.message : '获取个人资料失败');
-    } finally {
-      setProfileLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
 
   /* ---- 更新 Profile ---- */
   const handleSaveProfile = async (values: { display_name: string }) => {
     setProfileSaving(true);
     try {
       const data = await api.put<UserProfile>('/api/users/me/profile', values);
-      setProfile(data);
+      loadProfile();
       localStorage.setItem('display_name', data.display_name);
       window.dispatchEvent(new Event('storage'));
       Toast.success('个人资料已更新');

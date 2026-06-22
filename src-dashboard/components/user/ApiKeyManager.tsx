@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
+import { useFetch } from '../../hooks/useFetch.ts';
 import {
   Button,
   Form,
@@ -62,8 +63,11 @@ function formatDate(dateStr: string | null): string {
  */
 export default function ApiKeyManager(): ReactNode {
   /* ---- API key 状态 ---- */
-  const [apiKeys, setApiKeys] = useState<UserApiKey[]>([]);
-  const [apiKeysLoading, setApiKeysLoading] = useState(false);
+  const {
+    data: apiKeys,
+    loading: apiKeysLoading,
+    refetch: loadApiKeys,
+  } = useFetch(() => api.get<UserApiKey[]>('/api/users/me/api-keys'), []);
   const [operatingIds, setOperatingIds] = useState<string[]>([]);
   const operatingIdsRef = useRef<Set<string>>(new Set());
 
@@ -89,23 +93,6 @@ export default function ApiKeyManager(): ReactNode {
   const [editingKey, setEditingKey] = useState<UserApiKey | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const editFormRef = useRef<FormApi | null>(null);
-
-  /* ---- 加载 API key ---- */
-  const loadApiKeys = useCallback(async () => {
-    setApiKeysLoading(true);
-    try {
-      const data = await api.get<UserApiKey[]>('/api/users/me/api-keys');
-      setApiKeys(data);
-    } catch (err) {
-      Toast.error(err instanceof Error ? err.message : '获取 API Key 列表失败');
-    } finally {
-      setApiKeysLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadApiKeys();
-  }, [loadApiKeys]);
 
   /* ---- 创建 API key ---- */
   const handleOpenCreateModal = () => {
@@ -263,7 +250,7 @@ export default function ApiKeyManager(): ReactNode {
 
       <Table
         columns={apiKeyColumns}
-        dataSource={apiKeys.filter((k) => k.status === 'enabled')}
+        dataSource={(apiKeys ?? []).filter((k) => k.status === 'enabled')}
         loading={apiKeysLoading}
         rowKey="id"
         scroll={{ x: 'max-content' }}

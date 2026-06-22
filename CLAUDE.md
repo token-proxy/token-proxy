@@ -173,6 +173,10 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 - 前端 Modal 表单：`footer` 承载取消/确认按钮，确认按钮通过 `getFormApi` 保存的 `formApi.submitForm()` 触发
 - 前端改密成功后清除所有 localStorage 令牌并跳转 `/login`
 - 前端主题：`useTheme` hook + `ThemeProvider`，localStorage key `theme_mode`，支持 light/dark/system
+- 前端数据获取优先使用 `useFetch` Hook（`src-dashboard/hooks/useFetch.ts`）：`loading` 初始为 `true`，返回 `{ data, loading, error, refetch }`，deps 通过 `useMemo` 传入；所有 `setState` 在异步回调中执行，卸载后不再更新状态
+- 前端类型断言优先使用 `satisfies` 关键字替代 `as`
+- `AdminLayout` 侧边栏：`selectedKeys` 通过 `useMemo` 派生；`isCollapsed` 拆分为用户控制（`userCollapsed`）+ 自动（`isDetailPage`）
+- `AccessPointDrawer` 中 `rowSelectedProviders` 通过 `useMemo` 从 `formData.accounts` 和 `allKnownAccounts` 派生
 
 ### 日志规范
 
@@ -299,33 +303,36 @@ aggr.resolve(x, y)
 
 ## 核心文件速查
 
-| 文件                                                  | 说明                                                                      |
-| ----------------------------------------------------- | ------------------------------------------------------------------------- |
-| `src/main.rs`                                         | 启动入口 (依赖组装 + 路由 + 分区 + 后台任务)                              |
-| `src/application/proxy/proxy_pipeline.rs`             | 代理转发管道 (薄编排层，领域逻辑在 domain/)                               |
-| `src/domain/provider/fault_config.rs`                 | 故障配置值对象 (matches_status + calculate_available_at + extract)        |
-| `src/domain/provider/fault_service.rs`                | 故障检测领域服务 (FaultService::detect + disable_account)                 |
-| `src/domain/access_point/access_point.rs`             | AccessPointEx 聚合根 (sort_accounts + apply_session_affinity + transform) |
-| `src/domain/access_point/routing_strategy.rs`         | 路由策略值对象 (sort_accounts)                                            |
-| `src/domain/shared/request_snapshot.rs`               | 请求快照值对象 (parse + transform_headers + HOP_BY_HOP_HEADERS)           |
-| `src/infrastructure/http_client/proxy_logger.rs`      | 日志积累器 (Drop 自动 flush)                                              |
-| `src/infrastructure/http_client/processed_request.rs` | 上游请求变换 (防腐)                                                       |
-| `src/application/log/log_service.rs`                  | 日志写入/查询 (三阶段)                                                    |
-| `src/application/user/api_key_service.rs`             | 用户 API key 管理                                                         |
-| `src/presentation/middleware/jwt_auth.rs`             | JWT 认证中间件 + CurrentUser                                              |
-| `src/presentation/middleware/user_api_key_auth.rs`    | 用户 API key 认证                                                         |
-| `src/infrastructure/persistence/partition_manager.rs` | 分区管理                                                                  |
-| `src-dashboard/api.ts`                                | 前端 API 封装 (JWT 自动刷新)                                              |
-| `src-dashboard/utils/parseLogs.ts`                    | 日志/会话解析工具 (buildConversationEvents + buildConversationTurns)      |
-| `src-dashboard/components/session/TurnCard.tsx`       | 轮次卡片组件 (递归渲染内容块, 最大深度 5 层)                              |
-| `src-dashboard/components/session/TurnNavigator.tsx`  | Sticky 轮次导航条                                                         |
-| `cliff.toml`                                          | CHANGELOG 自动生成配置 (git-cliff, feat→Added / fix→Fixed / perf→Changed) |
-| `rust-toolchain.toml`                                 | Rust 工具链版本固定 (channel = "1.96")                                    |
-| `.prettierrc` / `.prettierignore`                     | Prettier 格式化配置与排除规则                                             |
-| `.dockerignore`                                       | Docker 构建上下文排除规则                                                 |
-| `.github/workflows/ci.yml`                            | CI 流水线 (fmt + clippy + build + PostgreSQL 集成测试)                    |
-| `.github/dependabot.yml`                              | 依赖自动更新配置 (cargo + npm 每周)                                       |
-| `.claude/skills/release/SKILL.md`                     | 发布管理技能 (/release 命令)                                              |
+| 文件                                                         | 说明                                                                      |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `src/main.rs`                                                | 启动入口 (依赖组装 + 路由 + 分区 + 后台任务)                              |
+| `src/application/proxy/proxy_pipeline.rs`                    | 代理转发管道 (薄编排层，领域逻辑在 domain/)                               |
+| `src/domain/provider/fault_config.rs`                        | 故障配置值对象 (matches_status + calculate_available_at + extract)        |
+| `src/domain/provider/fault_service.rs`                       | 故障检测领域服务 (FaultService::detect + disable_account)                 |
+| `src/domain/access_point/access_point.rs`                    | AccessPointEx 聚合根 (sort_accounts + apply_session_affinity + transform) |
+| `src/domain/access_point/routing_strategy.rs`                | 路由策略值对象 (sort_accounts)                                            |
+| `src/domain/shared/request_snapshot.rs`                      | 请求快照值对象 (parse + transform_headers + HOP_BY_HOP_HEADERS)           |
+| `src/infrastructure/http_client/proxy_logger.rs`             | 日志积累器 (Drop 自动 flush)                                              |
+| `src/infrastructure/http_client/processed_request.rs`        | 上游请求变换 (防腐)                                                       |
+| `src/application/log/log_service.rs`                         | 日志写入/查询 (三阶段)                                                    |
+| `src/application/user/api_key_service.rs`                    | 用户 API key 管理                                                         |
+| `src/presentation/middleware/jwt_auth.rs`                    | JWT 认证中间件 + CurrentUser                                              |
+| `src/presentation/middleware/user_api_key_auth.rs`           | 用户 API key 认证                                                         |
+| `src/infrastructure/persistence/partition_manager.rs`        | 分区管理                                                                  |
+| `src-dashboard/api.ts`                                       | 前端 API 封装 (JWT 自动刷新)                                              |
+| `src-dashboard/components/access-point/modelMappingUtils.ts` | 模型映射工具 (ANTHROPIC_FAMILIES, MappingMatchType, matchTypeForSource)   |
+| `src-dashboard/components/log/log-detail/tokenUsage.ts`      | Token 用量工具函数 (hasTokenData)                                         |
+| `src-dashboard/components/session/TurnCard.tsx`              | 轮次卡片组件 (递归渲染内容块, 最大深度 5 层)                              |
+| `src-dashboard/components/session/TurnNavigator.tsx`         | Sticky 轮次导航条                                                         |
+| `src-dashboard/hooks/useFetch.ts`                            | 通用数据获取 Hook (fetch-on-mount, {data, loading, error, refetch})       |
+| `src-dashboard/utils/parseLogs.ts`                           | 日志/会话解析工具 (buildConversationEvents + buildConversationTurns)      |
+| `cliff.toml`                                                 | CHANGELOG 自动生成配置 (git-cliff, feat→Added / fix→Fixed / perf→Changed) |
+| `rust-toolchain.toml`                                        | Rust 工具链版本固定 (channel = "1.96")                                    |
+| `.prettierrc` / `.prettierignore`                            | Prettier 格式化配置与排除规则                                             |
+| `.dockerignore`                                              | Docker 构建上下文排除规则                                                 |
+| `.github/workflows/ci.yml`                                   | CI 流水线 (fmt + clippy + build + PostgreSQL 集成测试)                    |
+| `.github/dependabot.yml`                                     | 依赖自动更新配置 (cargo + npm 每周)                                       |
+| `.claude/skills/release/SKILL.md`                            | 发布管理技能 (/release 命令)                                              |
 
 ## 注意事项（易错点）
 

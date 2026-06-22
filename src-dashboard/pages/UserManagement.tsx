@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
+import { useFetch } from '../hooks/useFetch.ts';
 import {
   Button,
   Form,
@@ -36,8 +37,12 @@ interface UserFormData {
  * 系统用户的增删改查、启用/禁用操作，支持创建用户时设置初始密码。
  */
 export default function UserManagement(): ReactNode {
-  const [users, setUsers] = useState<UserResponse[]>([]);
-  const [loading, setLoading] = useState(false);
+  const {
+    data: users,
+    loading,
+    refetch: loadUsers,
+  } = useFetch(() => api.get<UserResponse[]>('/api/users'), []);
+  const usersList = users ?? [];
   const [sideSheetVisible, setSideSheetVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<UserResponse | null>(null);
   const [saving, setSaving] = useState(false);
@@ -56,22 +61,6 @@ export default function UserManagement(): ReactNode {
     operatingIdsRef.current = next;
     setOperatingIds([...next]);
   };
-
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.get<UserResponse[]>('/api/users');
-      setUsers(data);
-    } catch (err) {
-      Toast.error(err instanceof Error ? err.message : '获取用户列表失败');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
 
   const openCreateDrawer = () => {
     setEditingUser(null);
@@ -210,7 +199,7 @@ export default function UserManagement(): ReactNode {
 
       <Table
         columns={columns}
-        dataSource={users}
+        dataSource={usersList}
         loading={loading}
         rowKey="id"
         scroll={{ x: 'max-content' }}

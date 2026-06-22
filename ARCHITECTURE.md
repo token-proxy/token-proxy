@@ -6,7 +6,7 @@
 
 ```
 ├── src/                    # 后端 Rust 核心代码 (163 个 .rs 文件)
-├── src-dashboard/          # 前端管理面板 SPA (64 个 .ts/.tsx 源文件)
+├── src-dashboard/          # 前端管理面板 SPA (67 个 .ts/.tsx 源文件)
 ├── public/                 # 前端静态资源 (favicon, icons)
 ├── index.html              # 前端 HTML 入口 (Vite)
 ├── vite.config.ts          # Vite 构建配置
@@ -335,10 +335,11 @@ shared/
 │   │   │   ├── MarkdownRender.tsx       # Markdown 渲染组件
 │   │   │   ├── StatusToggle.tsx         # 状态切换开关 (跨领域复用)
 │   │   │   └── ThemeToggle.tsx          # 主题切换 (light/dark/system)
-│   │   ├── access-point/           # 接入点管理组件 (3 个)
+│   │   ├── access-point/           # 接入点管理组件 (3 个) + 工具函数
 │   │   │   ├── AccessPointDrawer.tsx    # 接入点创建/编辑表单 (含 api_type、Provider 选择并显示默认模型, 自动预填 __unmatched__ -> __default_model__ 映射)
 │   │   │   ├── AccessPointTable.tsx     # 接入点列表表格
-│   │   │   └── ModelMappingEditor.tsx   # 模型映射编辑器
+│   │   │   ├── ModelMappingEditor.tsx   # 模型映射编辑器
+│   │   │   └── modelMappingUtils.ts     # 模型映射工具函数、类型和常量 (从 ModelMappingEditor.tsx 分离)
 │   │   ├── provider/               # Provider 管理组件 (1 个)
 │   │   │   └── AccountManager.tsx       # Account 表格 + 添加/编辑 SideSheet (从 ProviderManagement 提取)
 │   │   ├── log/                    # 日志相关组件 (5 个)
@@ -349,6 +350,7 @@ shared/
 │   │   │   └── log-detail/              # 日志详情卡片组 (强内聚子组, 含 request-content/ 和 response-content/ 子目录)
 │   │   │       ├── BasicInfoCard.tsx        # 基础信息卡片
 │   │   │       ├── TokenUsageCard.tsx       # Token 用量卡片
+│   │   │       ├── tokenUsage.ts            # Token 用量计算工具函数 (从 TokenUsageCard.tsx 分离)
 │   │   │       ├── HeadersCard.tsx          # 请求头卡片
 │   │   │       ├── RequestContentCard.tsx   # 请求内容卡片 (委托 request-content/ 子组件)
 │   │   │       ├── ResponseContentCard.tsx  # 响应内容卡片 (委托 response-content/ 子组件)
@@ -380,6 +382,7 @@ shared/
 │   │   └── user/                   # 用户管理组件 (1 个)
 │   │       └── ApiKeyManager.tsx        # API Key 表格 + 创建/编辑/吊销 Modal (从 ProfilePage 提取)
 │   ├── hooks/                      # 自定义 hooks
+│   │   ├── useFetch.ts             # 通用数据获取 hook (useFetch<T>(fetcher, deps) → { data, loading, error, refetch }; loading 初始 true, setState 仅在异步回调中执行)
 │   │   ├── useTheme.ts             # 主题管理 (ThemeProvider + useTheme, 三种模式)
 │   │   └── useAccessPoints.ts      # 接入点数据管理 (Provider/Account 加载; 创建/编辑时过滤 target_model 不在 Provider.models + Provider.default_model + DEFAULT_MODEL 哨兵的映射; 删除/切换状态/复制 URL)
 │   ├── layouts/
@@ -433,6 +436,26 @@ shared/
 ### 主题系统
 
 前端支持 light / dark / system 三种主题模式，通过 `useTheme.ts` hook 管理。系统主题自动跟随 `prefers-color-scheme` 媒体查询。`ThemeProvider` 在根组件包装，通过 `document.body` 的 `theme-mode` 属性控制 Semi Design 暗色模式切换。`ThemeToggle` 组件位于管理面板侧边栏和登录页。
+
+### 组件工具函数分离模式
+
+组件文件中只保留组件导出和 JSX 渲染逻辑，纯函数、类型定义和常量分离到同级的 `xxxUtils.ts` 或 `xxx.ts` 文件中。此模式保持组件文件聚焦于 UI 渲染，同时提升纯函数的可测试性。
+
+当前已应用此模式的组件：
+
+- `ModelMappingEditor.tsx` → `modelMappingUtils.ts`（工具函数、类型和常量）
+- `TokenUsageCard.tsx` → `tokenUsage.ts`（Token 用量计算纯函数）
+
+### 派生状态模式
+
+通过 `useMemo` 从 props 或现有状态派生数据，替代 `useState + useEffect` 模式。消除 `useEffect` 中的 `setState` 调用和 ref 渲染期写入，确保状态在渲染阶段同步更新，减少不必要的重渲染。
+
+- `AdminLayout`: `selectedKeys` 从 `useState` 改为 `useMemo`（基于 `location.pathname`）
+- `AccessPointDrawer`: `rowSelectedProviders` 从 `useState` 改为 `useMemo`（基于 `formData.accounts`）
+
+### 通用数据获取 Hook
+
+`useFetch<T>(fetcher, deps)` 封装 fetch-on-mount 模式，统一管理数据获取生命周期（加载/成功/错误）和状态清理。`loading` 初始为 `true`，`setState` 仅在异步回调中执行，避免竞态条件和内存泄漏。API 接口：`useFetch<T>(fetcher, deps)` → `{ data, loading, error, refetch }`。已替代 11 个文件中的手动 `useState + useCallback + useEffect` 模式。
 
 ## 数据库架构详解 (src/migrations/)
 
@@ -659,7 +682,7 @@ docker compose up -d    # 启动 PostgreSQL + App
 | ----------- | ----------------------------------------------------------------------------- |
 | Phase 1 MVP | 已完成                                                                        |
 | 后端        | 163 个 .rs 文件, cargo check 零错误零警告                                     |
-| 前端        | 64 个 .ts/.tsx 源文件, tsc --noEmit 零错误                                    |
+| 前端        | 67 个 .ts/.tsx 源文件, tsc --noEmit 零错误                                    |
 | Schema 迁移 | 2 个迁移文件 (初始表 + 账户池)                                                |
 | Docker 构建 | 多阶段构建就绪 (含 .dockerignore)                                             |
 | 容器编排    | docker-compose.yml 就绪                                                       |
@@ -674,7 +697,7 @@ docker compose up -d    # 启动 PostgreSQL + App
 
 | 日期             | 变更说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-06-21       | 发布工程基础建设: 新增 Prettier 前端格式化配置 (.prettierrc + .prettierignore)、git-cliff 变更日志生成配置 (cliff.toml)、.dockerignore 构建上下文优化、rust-toolchain.toml (固定 Rust 1.96 + clippy + rustfmt)、GitHub Actions CI (3 并行 job: 后端 fmt+clippy+build / 前端 lint+tsc+build / PostgreSQL 17 集成测试)、Dependabot 每周依赖更新、simple-git-hooks + lint-staged pre-commit hook (eslint+prettier+cargo fmt)、Claude Code /release 发布技能。版本管理约定: main 分支占位 0.0.0，实际版本在 release/ 分支，Git tag 无 v 前缀，发布流程两个提交 (CHANGELOG + 版本号)，cherry-pick CHANGELOG 回 main                                                                                                                                                                                                                                                                                                          |
+| 2026-06-22       | 前端 TypeScript/ESLint 错误修复 (共 20 个): 新增通用数据获取 hook `useFetch.ts`（替代 11 个文件中的手动 `useState + useCallback + useEffect` 模式）；组件工具函数分离模式（`ModelMappingEditor.tsx` → `modelMappingUtils.ts`、`TokenUsageCard.tsx` → `tokenUsage.ts`）；派生状态模式（`AdminLayout` 和 `AccessPointDrawer` 中的 `useState + useEffect` 改为 `useMemo`）；tsconfig 移除 `baseUrl`（TypeScript 7.0 废弃）、paths 改为 `./` 相对路径。前端源文件数从 64 更新为 67                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | 2026-06-18       | 接入点账户池重构: 新增 access_point_accounts 表（多对多关联）+ session_affinity 表（会话粘滞）+ ModelRoutingGrid JSONB 替代线性 model_mappings（二维网格匹配）+ RoutingStrategy 枚举（Priority/Weighted）+ Account 新增 DisabledReason 枚举（manual/rate_limited/balance_exhausted/fault）和 available_at + Provider 新增 rate_limit_config/balance_exhausted_config + audit_logs 的 user_id→operator_id + 新增 operator_type + 删除 access_points 的 provider_id/account_id/model_mappings + 删除 providers 的 default_model。新增 3 个领域文件（access_point_account.rs/model_routing_grid.rs/routing_strategy.rs）、2 个 Repository（access_point_account_repository/session_affinity_repository）、2 个 DTO（account_dto/model_routing_grid_dto）、1 个迁移文件（account_pool）。代理转发改为账号重试循环模式，跳过不可用 Account，对 429/402/502/503 自动重试。应用层 dto 目录从单文件扩展为 dto/ 子目录多文件模式 |
 | 2026-06-18（续） | 前端组件目录重组: 将 `src-dashboard/components/` 中 25 个平铺组件按功能分组为 common/、access-point/、provider/、log/、session/、dashboard/、user/ 7 个子目录; log-detail/ 作为 log/ 的内聚子组。删除旧空目录 (charts/、log-viewer/、timeline/)。提取 2 个新组件 (AccountManager、ApiKeyManager)。配置 `@components` Vite 路径别名, 所有组件间 import 统一使用别名格式                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | 2026-05-19       | 初始化架构文档，记录 DDD 四层架构、代理转发流程、安全设计和项目状态                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |

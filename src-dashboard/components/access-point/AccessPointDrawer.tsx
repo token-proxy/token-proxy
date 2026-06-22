@@ -329,7 +329,6 @@ export default function AccessPointDrawer({
   formData,
   providers,
   accounts,
-  accountsLoading: _accountsLoading,
   onClose,
   onFormChange,
   onSave,
@@ -337,14 +336,6 @@ export default function AccessPointDrawer({
   // 账号缓存: provider_id → AccountOption[]
   const [accountsCache, setAccountsCache] = useState<Record<string, AccountOption[]>>({});
   const [loadingProviders, setLoadingProviders] = useState<Set<string>>(new Set());
-
-  // 每行选中的 provider
-  const [rowSelectedProviders, setRowSelectedProviders] = useState<(string | null)[]>([]);
-
-  // 行键：有 account_id 则用它，否则用索引兜底
-  const rowKeys = useMemo(() => {
-    return formData.accounts.map((b, i) => b.account_id || `__row_${i}`);
-  }, [formData.accounts]);
 
   // 合并全局 accounts 和本地缓存
   const allKnownAccounts = useMemo(() => {
@@ -357,39 +348,19 @@ export default function AccessPointDrawer({
     return merged;
   }, [accounts, accountsCache]);
 
-  // 从已选账号反向推导 provider
-  function resolveProviderIdForAccount(accountId: string): string | undefined {
-    return allKnownAccounts.find((a) => a.id === accountId)?.provider_id;
-  }
+  // 行键：有 account_id 则用它，否则用索引兜底
+  const rowKeys = useMemo(() => {
+    return formData.accounts.map((b, i) => b.account_id || `__row_${i}`);
+  }, [formData.accounts]);
 
-  // 同步 rowSelectedProviders 长度。仅处理新增行；删除由 handleRemove 同步。
-  const prevAccountsLenRef = useRef(formData.accounts.length);
-  useEffect(() => {
-    const prevLen = prevAccountsLenRef.current;
-    const curLen = formData.accounts.length;
-    prevAccountsLenRef.current = curLen;
-    if (curLen > prevLen) {
-      // 新增了行，追加 null
-      setRowSelectedProviders((prev) => [...prev, ...Array(curLen - prevLen).fill(null)]);
-    }
-    // curLen < prevLen 的情况由 handleRemove 处理
-  }, [formData.accounts.length]);
-
-  // 为已有 account_id 的行回填 provider
-  useEffect(() => {
-    const updated = [...rowSelectedProviders];
-    let changed = false;
-    formData.accounts.forEach((b, i) => {
-      if (b.account_id && !updated[i]) {
-        const pid = resolveProviderIdForAccount(b.account_id);
-        if (pid) {
-          updated[i] = pid;
-          changed = true;
-        }
-      }
-    });
-    if (changed) setRowSelectedProviders(updated);
-  }, [formData.accounts, allKnownAccounts]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 从 formData.accounts 和 allKnownAccounts 派生每行选中的 provider
+  const rowSelectedProviders = useMemo(() => {
+    return formData.accounts.map((b) =>
+      b.account_id
+        ? (allKnownAccounts.find((a) => a.id === b.account_id)?.provider_id ?? null)
+        : null,
+    );
+  }, [formData.accounts, allKnownAccounts]);
 
   // 编辑时预加载所有服务商账号，用于回显已有账号的 provider
   const preloadedRef = useRef(false);
@@ -438,9 +409,6 @@ export default function AccessPointDrawer({
 
   const handleProviderChange = useCallback(
     (index: number, providerId: string) => {
-      const updated = [...rowSelectedProviders];
-      updated[index] = providerId;
-      setRowSelectedProviders(updated);
       // 清除该行的 account 选择
       const accounts = [...formData.accounts];
       accounts[index] = { ...accounts[index], account_id: '' };
@@ -448,7 +416,7 @@ export default function AccessPointDrawer({
       // 加载该 provider 的账号
       loadProviderAccounts(providerId);
     },
-    [formData, rowSelectedProviders, loadProviderAccounts, onFormChange],
+    [formData, loadProviderAccounts, onFormChange],
   );
 
   const handleAccountChange = useCallback(
@@ -478,19 +446,22 @@ export default function AccessPointDrawer({
 
   // ref 避免闭包陈旧导致删除错行
   const formDataRef = useRef(formData);
-  formDataRef.current = formData;
   const rowKeysRef = useRef(rowKeys);
-  rowKeysRef.current = rowKeys;
+  // 每次渲染后同步 ref 值，确保 handleRemove 使用的 ref 是最新的
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+  useEffect(() => {
+    rowKeysRef.current = rowKeys;
+  }, [rowKeys]);
 
   const handleRemove = useCallback(
     (rowKey: string) => {
       const curData = formDataRef.current;
       const curKeys = rowKeysRef.current;
-      // 通过 key 过滤 accounts 和 rowSelectedProviders，保持二者同步
       const accounts = curData.accounts.filter(
         (_b: AccountEntry, i: number) => curKeys[i] !== rowKey,
       );
-      setRowSelectedProviders((prev) => prev.filter((_, i: number) => curKeys[i] !== rowKey));
       onFormChange({ ...curData, accounts });
     },
     [onFormChange],
@@ -500,13 +471,8 @@ export default function AccessPointDrawer({
     (reordered: AccountEntry[]) => {
       const updated = reordered.map((b, i) => ({ ...b, priority: i + 1 }));
       onFormChange({ ...formData, accounts: updated });
-      // 重建 rowSelectedProviders
-      const newProviders = reordered.map((b) =>
-        b.account_id ? (resolveProviderIdForAccount(b.account_id) ?? null) : null,
-      );
-      setRowSelectedProviders(newProviders);
     },
-    [formData, accounts, accountsCache, onFormChange],
+    [formData, onFormChange],
   );
 
   const handleAddAccount = useCallback(() => {

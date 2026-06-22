@@ -1,6 +1,11 @@
 import { Button, Select, Tag } from '@douyinfe/semi-ui';
 import type { ReactNode } from 'react';
 import { type ModelMapping, UNMATCHED_MODEL } from '../../types/accessPoint.ts';
+import {
+  ANTHROPIC_FAMILIES,
+  type MappingMatchType,
+  matchTypeForSource,
+} from './modelMappingUtils.ts';
 
 /** ModelMappingEditor 组件 Props */
 interface ModelMappingEditorProps {
@@ -12,14 +17,6 @@ interface ModelMappingEditorProps {
   onChange: (index: number, field: keyof ModelMapping, value: string) => void;
 }
 
-const ANTHROPIC_FAMILIES = [
-  { label: '未匹配', value: UNMATCHED_MODEL, matchType: 'prefix' },
-  { label: 'Claude Opus', value: 'claude-opus-', matchType: 'prefix' },
-  { label: 'Claude Sonnet', value: 'claude-sonnet-', matchType: 'prefix' },
-  { label: 'Claude Haiku', value: 'claude-haiku-', matchType: 'prefix' },
-];
-type MappingMatchType = 'exact' | 'prefix';
-
 const MATCH_TYPE_LABELS: Record<MappingMatchType, string> = {
   exact: '精准匹配',
   prefix: '模式匹配',
@@ -29,11 +26,6 @@ const labelForModel = (value: string) => {
   if (value === UNMATCHED_MODEL) return '未匹配';
   return ANTHROPIC_FAMILIES.find((family) => family.value === value)?.label ?? value;
 };
-
-const matchTypeForSource = (value: string): MappingMatchType =>
-  (ANTHROPIC_FAMILIES.find((family) => family.value === value)?.matchType as
-    | MappingMatchType
-    | undefined) ?? 'exact';
 
 const uniqueOptions = (values: string[]) => [...new Set(values.filter(Boolean))];
 
@@ -131,5 +123,3 @@ export default function ModelMappingEditor({
     </div>
   );
 }
-
-export { matchTypeForSource };

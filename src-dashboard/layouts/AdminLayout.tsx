@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Dropdown, Layout, Nav } from '@douyinfe/semi-ui';
 import {
@@ -43,16 +43,24 @@ const DETAIL_PAGE_PATTERN = /^\/(logs|sessions)\/[^/]+$/;
 export default function AdminLayout(): ReactNode {
   const navigate = useNavigate();
   const location = useLocation();
-  const [selectedKeys, setSelectedKeys] = useState(() => {
-    const path = location.pathname.replace(/\/$/, '') || '/dashboard';
-    return DETAIL_PAGE_PATTERN.test(path) ? [] : [path];
-  });
-  const [isCollapsed, setIsCollapsed] = useState(
-    DETAIL_PAGE_PATTERN.test(location.pathname.replace(/\/$/, '')),
-  );
+  const [userCollapsed, setUserCollapsed] = useState(false);
   const [displayName, setDisplayName] = useState(
     localStorage.getItem('display_name') || localStorage.getItem('username') || '管理员',
   );
+
+  // selectedKeys 完全派生自 pathname，无需 state
+  const selectedKeys = useMemo(() => {
+    const path = location.pathname.replace(/\/$/, '') || '/dashboard';
+    if (DETAIL_PAGE_PATTERN.test(path)) return [];
+    const matchingItem = [...navItems]
+      .sort((a, b) => b.itemKey.length - a.itemKey.length)
+      .find((item) => path === item.itemKey || path.startsWith(item.itemKey + '/'));
+    return matchingItem ? [matchingItem.itemKey] : [];
+  }, [location.pathname]);
+
+  // 详情页自动折叠，非详情页使用用户偏好
+  const isDetailPage = DETAIL_PAGE_PATTERN.test(location.pathname.replace(/\/$/, ''));
+  const isCollapsed = isDetailPage ? true : userCollapsed;
 
   useEffect(() => {
     const syncDisplayName = () => {
@@ -63,25 +71,6 @@ export default function AdminLayout(): ReactNode {
     window.addEventListener('storage', syncDisplayName);
     return () => window.removeEventListener('storage', syncDisplayName);
   }, []);
-
-  useEffect(() => {
-    const currentPath = location.pathname.replace(/\/$/, '') || '/dashboard';
-
-    // 详情页（logs/:id / sessions/:sessionId）：自动收起侧边栏，不激活任何导航项
-    if (DETAIL_PAGE_PATTERN.test(currentPath)) {
-      setIsCollapsed(true);
-      setSelectedKeys([]);
-      return;
-    }
-
-    // 列表页或其他页面：匹配导航高亮，不干预折叠状态（保留用户偏好）
-    const matchingItem = [...navItems]
-      .sort((a, b) => b.itemKey.length - a.itemKey.length)
-      .find((item) => currentPath === item.itemKey || currentPath.startsWith(item.itemKey + '/'));
-    if (matchingItem) {
-      setSelectedKeys([matchingItem.itemKey]);
-    }
-  }, [location.pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
@@ -98,9 +87,8 @@ export default function AdminLayout(): ReactNode {
           style={{ maxWidth: 220, height: '100%' }}
           isCollapsed={isCollapsed}
           selectedKeys={selectedKeys}
-          onCollapseChange={setIsCollapsed}
+          onCollapseChange={setUserCollapsed}
           onSelect={({ itemKey }) => {
-            setSelectedKeys([itemKey as string]);
             navigate(itemKey as string);
           }}
           items={navItems}

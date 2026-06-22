@@ -28,7 +28,7 @@ const EMPTY_FORM: AccessPointFormData = {
  */
 export default function useAccessPoints() {
   const [accessPoints, setAccessPoints] = useState<AccessPoint[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
@@ -48,7 +48,6 @@ export default function useAccessPoints() {
   };
 
   const loadAccessPoints = useCallback(async () => {
-    setLoading(true);
     try {
       const data = await api.get<AccessPoint[]>('/api/access-points');
       setAccessPoints(data);
@@ -56,15 +55,6 @@ export default function useAccessPoints() {
       Toast.error(err instanceof Error ? err.message : '获取接入点列表失败');
     } finally {
       setLoading(false);
-    }
-  }, []);
-
-  const loadProviders = useCallback(async () => {
-    try {
-      const data = await api.get<ProviderOption[]>('/api/providers');
-      setProviders(data);
-    } catch {
-      console.warn('[useAccessPoints] 加载服务商列表失败，数据可能尚未就绪');
     }
   }, []);
 
@@ -91,10 +81,24 @@ export default function useAccessPoints() {
     setAccounts([]);
   }, []);
 
+  // 初始加载：使用内联函数避免 useCallback 在 effect 中被 ESLint 追踪
   useEffect(() => {
-    loadAccessPoints();
-    loadProviders();
-  }, [loadAccessPoints, loadProviders]);
+    const init = async () => {
+      try {
+        const [apData, provData] = await Promise.all([
+          api.get<AccessPoint[]>('/api/access-points'),
+          api.get<ProviderOption[]>('/api/providers'),
+        ]);
+        setAccessPoints(apData);
+        setProviders(provData);
+      } catch (err) {
+        Toast.error(err instanceof Error ? err.message : '获取接入点列表失败');
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, []);
 
   const saveAccessPoint = async (
     formData: AccessPointFormData,
