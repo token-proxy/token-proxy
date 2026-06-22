@@ -44,6 +44,7 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 - **代理 Header 构造**: 入站 `authorization` 仅用于用户 API key 认证；上游请求独立构建 `Authorization: Bearer <account_key>`；仅透传 `x-*`、`accept`、`content-type` 等业务头
 - **响应头透明化**: 仅过滤 hop-by-hop 头（`transfer-encoding`、`connection`、`keep-alive`），其余透传
 - **流式判断**: 依据上游响应 `content-type` 是否包含 `text/event-stream`，非基于请求特征预设
+- **响应体格式检测**: `detectResponseFormat(responseHeaders)` 通过 `Content-Type` 判定 `'sse'` / `'json'`；`isJsonFormat(body)` 通过 JSON.parse 试探兜底；前端各解析函数（`parseStructuredBlocks`、`detectHasThinking`、`buildConversationEvents` 等）接受可选 `format` 参数避免重复检测
 - **账户池路由**: `RoutingStrategy` — Priority（同优先级排序，失败降级）或 Weighted（权重随机）；失败自动重试下一账号
 - **会话粘滞**: `session_affinity` 表（`access_point_id`, `session_id`），ProxyPipeline 首次创建、后续复用
 - **模型路由网格**: 二维表格（source_model × provider_id），匹配优先级：精确匹配 > 前缀匹配 > `__unmatched__` 兜底 > 原始模型值
@@ -304,36 +305,36 @@ aggr.resolve(x, y)
 
 ## 核心文件速查
 
-| 文件                                                         | 说明                                                                      |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| `src/main.rs`                                                | 启动入口 (依赖组装 + 路由 + 分区 + 后台任务)                              |
-| `src/application/proxy/proxy_pipeline.rs`                    | 代理转发管道 (薄编排层，领域逻辑在 domain/)                               |
-| `src/domain/provider/fault_config.rs`                        | 故障配置值对象 (matches_status + calculate_available_at + extract)        |
-| `src/domain/provider/fault_service.rs`                       | 故障检测领域服务 (FaultService::detect + disable_account)                 |
-| `src/domain/access_point/access_point.rs`                    | AccessPointEx 聚合根 (sort_accounts + apply_session_affinity + transform) |
-| `src/domain/access_point/routing_strategy.rs`                | 路由策略值对象 (sort_accounts)                                            |
-| `src/domain/shared/request_snapshot.rs`                      | 请求快照值对象 (parse + transform_headers + HOP_BY_HOP_HEADERS)           |
-| `src/infrastructure/http_client/proxy_logger.rs`             | 日志积累器 (Drop 自动 flush)                                              |
-| `src/infrastructure/http_client/processed_request.rs`        | 上游请求变换 (防腐)                                                       |
-| `src/application/log/log_service.rs`                         | 日志写入/查询 (三阶段)                                                    |
-| `src/application/user/api_key_service.rs`                    | 用户 API key 管理                                                         |
-| `src/presentation/middleware/jwt_auth.rs`                    | JWT 认证中间件 + CurrentUser                                              |
-| `src/presentation/middleware/user_api_key_auth.rs`           | 用户 API key 认证                                                         |
-| `src/infrastructure/persistence/partition_manager.rs`        | 分区管理                                                                  |
-| `src-dashboard/api.ts`                                       | 前端 API 封装 (JWT 自动刷新)                                              |
-| `src-dashboard/components/access-point/modelMappingUtils.ts` | 模型映射工具 (ANTHROPIC_FAMILIES, MappingMatchType, matchTypeForSource)   |
-| `src-dashboard/components/log/log-detail/tokenUsage.ts`      | Token 用量工具函数 (hasTokenData)                                         |
-| `src-dashboard/components/session/TurnCard.tsx`              | 轮次卡片组件 (递归渲染内容块, 最大深度 5 层)                              |
-| `src-dashboard/components/session/TurnNavigator.tsx`         | Sticky 轮次导航条                                                         |
-| `src-dashboard/hooks/useFetch.ts`                            | 通用数据获取 Hook (fetch-on-mount, {data, loading, error, refetch})       |
-| `src-dashboard/utils/parseLogs.ts`                           | 日志/会话解析工具 (buildConversationEvents + buildConversationTurns)      |
-| `cliff.toml`                                                 | CHANGELOG 自动生成配置 (git-cliff, feat→Added / fix→Fixed / perf→Changed) |
-| `rust-toolchain.toml`                                        | Rust 工具链版本固定 (channel = "1.96")                                    |
-| `.prettierrc` / `.prettierignore`                            | Prettier 格式化配置与排除规则                                             |
-| `.dockerignore`                                              | Docker 构建上下文排除规则                                                 |
-| `.github/workflows/ci.yml`                                   | CI 流水线 (fmt + clippy + build + PostgreSQL 集成测试)                    |
-| `.github/dependabot.yml`                                     | 依赖自动更新配置 (cargo + npm 每周)                                       |
-| `.claude/skills/release/SKILL.md`                            | 发布管理技能 (/release 命令)                                              |
+| 文件                                                         | 说明                                                                                    |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `src/main.rs`                                                | 启动入口 (依赖组装 + 路由 + 分区 + 后台任务)                                            |
+| `src/application/proxy/proxy_pipeline.rs`                    | 代理转发管道 (薄编排层，领域逻辑在 domain/)                                             |
+| `src/domain/provider/fault_config.rs`                        | 故障配置值对象 (matches_status + calculate_available_at + extract)                      |
+| `src/domain/provider/fault_service.rs`                       | 故障检测领域服务 (FaultService::detect + disable_account)                               |
+| `src/domain/access_point/access_point.rs`                    | AccessPointEx 聚合根 (sort_accounts + apply_session_affinity + transform)               |
+| `src/domain/access_point/routing_strategy.rs`                | 路由策略值对象 (sort_accounts)                                                          |
+| `src/domain/shared/request_snapshot.rs`                      | 请求快照值对象 (parse + transform_headers + HOP_BY_HOP_HEADERS)                         |
+| `src/infrastructure/http_client/proxy_logger.rs`             | 日志积累器 (Drop 自动 flush)                                                            |
+| `src/infrastructure/http_client/processed_request.rs`        | 上游请求变换 (防腐)                                                                     |
+| `src/application/log/log_service.rs`                         | 日志写入/查询 (三阶段)                                                                  |
+| `src/application/user/api_key_service.rs`                    | 用户 API key 管理                                                                       |
+| `src/presentation/middleware/jwt_auth.rs`                    | JWT 认证中间件 + CurrentUser                                                            |
+| `src/presentation/middleware/user_api_key_auth.rs`           | 用户 API key 认证                                                                       |
+| `src/infrastructure/persistence/partition_manager.rs`        | 分区管理                                                                                |
+| `src-dashboard/api.ts`                                       | 前端 API 封装 (JWT 自动刷新)                                                            |
+| `src-dashboard/components/access-point/modelMappingUtils.ts` | 模型映射工具 (ANTHROPIC_FAMILIES, MappingMatchType, matchTypeForSource)                 |
+| `src-dashboard/components/log/log-detail/tokenUsage.ts`      | Token 用量工具函数 (hasTokenData)                                                       |
+| `src-dashboard/components/session/TurnCard.tsx`              | 轮次卡片组件 (递归渲染内容块, 最大深度 5 层)                                            |
+| `src-dashboard/components/session/TurnNavigator.tsx`         | Sticky 轮次导航条                                                                       |
+| `src-dashboard/hooks/useFetch.ts`                            | 通用数据获取 Hook (fetch-on-mount, {data, loading, error, refetch})                     |
+| `src-dashboard/utils/parseLogs.ts`                           | 日志/会话解析工具 (SSE + JSON 双格式, buildConversationEvents + buildConversationTurns) |
+| `cliff.toml`                                                 | CHANGELOG 自动生成配置 (git-cliff, feat→Added / fix→Fixed / perf→Changed)               |
+| `rust-toolchain.toml`                                        | Rust 工具链版本固定 (channel = "1.96")                                                  |
+| `.prettierrc` / `.prettierignore`                            | Prettier 格式化配置与排除规则                                                           |
+| `.dockerignore`                                              | Docker 构建上下文排除规则                                                               |
+| `.github/workflows/ci.yml`                                   | CI 流水线 (fmt + clippy + build + PostgreSQL 集成测试)                                  |
+| `.github/dependabot.yml`                                     | 依赖自动更新配置 (cargo + npm 每周)                                                     |
+| `.claude/skills/release/SKILL.md`                            | 发布管理技能 (/release 命令)                                                            |
 
 ## 注意事项（易错点）
 
@@ -346,3 +347,4 @@ aggr.resolve(x, y)
 - `ProxyLogger` 持有 `ProxyLogData` DTO（防腐），不直接构造领域实体；`LogService::record_proxy_log()` 内部构造 `LogMetadata`
 - `log_metadata` 的 `account_id` 字段记录实际使用的账号
 - 会话详情页轮次判定：通过 `request_body.messages` 数组判定（非 tool_result 的用户消息 = 新轮次起点），`buildConversationTurns()` 在 `parseLogs.ts` 中实现；所有改进纯前端实施，不修改后端 API；不要使用 `buildConversationEvents()` 渲染详情页
+- 响应体格式检测（`detectResponseFormat`）优先通过 `response_headers` 的 `Content-Type` 判定；若无响应头或未匹配，`isJsonFormat` 通过 JSON.parse 试探兜底；`ResponseContentCard` 将检测结果通过 `format` 参数传递给各解析函数

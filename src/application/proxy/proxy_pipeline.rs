@@ -5,7 +5,7 @@
 //! 本层仅负责加载数据、调用领域行为、转发 HTTP、构造响应。
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::http::HeaderMap;
 use bytes::Bytes;
@@ -221,10 +221,12 @@ impl ProxyPipeline {
                         .body(axum::body::Body::from_stream(stream))
                         .map_err(|e| AppError::Internal(format!("构建响应失败: {}", e)));
                 } else {
-                    let resp_body = upstream_resp
-                        .bytes()
-                        .await
-                        .map_err(|e| AppError::Upstream(format!("读取上游响应失败: {}", e)))?;
+                    // 非流式响应：读取完整响应体（有超时保护，防止永久挂起）
+                    let resp_body =
+                        tokio::time::timeout(Duration::from_secs(120), upstream_resp.bytes())
+                            .await
+                            .map_err(|_| AppError::Upstream("读取上游响应超时".to_string()))?
+                            .map_err(|e| AppError::Upstream(format!("读取上游响应失败: {}", e)))?;
 
                     let mut logger = logger;
                     logger.set_body(&resp_body);
@@ -306,10 +308,12 @@ impl ProxyPipeline {
                 }
 
                 // 非 SSE 错误：读取完整 body
-                let resp_body = upstream_resp
-                    .bytes()
-                    .await
-                    .map_err(|e| AppError::Upstream(format!("读取上游响应失败: {}", e)))?;
+                // 非流式错误响应：读取完整响应体（有超时保护，防止永久挂起）
+                let resp_body =
+                    tokio::time::timeout(Duration::from_secs(120), upstream_resp.bytes())
+                        .await
+                        .map_err(|_| AppError::Upstream("读取上游错误响应超时".to_string()))?
+                        .map_err(|e| AppError::Upstream(format!("读取上游响应失败: {}", e)))?;
 
                 // 始终记录日志
                 let log_data = build_proxy_log_data(

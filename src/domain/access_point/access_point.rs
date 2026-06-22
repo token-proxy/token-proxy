@@ -257,7 +257,7 @@ mod tests {
             .insert(pid1, Some("claude-sonnet-4-map".to_string()));
 
         let mut row2 = ModelRoutingRow {
-            source_model: "claude-*".to_string(),
+            source_model: "claude-sonnet-".to_string(),
             targets: HashMap::new(),
         };
         row2.targets

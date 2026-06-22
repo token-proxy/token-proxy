@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use super::is_prefix_source_model;
+
 /// 未匹配模型占位符常量
 pub const UNMATCHED_MODEL: &str = "__unmatched__";
 
@@ -33,7 +35,7 @@ pub struct ModelRoutingRow {
 
 impl ModelRoutingGrid {
     /// 对于给定的 provider_id 和请求模型，查找目标模型。
-    /// 匹配优先级：精确匹配 > 前缀匹配 > __unmatched__ 兜底 > 返回原始模型
+    /// 匹配优先级：精确匹配 > 前缀匹配（最长前缀优先）> __unmatched__ 兜底 > 返回原始模型
     pub fn resolve_model(&self, requested_model: &str, provider_id: &Uuid) -> String {
         // 1. 精确匹配
         for row in &self.rows {
@@ -43,17 +45,31 @@ impl ModelRoutingGrid {
                 }
             }
         }
-        // 2. 前缀匹配（查找 source_model 以 * 结尾且能匹配请求模型的）
+
+        // 2. 前缀匹配 — 收集所有候选，最长前缀优先
+        //    前缀行通过 is_prefix_source_model() 识别：包括 Anthropic 模型族（claude-haiku- 等）
+        //    和 __unmatched__ 哨兵值。以 - 结尾的族名自然形成前缀。
+        let mut candidates: Vec<(&str, &Option<String>)> = Vec::new();
         for row in &self.rows {
-            let prefix = row.source_model.strip_suffix('*');
-            if let Some(prefix) = prefix {
-                if requested_model.starts_with(prefix) {
-                    if let Some(target) = row.targets.get(provider_id).and_then(|t| t.clone()) {
-                        return target;
-                    }
+            if row.source_model == UNMATCHED_MODEL {
+                continue; // __unmatched__ 在步骤 3 单独处理
+            }
+            if is_prefix_source_model(&row.source_model)
+                && requested_model.starts_with(&row.source_model)
+            {
+                if let Some(target) = row.targets.get(provider_id) {
+                    candidates.push((&row.source_model, target));
                 }
             }
         }
+        // 按前缀长度降序排列，最长（最具体）匹配优先
+        candidates.sort_by_key(|b| std::cmp::Reverse(b.0.len()));
+        if let Some((_, target)) = candidates.first() {
+            if let Some(t) = (*target).clone() {
+                return t;
+            }
+        }
+
         // 3. __unmatched__ 兜底
         for row in &self.rows {
             if row.source_model == UNMATCHED_MODEL {
@@ -99,7 +115,7 @@ mod tests {
         row1.targets.insert(pid2, Some("gpt-4-32k".to_string()));
 
         let mut row2 = ModelRoutingRow {
-            source_model: "claude-*".to_string(),
+            source_model: "claude-sonnet-".to_string(),
             targets: HashMap::new(),
         };
         row2.targets
@@ -148,6 +164,42 @@ mod tests {
         let pid = grid.provider_ids[0];
         let result = grid.resolve_model("unknown-model", &pid);
         assert_eq!(result, "fallback-model");
+    }
+
+    #[test]
+    fn test_resolve_model_anthropic_family_prefix() {
+        let pid = Uuid::new_v4();
+        // Anthropic 模型族前缀（如 claude-haiku-）通过 is_prefix_source_model() 识别
+        let mut haiku_row = ModelRoutingRow {
+            source_model: "claude-haiku-".to_string(),
+            targets: HashMap::new(),
+        };
+        haiku_row
+            .targets
+            .insert(pid, Some("deepseek-v4-flash".to_string()));
+
+        let mut sonnet_row = ModelRoutingRow {
+            source_model: "claude-sonnet-".to_string(),
+            targets: HashMap::new(),
+        };
+        sonnet_row
+            .targets
+            .insert(pid, Some("deepseek-v4-pro".to_string()));
+
+        let grid = ModelRoutingGrid {
+            provider_ids: vec![pid],
+            rows: vec![haiku_row, sonnet_row],
+        };
+        // claude-haiku-4-5-20251001 应匹配 claude-haiku- 而非 claude-sonnet-
+        assert_eq!(
+            grid.resolve_model("claude-haiku-4-5-20251001", &pid),
+            "deepseek-v4-flash"
+        );
+        // claude-sonnet-4-20250514 应匹配 claude-sonnet-
+        assert_eq!(
+            grid.resolve_model("claude-sonnet-4-20250514", &pid),
+            "deepseek-v4-pro"
+        );
     }
 
     #[test]

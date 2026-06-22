@@ -111,7 +111,10 @@ export default function LogDetailPage(): ReactNode {
       />
 
       {/* 6. 响应内容 */}
-      <ResponseContentCard responseBody={data.response_body} />
+      <ResponseContentCard
+        responseBody={data.response_body}
+        responseHeaders={data.response_headers as Record<string, unknown> | null}
+      />
     </div>
   );
 }

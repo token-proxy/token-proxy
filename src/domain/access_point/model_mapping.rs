@@ -135,7 +135,7 @@ impl ModelMappingCollection {
     }
 
     /// 查找与请求模型匹配的映射
-    /// 优先级：精确匹配 > 前缀匹配 > __unmatched__ 规则
+    /// 优先级：精确匹配 > 前缀匹配（最长前缀优先）> __unmatched__ 规则
     pub fn find_mapping(&self, requested_model: &str) -> Option<&ModelMapping> {
         // 1. 精确匹配
         if let Some(m) = self
@@ -145,11 +145,19 @@ impl ModelMappingCollection {
         {
             return Some(m);
         }
-        // 2. 前缀匹配
-        if let Some(m) = self.0.iter().find(|m| {
-            normalize_match_type(&m.source_model, m.match_type) == MatchType::Prefix
-                && requested_model.starts_with(&m.source_model)
-        }) {
+        // 2. 前缀匹配 — 收集所有候选，最长前缀（最具体）优先
+        let prefix_matches: Vec<&ModelMapping> = self
+            .0
+            .iter()
+            .filter(|m| {
+                normalize_match_type(&m.source_model, m.match_type) == MatchType::Prefix
+                    && requested_model.starts_with(&m.source_model)
+            })
+            .collect();
+        if let Some(m) = prefix_matches
+            .into_iter()
+            .max_by_key(|m| m.source_model.len())
+        {
             return Some(m);
         }
         // 3. __unmatched__ 规则
@@ -318,10 +326,27 @@ mod tests {
             ),
             ModelMapping::new_prefix("claude-".to_string(), "claude-3-opus".to_string()),
         ]);
-        // 最具体的前缀应该先声明，这里检查匹配到第一个前缀
+        // 最长前缀优先：claude-sonnet- 比 claude- 更具体
         let found = collection.find_mapping("claude-sonnet-4-20250101");
         assert!(found.is_some());
         assert_eq!(found.unwrap().match_type, MatchType::Prefix);
+        assert_eq!(found.unwrap().target_model, "claude-sonnet-4-20250514");
+    }
+
+    #[test]
+    fn test_collection_find_mapping_prefix_longest_wins() {
+        // 验证最长前缀优先，与声明顺序无关
+        let collection = ModelMappingCollection(vec![
+            ModelMapping::new_prefix("claude-".to_string(), "broad-match".to_string()),
+            ModelMapping::new_prefix(
+                "claude-haiku-".to_string(),
+                "claude-haiku-specific".to_string(),
+            ),
+        ]);
+        // claude-haiku-4-5-20251001 应匹配 claude-haiku-（更长前缀）而非 claude-
+        let found = collection.find_mapping("claude-haiku-4-5-20251001");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().target_model, "claude-haiku-specific");
     }
 
     #[test]
