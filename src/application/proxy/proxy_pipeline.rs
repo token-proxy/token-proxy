@@ -23,8 +23,7 @@ use crate::domain::provider::repository::ProviderRepository;
 use crate::domain::provider::FaultOutcome;
 use crate::domain::provider::FaultService;
 use crate::domain::shared::EncryptionService;
-use crate::domain::shared::HOP_BY_HOP_HEADERS;
-use crate::infrastructure::http_client::ProcessedRequest;
+use crate::domain::shared::{InboundRequest, UpstreamRequest, HOP_BY_HOP_HEADERS};
 use crate::infrastructure::http_client::ProxyClient;
 use crate::infrastructure::http_client::ProxyLogger;
 use crate::shared::error::AppError;
@@ -94,16 +93,17 @@ impl ProxyPipeline {
         // ── 3. 账户排序（按路由策略）+ 会话粘滞 ──
         access_point.sort_accounts();
 
-        let session_id = headers
-            .get("x-claude-code-session-id")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("unknown")
-            .to_string();
+        // 协议解析入站请求（提取 model 等），随后由协议方法提取会话标识。
+        // session_id 为 None 表示请求未携带会话标识（例如非 Claude Code 客户端的直接调用）。
+        let inbound = access_point
+            .api_type
+            .parse_inbound(headers.clone(), body.clone())?;
+        let session_id = access_point.api_type.extract_session_id(&inbound);
 
-        if session_id != "unknown" {
+        if let Some(sid) = &session_id {
             if let Some(affinity) = self
                 .session_affinity_repo
-                .find_by_access_point_and_session(access_point.id, &session_id)
+                .find_by_access_point_and_session(access_point.id, sid)
                 .await?
             {
                 access_point.apply_session_affinity(affinity.account_id);
@@ -143,37 +143,26 @@ impl ProxyPipeline {
             let upstream_key = String::from_utf8(decrypted)
                 .map_err(|_| AppError::Internal("API Key 解码失败".to_string()))?;
 
-            // 4d. 构造上游请求
-            let processed = ProcessedRequest::prepare(
-                &access_point,
+            // 4d. 构造上游请求（聚合根编排：URL 拼接 + 模型路由 + 协议适配）
+            let upstream = access_point.build_upstream_request(
+                &inbound,
+                &provider,
                 &upstream_key,
                 remainder,
-                headers.clone(),
-                &body,
-                &provider,
             )?;
 
-            let body_bytes =
-                Bytes::from(serde_json::to_string(processed.outbound.body()).unwrap_or_default());
+            let body_bytes = Bytes::from(serde_json::to_string(&upstream.body).unwrap_or_default());
             let start = Instant::now();
 
             // 4e. 转发到上游
             let upstream_resp = self
                 .proxy_client
-                .forward(
-                    &processed.upstream_url,
-                    processed.outbound.headers().clone(),
-                    body_bytes,
-                )
+                .forward(&upstream.url, upstream.headers.clone(), body_bytes)
                 .await?;
 
             let status = upstream_resp.status();
             let resp_headers = upstream_resp.headers().clone();
-            let is_sse = resp_headers
-                .get("content-type")
-                .and_then(|v| v.to_str().ok())
-                .map(|v| v.contains("text/event-stream"))
-                .unwrap_or(false);
+            let is_sse = access_point.api_type.is_sse_response(&resp_headers);
 
             // ── 构造响应基础（过滤 hop-by-hop 头）──
             let mut response_builder = axum::response::Response::builder().status(status);
@@ -187,7 +176,9 @@ impl ProxyPipeline {
             if status.is_success() {
                 // ── 成功路径 ──
                 let log_data = build_proxy_log_data(
-                    &processed,
+                    &inbound,
+                    &upstream,
+                    session_id.as_deref(),
                     &access_point,
                     user_id,
                     status.as_u16(),
@@ -225,7 +216,7 @@ impl ProxyPipeline {
                     spawn_save_affinity(
                         self.session_affinity_repo.clone(),
                         access_point.id,
-                        &session_id,
+                        session_id.as_deref(),
                         account_entry.account_id,
                         self.in_flight_writes.clone(),
                     );
@@ -248,7 +239,7 @@ impl ProxyPipeline {
                     spawn_save_affinity(
                         self.session_affinity_repo.clone(),
                         access_point.id,
-                        &session_id,
+                        session_id.as_deref(),
                         account_entry.account_id,
                         self.in_flight_writes.clone(),
                     );
@@ -272,7 +263,9 @@ impl ProxyPipeline {
                     );
 
                     let log_data = build_proxy_log_data(
-                        &processed,
+                        &inbound,
+                        &upstream,
+                        session_id.as_deref(),
                         &access_point,
                         user_id,
                         status_u16,
@@ -336,7 +329,9 @@ impl ProxyPipeline {
 
                 // 始终记录日志
                 let log_data = build_proxy_log_data(
-                    &processed,
+                    &inbound,
+                    &upstream,
+                    session_id.as_deref(),
                     &access_point,
                     user_id,
                     status_u16,
@@ -432,9 +427,14 @@ impl ProxyPipeline {
 
 // ─── 辅助函数 ────────────────────────────────────────────────────────
 
-/// 从已处理的请求和接入点信息构造 `ProxyLogData`
+/// 从入站/上游请求和接入点信息构造 `ProxyLogData`
+///
+/// PR 2 会用 `ProxyCallRecord` 取代这个自由函数和 `ProxyLogData` DTO。
+#[allow(clippy::too_many_arguments)]
 fn build_proxy_log_data(
-    processed: &ProcessedRequest,
+    inbound: &InboundRequest,
+    upstream: &UpstreamRequest,
+    session_id: Option<&str>,
     access_point: &crate::domain::access_point::AccessPointEx,
     user_id: Uuid,
     status_code: u16,
@@ -444,17 +444,19 @@ fn build_proxy_log_data(
 ) -> ProxyLogData {
     ProxyLogData {
         timestamp: chrono::Utc::now().fixed_offset(),
-        session_id: processed.session_id.clone(),
+        // 日志层仍保留旧的字符串契约（未携带会话标识时记为 "unknown"），
+        // 待 PR 2 重构日志侧时再将 LogService 的入参改为 Option<String>。
+        session_id: session_id.unwrap_or("unknown").to_string(),
         user_id,
         access_point_id: access_point.id,
         provider_id,
         account_id,
-        model_original: processed.inbound.model().to_string(),
-        model_mapped: processed.outbound.model().to_string(),
+        model_original: inbound.model.clone(),
+        model_mapped: upstream.mapped_model.clone(),
         api_type: access_point.api_type.to_string(),
         status_code,
-        request_headers: processed.inbound.headers().clone(),
-        request_body: processed.inbound.body().clone(),
+        request_headers: inbound.headers.clone(),
+        request_body: inbound.body.clone(),
         resp_headers,
         response_body: String::new(),
         duration_ms: 0,
@@ -466,17 +468,18 @@ fn build_proxy_log_data(
 /// 异步保存会话粘滞绑定（spawn 到后台，不阻塞响应返回）
 ///
 /// 通过 `in_flight_writes` 计数器追踪，优雅关闭时等待落库。
+/// `session_id` 为 `None` 时跳过（请求未携带会话标识）。
 fn spawn_save_affinity(
     repo: Arc<dyn SessionAffinityRepository>,
     access_point_id: Uuid,
-    session_id: &str,
+    session_id: Option<&str>,
     account_id: Uuid,
     in_flight_writes: Arc<AtomicI64>,
 ) {
-    if session_id == "unknown" {
+    let Some(sid) = session_id else {
         return;
-    }
-    let sid = session_id.to_string();
+    };
+    let sid = sid.to_string();
     in_flight_writes.fetch_add(1, Ordering::Release);
     tokio::spawn(async move {
         if let Err(e) = repo.upsert(access_point_id, &sid, account_id).await {

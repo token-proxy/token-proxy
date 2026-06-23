@@ -12,8 +12,9 @@ use crate::domain::access_point::access_point_account::AccessPointAccount;
 use crate::domain::access_point::model_routing_grid::ModelRoutingGrid;
 use crate::domain::access_point::routing_strategy::RoutingStrategy;
 use crate::domain::access_point::short_code::ShortCode;
+use crate::domain::provider::provider::Model as Provider;
 use crate::domain::shared::status::Status;
-use crate::domain::shared::{AccessPointType, RequestSnapshot};
+use crate::domain::shared::{AccessPointType, InboundRequest, UpstreamRequest, HOP_BY_HOP_HEADERS};
 use crate::shared::error::AppError;
 use chrono::{DateTime, FixedOffset, Utc};
 use uuid::Uuid;
@@ -191,25 +192,56 @@ impl AccessPointEx {
             .resolve_model(requested_model, provider_id)
     }
 
-    /// 变换入站请求为上游请求
-    pub fn transform_request_snapshot(
+    /// 由入站请求构造上游请求（聚合根编排：URL 拼接 + 模型路由 + 协议适配）
+    ///
+    /// 工作步骤：
+    /// 1. 从 Provider 选取与当前接入点 api_type 匹配的 base_url，与 remainder 拼接得到目标 URL
+    /// 2. 通过模型路由网格将入站模型名解析为该 Provider 上的目标模型
+    /// 3. 若发生模型映射，调用协议方法将新模型写回 body
+    /// 4. 复制入站 headers 并过滤 hop-by-hop 头
+    /// 5. 调用协议方法注入 API key
+    pub fn build_upstream_request(
         &self,
-        inbound: &RequestSnapshot,
+        inbound: &InboundRequest,
+        provider: &Provider,
         upstream_key: &str,
-        provider_id: &Uuid,
-    ) -> Result<RequestSnapshot, AppError> {
-        let original_model = inbound.model().to_string();
-        let mapped_model = self.resolve_model(&original_model, provider_id);
+        remainder: &str,
+    ) -> Result<UpstreamRequest, AppError> {
+        // URL 构造
+        let base_url = provider.base_url_for(&self.access_point.api_type)?;
+        let url = format!("{}/{}", base_url.trim_end_matches('/'), remainder);
 
-        let body = if mapped_model != original_model {
-            inbound.replace_model_in_body(&mapped_model)
+        // 模型路由
+        let mapped_model = self.resolve_model(&inbound.model, &provider.id);
+
+        // body 变换（仅 model 变更时才克隆并替换）
+        let body = if mapped_model != inbound.model {
+            self.access_point
+                .api_type
+                .replace_model_in_body(&inbound.body, &mapped_model)
         } else {
-            inbound.body().clone()
+            inbound.body.clone()
         };
 
-        let headers = inbound.transform_headers(upstream_key);
+        // headers 变换：过滤 hop-by-hop + 注入 API key
+        let mut headers = axum::http::HeaderMap::new();
+        for (k, v) in inbound.headers.iter() {
+            let key_lower = k.as_str().to_lowercase();
+            if HOP_BY_HOP_HEADERS.contains(&key_lower.as_str()) {
+                continue;
+            }
+            headers.insert(k.clone(), v.clone());
+        }
+        self.access_point
+            .api_type
+            .inject_api_key(&mut headers, upstream_key);
 
-        Ok(inbound.with_parts(headers, body, mapped_model))
+        Ok(UpstreamRequest {
+            url,
+            headers,
+            body,
+            mapped_model,
+        })
     }
 
     /// 从模型路由网格中移除指定 Provider 的列
