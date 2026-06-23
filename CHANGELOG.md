@@ -5,6 +5,32 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.0] - 2026-06-23
+
+### Added
+
+- 重做 Dashboard 数据分析功能 **BREAKING**
+- 实现优雅关闭以支持 K8s 零中断滚动更新
+
+### Changed
+
+- ProfilePage 路由从 /settings/profile 移为 /profile
+
+### Fixed
+
+- 修复上游响应超时控制并增强响应体格式支持
+- 修复创建接入点表单账号池无法选择服务商及模型路由未自动添加未匹配行
+- 补充 CHANGELOG 缺失的版本号头部并修复 body 模板
+
+### Miscellaneous
+
+- Bump version to 1.1.0
+- 完善 git-cliff commit_parsers 配置，关闭 filter_commits
+- Add CHANGELOG for 1.0.2
+- 修复新 tag 发布时 Docker 构建缓存完全失效的问题
+- Add CHANGELOG for 1.0.1
+- Add CHANGELOG for 1.0.0
+
 ## [1.0.2] - 2026-06-22
 
 ### Fixed
