@@ -307,6 +307,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         log_service.clone(),
         session_affinity_repo.clone(),
         token_proxy::application::proxy::TrackedSpawner::new(in_flight_writes.clone()),
+        shutting_down.clone(),
     ));
 
     let user_api_key_service = Arc::new(UserApiKeyService::new(
