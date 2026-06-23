@@ -10,3 +10,4 @@
 //!    （编译器会自动指出所有需要补分支的位置）
 
 pub(super) mod anthropic;
+pub(super) mod openai;

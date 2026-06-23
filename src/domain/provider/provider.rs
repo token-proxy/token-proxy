@@ -100,7 +100,11 @@ impl Model {
             AccessPointType::Anthropic => self
                 .anthropic_base_url
                 .as_deref()
-                .ok_or_else(|| AppError::Internal("服务商未配置 Anthropic 基础 URL".to_string())),
+                .ok_or_else(|| AppError::Validation("该服务商未配置 Anthropic base URL".into())),
+            AccessPointType::OpenAi => self
+                .openai_base_url
+                .as_deref()
+                .ok_or_else(|| AppError::Validation("该服务商未配置 OpenAI base URL".into())),
         }
     }
 

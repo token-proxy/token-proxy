@@ -25,7 +25,6 @@ pub struct Model {
     pub status_code: Option<i16>,
     pub duration_ms: Option<i32>,
     pub error_message: Option<String>,
-    pub client_app: Option<String>,
     pub client_user_agent: Option<String>,
     pub conversation_source: String,
     pub agent_id: Option<String>,
@@ -33,16 +32,12 @@ pub struct Model {
     pub raw_content_available: bool,
     /// 客户端是否中途断开连接
     pub is_interrupted: bool,
-    /// 客户端名称（从 user-agent 解析）
-    pub client_name: Option<String>,
-    /// 客户端版本号
+    /// 客户端版本号（从 User-Agent 解析的版本号段）
     pub client_version: Option<String>,
-    /// 客户端发布渠道
-    pub client_channel: Option<String>,
-    /// 客户端平台
-    pub client_platform: Option<String>,
     /// API 类型（Anthropic / OpenAI 等）
     pub api_type: String,
+    /// 客户端类型（如 claude_code、codex、other 等）
+    pub client_type: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

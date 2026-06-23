@@ -98,6 +98,12 @@ impl Model {
         self.touch();
     }
 
+    /// 设置 API 类型（Anthropic / OpenAI）
+    pub fn set_api_type(&mut self, api_type: AccessPointType) {
+        self.api_type = api_type;
+        self.touch();
+    }
+
     /// 设置状态
     pub fn set_status(&mut self, status: Status) {
         self.status = status;

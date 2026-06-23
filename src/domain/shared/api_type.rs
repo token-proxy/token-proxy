@@ -21,6 +21,7 @@ use std::str::FromStr;
 
 use super::inbound_request::InboundRequest;
 use super::protocols::anthropic;
+use super::protocols::openai;
 
 /// 接入点 API 类型
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
@@ -28,11 +29,14 @@ use super::protocols::anthropic;
 pub enum AccessPointType {
     #[sea_orm(string_value = "anthropic")]
     Anthropic,
+    /// OpenAI 协议（Chat Completions `/v1/chat/completions` 和 Responses `/v1/responses`）
+    #[sea_orm(string_value = "openai")]
+    OpenAi,
 }
 
 impl AccessPointType {
     pub fn all_variants() -> Vec<AccessPointType> {
-        vec![AccessPointType::Anthropic]
+        vec![AccessPointType::Anthropic, AccessPointType::OpenAi]
     }
 }
 
@@ -47,9 +51,15 @@ impl AccessPointType {
         &self,
         headers: HeaderMap,
         body: String,
+        remainder: &str,
     ) -> Result<InboundRequest, AppError> {
         match self {
-            AccessPointType::Anthropic => anthropic::parse_inbound(self.clone(), headers, body),
+            AccessPointType::Anthropic => {
+                anthropic::parse_inbound(self.clone(), headers, body, remainder)
+            }
+            AccessPointType::OpenAi => {
+                openai::parse_inbound(self.clone(), headers, body, remainder)
+            }
         }
     }
 
@@ -59,6 +69,11 @@ impl AccessPointType {
     pub fn extract_session_id(&self, inbound: &InboundRequest) -> Option<String> {
         match self {
             AccessPointType::Anthropic => anthropic::extract_session_id(&inbound.headers),
+            AccessPointType::OpenAi => inbound
+                .headers
+                .get("thread-id")
+                .and_then(|v| v.to_str().ok())
+                .map(String::from),
         }
     }
 
@@ -66,6 +81,7 @@ impl AccessPointType {
     pub fn inject_api_key(&self, headers: &mut HeaderMap, key: &str) {
         match self {
             AccessPointType::Anthropic => anthropic::inject_api_key(headers, key),
+            AccessPointType::OpenAi => openai::inject_api_key(headers, key),
         }
     }
 
@@ -73,6 +89,7 @@ impl AccessPointType {
     pub fn replace_model_in_body(&self, body: &Value, new_model: &str) -> Value {
         match self {
             AccessPointType::Anthropic => anthropic::replace_model_in_body(body, new_model),
+            AccessPointType::OpenAi => openai::replace_model_in_body(body, new_model),
         }
     }
 
@@ -80,6 +97,7 @@ impl AccessPointType {
     pub fn is_sse_response(&self, resp_headers: &HeaderMap) -> bool {
         match self {
             AccessPointType::Anthropic => anthropic::is_sse_response(resp_headers),
+            AccessPointType::OpenAi => openai::is_sse_response(resp_headers),
         }
     }
 }
@@ -88,6 +106,7 @@ impl fmt::Display for AccessPointType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AccessPointType::Anthropic => write!(f, "anthropic"),
+            AccessPointType::OpenAi => write!(f, "openai"),
         }
     }
 }
@@ -98,6 +117,7 @@ impl FromStr for AccessPointType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "anthropic" => Ok(AccessPointType::Anthropic),
+            "openai" => Ok(AccessPointType::OpenAi),
             _ => Err(AppError::Validation(format!("不支持的接入点类型: {}", s))),
         }
     }

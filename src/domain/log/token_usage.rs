@@ -37,6 +37,8 @@ pub struct Model {
     pub server_tool_usage: Option<Json>,
     /// 缓存创建详情（JSONB: ephemeral_5m_input_tokens, ephemeral_1h_input_tokens）
     pub cache_creation: Option<Json>,
+    /// 客户端类型（如 claude-code、sdk 等）
+    pub client_type: String,
     pub created_at: DateTimeWithTimeZone,
 }
 
