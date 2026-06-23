@@ -146,4 +146,4 @@ curl https://your-domain/ap/my-team/v1/messages \
 
 ## License
 
-MIT
+[Apache License 2.0](./LICENSE)

@@ -20,7 +20,7 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 
 | 层         | 路径                                                                            | 职责                             |
 | ---------- | ------------------------------------------------------------------------------- | -------------------------------- |
-| 领域层     | `src/domain/{access_point,provider,user,log,system,shared}/`                    | 实体、值对象、Repository trait   |
+| 领域层     | `src/domain/{access_point,provider,proxy,user,log,system,shared}/`              | 实体、值对象、Repository trait   |
 | 应用层     | `src/application/{access_point,auth,dashboard,log,provider,proxy,system,user}/` | 用例编排、DTO                    |
 | 基础设施层 | `src/infrastructure/{persistence,encryption,auth,http_client,parsers}/`         | Repository 实现、加密、JWT、HTTP |
 | 展示层     | `src/presentation/{routes,middleware}/`                                         | axum handlers、认证中间件        |
@@ -41,15 +41,20 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 - **加密**: AES-256-GCM（`ENCRYPTION_KEY` 64 hex = 32 字节）
 - **密码**: argon2id
 - **分区**: `PartitionManager` 按月 RANGE 分区（`log_metadata`、`log_contents`），advisory lock 防冲突；`log_token_usage` 永久保留不分
-- **代理 Header 构造**: 入站 `authorization` 仅用于用户 API key 认证；上游请求独立构建 `Authorization: Bearer <account_key>`；仅透传 `x-*`、`accept`、`content-type` 等业务头
+- **代理 Header 构造**: 入站 `authorization` 仅用于用户 API key 认证；上游请求独立构建（API key 注入由 `AccessPointType::inject_api_key` 协议方法负责）；仅透传 `x-*`、`accept`、`content-type` 等业务头
 - **响应头透明化**: 仅过滤 hop-by-hop 头（`transfer-encoding`、`connection`、`keep-alive`），其余透传
-- **流式判断**: 依据上游响应 `content-type` 是否包含 `text/event-stream`，非基于请求特征预设
+- **流式判断**: 由 `AccessPointType::is_sse_response(&resp_headers)` 判定，依据上游响应 `content-type` 是否包含 `text/event-stream`，非基于请求特征预设
+- **协议适配点**: `AccessPointType` 枚举挂载 5 个协议方法（`parse_inbound` / `extract_session_id` / `inject_api_key` / `replace_model_in_body` / `is_sse_response`），具体实现位于 `domain/shared/protocols/<name>.rs`；加新协议（如 OpenAI）只需补 enum variant + 新建协议文件，编译器会自动指出所有需要补 match 的位置
+- **响应分类**: `UpstreamOutcome` enum 显式建模四种结果（`Success` / `ClientError` / `Fault` / `ServerError`），由 `UpstreamOutcome::classify` 调用 `FaultService::detect` 后归类；嵌套 if 树和重复的故障检测调用已被消除
+- **重试决策**: `RetryDecision` enum (`Return(Response)` / `Continue(AppError)`) 由类型系统强制重试时必须携带错误原因，取代易遗漏的 `last_error + continue` 配对
 - **响应体格式检测**: `detectResponseFormat(responseHeaders)` 通过 `Content-Type` 判定 `'sse'` / `'json'`；`isJsonFormat(body)` 通过 JSON.parse 试探兜底；前端各解析函数（`parseStructuredBlocks`、`detectHasThinking`、`buildConversationEvents` 等）接受可选 `format` 参数避免重复检测
-- **账户池路由**: `RoutingStrategy` — Priority（同优先级排序，失败降级）或 Weighted（权重随机）；失败自动重试下一账号
-- **会话粘滞**: `session_affinity` 表（`access_point_id`, `session_id`），ProxyPipeline 首次创建、后续复用
+- **账户池路由**: `RoutingStrategy` — Priority（同优先级排序，失败降级）或 Weighted（权重随机）；失败自动重试下一账号（由 `AccountSelector` 迭代候选 + `RetryDecision::Continue` 串联）
+- **会话粘滞**: `session_affinity` 表（`access_point_id`, `session_id`），ProxyPipeline 首次创建、后续复用；写入通过 `TrackedSpawner` fire-and-forget
+- **优雅关闭短路**: `ProxyPipeline::execute` 第 0 步检查 `shutting_down`，关闭期间新请求立即返回 `AppError::Upstream("服务正在关闭，请稍后重试")`
 - **模型路由网格**: 二维表格（source_model × provider_id），匹配优先级：精确匹配 > 前缀匹配 > `__unmatched__` 兜底 > 原始模型值
 - **账号自动禁用**: `DisabledReason`（Manual/RateLimited/BalanceExhausted/Fault）+ `available_at`；`recover()` 清除；禁用账号自动跳过
 - **日志记录三阶段**: 元数据 → 内容 → token 用量；元数据失败立即 return，后续失败仅 warn/error 不阻断
+- **日志记录器位置**: `ProxyCallRecord` 位于 `application/proxy/`（而非基础设施层），因为它直接接受领域聚合根（`InboundRequest` / `UpstreamRequest` / `AccessPointEx`）；API 反映业务时序：`start → attach_response → append_body/set_body → finish`，`Drop` 兜底 SSE 中断
 - **日志默认不依赖 `log_contents`**: 列表优先用 `log_metadata`；原始内容按需加载（`/api/logs/{id}/raw`）
 - **Dashboard 数据分析**: 3 个独立 GET 端点（`/api/dashboard/kpi` / `/api/dashboard/top-users` / `/api/dashboard/top-accounts`）共享 `?range=today|last7|last30|custom` 时间窗口；KPI 端点内嵌 sparkline（避免重复 SQL）；对比窗口为等长前期；所有 LEFT JOIN 容忍 `users` / `accounts` / `providers` 删除（`Option<String>` + 前端降级为 `已删除成员/账号 · <uuid 前 8 位>`）；`DashboardService` 仅依赖 `LogRepository`，所有聚合在 SQL 层（无 N+1）；缓存命中率分母为 `input + cache_read`（不含 cache_creation）；趋势对比覆盖 5 种边界（up/down/flat/new/empty）
 
@@ -164,7 +169,7 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 - 复杂解析算法（如 `parseStructuredBlocks`）需要文件级 JSDoc + 步骤编号注释
 
 **项目中的注释标杆（参考）：**
-`src/domain/shared/request_snapshot.rs`、`src/domain/log/metadata.rs`、`src/application/log/dto/proxy_log_data.rs`、`src/application/proxy/proxy_pipeline.rs`、`src/infrastructure/http_client/proxy_logger.rs`、`src/main.rs`、`src-dashboard/utils/parseLogs.ts`、`src-dashboard/components/session/TurnCard.tsx`
+`src/domain/shared/protocols/anthropic.rs`、`src/domain/log/metadata.rs`、`src/application/log/dto/proxy_log_input.rs`、`src/application/proxy/proxy_pipeline.rs`、`src/application/proxy/proxy_call_record.rs`、`src/main.rs`、`src-dashboard/utils/parseLogs.ts`、`src-dashboard/components/session/TurnCard.tsx`
 
 ### 通用编码约束
 
@@ -223,7 +228,7 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 
 **严禁记录（敏感信息防护）：**
 
-以下数据**绝对不能**出现在日志中（包括 tracing、TraceLayer、ProxyLogger、数据库 audit_log 的 details 字段）：
+以下数据**绝对不能**出现在日志中（包括 tracing、TraceLayer、ProxyCallRecord、数据库 audit_log 的 details 字段）：
 
 - API 账号密钥明文（`accounts.encrypted_key` 解密后的值）
 - 用户 API key 完整值（创建时返回一次的 `tp_*` key）
@@ -308,52 +313,67 @@ aggr.resolve(x, y)
 
 ## 核心文件速查
 
-| 文件                                                         | 说明                                                                                    |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| `src/main.rs`                                                | 启动入口 (依赖组装 + 路由 + 分区 + 后台任务)                                            |
-| `src/application/proxy/proxy_pipeline.rs`                    | 代理转发管道 (薄编排层，领域逻辑在 domain/)                                             |
-| `src/domain/provider/fault_config.rs`                        | 故障配置值对象 (matches_status + calculate_available_at + extract)                      |
-| `src/domain/provider/fault_service.rs`                       | 故障检测领域服务 (FaultService::detect + disable_account)                               |
-| `src/domain/access_point/access_point.rs`                    | AccessPointEx 聚合根 (sort_accounts + apply_session_affinity + transform)               |
-| `src/domain/access_point/routing_strategy.rs`                | 路由策略值对象 (sort_accounts)                                                          |
-| `src/domain/shared/request_snapshot.rs`                      | 请求快照值对象 (parse + transform_headers + HOP_BY_HOP_HEADERS)                         |
-| `src/infrastructure/http_client/proxy_logger.rs`             | 日志积累器 (Drop 自动 flush)                                                            |
-| `src/infrastructure/http_client/processed_request.rs`        | 上游请求变换 (防腐)                                                                     |
-| `src/application/log/log_service.rs`                         | 日志写入/查询 (三阶段)                                                                  |
-| `src/application/dashboard/dashboard_service.rs`             | Dashboard 聚合服务 (get_kpi + get_top_users + get_top_accounts + compute_trend)         |
-| `src/application/dashboard/time_window.rs`                   | 时间窗口解析 (resolve_windows 纯函数，含等长前期对比)                                   |
-| `src/domain/log/dashboard_query.rs`                          | Dashboard 领域查询类型 (DashboardWindow + KpiAggregate + SparklineBucket + Top\*Row)    |
-| `src/presentation/routes/dashboard_routes.rs`                | Dashboard 路由 (/api/dashboard/{kpi,top-users,top-accounts})                            |
-| `src/application/user/api_key_service.rs`                    | 用户 API key 管理                                                                       |
-| `src/presentation/middleware/jwt_auth.rs`                    | JWT 认证中间件 + CurrentUser                                                            |
-| `src/presentation/middleware/user_api_key_auth.rs`           | 用户 API key 认证                                                                       |
-| `src/infrastructure/persistence/partition_manager.rs`        | 分区管理                                                                                |
-| `src-dashboard/api.ts`                                       | 前端 API 封装 (JWT 自动刷新)                                                            |
-| `src-dashboard/components/access-point/modelMappingUtils.ts` | 模型映射工具 (ANTHROPIC_FAMILIES, MappingMatchType, matchTypeForSource)                 |
-| `src-dashboard/components/log/log-detail/tokenUsage.ts`      | Token 用量工具函数 (hasTokenData)                                                       |
-| `src-dashboard/components/session/TurnCard.tsx`              | 轮次卡片组件 (递归渲染内容块, 最大深度 5 层)                                            |
-| `src-dashboard/components/session/TurnNavigator.tsx`         | Sticky 轮次导航条                                                                       |
-| `src-dashboard/hooks/useFetch.ts`                            | 通用数据获取 Hook (fetch-on-mount, {data, loading, error, refetch})                     |
-| `src-dashboard/pages/DashboardPage.tsx`                      | Dashboard 顶层 (timeRange + refreshKey + 3 个 useFetch 调度)                            |
-| `src-dashboard/components/dashboard/`                        | Dashboard 组件 (KpiCard/CacheHitCard/Sparkline/ComparisonArrow/StackedBar/Top\*Ranking) |
-| `src-dashboard/utils/parseLogs.ts`                           | 日志/会话解析工具 (SSE + JSON 双格式, buildConversationEvents + buildConversationTurns) |
-| `cliff.toml`                                                 | CHANGELOG 自动生成配置 (git-cliff, feat→Added / fix→Fixed / perf→Changed)               |
-| `rust-toolchain.toml`                                        | Rust 工具链版本固定 (channel = "1.96")                                                  |
-| `.prettierrc` / `.prettierignore`                            | Prettier 格式化配置与排除规则                                                           |
-| `.dockerignore`                                              | Docker 构建上下文排除规则                                                               |
-| `.github/workflows/ci.yml`                                   | CI 流水线 (fmt + clippy + build + PostgreSQL 集成测试)                                  |
-| `.github/dependabot.yml`                                     | 依赖自动更新配置 (cargo + npm 每周)                                                     |
-| `.claude/skills/release/SKILL.md`                            | 发布管理技能 (/release 命令)                                                            |
+| 文件                                                         | 说明                                                                                                                            |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.rs`                                                | 启动入口 (依赖组装 + 路由 + 分区 + 后台任务)                                                                                    |
+| `src/application/proxy/proxy_pipeline.rs`                    | 代理转发管道 (60 行调度骨架 + try_one_account 子方法，领域逻辑在 domain/)                                                       |
+| `src/application/proxy/proxy_call_record.rs`                 | 代理调用记录器 (start → attach_response → append/set_body → finish; Drop 兜底中断标记)                                          |
+| `src/application/proxy/tracked_spawner.rs`                   | 后台写入调度器 (统一 fetch_add + try_current 守卫 + spawn + fetch_sub 模板)                                                     |
+| `src/application/proxy/account_selector.rs`                  | 候选账号迭代器 (封装加载 Account → 跳过 → 加载 Provider → 解密 API Key 四步)                                                    |
+| `src/application/proxy/upstream_dispatcher.rs`               | 上游转发执行器 (forward + 120s 非流式响应体读取超时)                                                                            |
+| `src/application/proxy/response_builder.rs`                  | axum 响应构造 (build_streaming_response / build_buffered_response + hop-by-hop 过滤)                                            |
+| `src/domain/proxy/upstream_outcome.rs`                       | 上游响应分类枚举 (Success / ClientError / Fault / ServerError) + classify 函数                                                  |
+| `src/domain/proxy/retry_decision.rs`                         | 重试决策枚举 (Return(Response) / Continue(AppError))                                                                            |
+| `src/domain/provider/fault_config.rs`                        | 故障配置值对象 (matches_status + calculate_available_at + extract)                                                              |
+| `src/domain/provider/fault_service.rs`                       | 故障检测领域服务 (FaultService::detect + disable_account)                                                                       |
+| `src/domain/access_point/access_point.rs`                    | AccessPointEx 聚合根 (sort_accounts + apply_session_affinity + build_upstream_request)                                          |
+| `src/domain/access_point/routing_strategy.rs`                | 路由策略值对象 (sort_accounts)                                                                                                  |
+| `src/domain/shared/api_type.rs`                              | AccessPointType 枚举 + 协议方法 (parse_inbound / extract_session_id / inject_api_key / replace_model_in_body / is_sse_response) |
+| `src/domain/shared/inbound_request.rs`                       | 入站请求纯数据结构 (InboundRequest struct，无方法)                                                                              |
+| `src/domain/shared/upstream_request.rs`                      | 上游请求纯数据结构 (UpstreamRequest struct，无方法)                                                                             |
+| `src/domain/shared/protocols/anthropic.rs`                   | Anthropic 协议适配实现 (parse_inbound/extract_session_id/inject_api_key 等)                                                     |
+| `src/application/log/log_service.rs`                         | 日志写入/查询 (三阶段)                                                                                                          |
+| `src/application/log/dto/proxy_log_input.rs`                 | 代理日志写入入参 DTO (一次性构造，无占位值)                                                                                     |
+| `src/application/dashboard/dashboard_service.rs`             | Dashboard 聚合服务 (get_kpi + get_top_users + get_top_accounts + compute_trend)                                                 |
+| `src/application/dashboard/time_window.rs`                   | 时间窗口解析 (resolve_windows 纯函数，含等长前期对比)                                                                           |
+| `src/domain/log/dashboard_query.rs`                          | Dashboard 领域查询类型 (DashboardWindow + KpiAggregate + SparklineBucket + Top\*Row)                                            |
+| `src/presentation/routes/dashboard_routes.rs`                | Dashboard 路由 (/api/dashboard/{kpi,top-users,top-accounts})                                                                    |
+| `src/application/user/api_key_service.rs`                    | 用户 API key 管理                                                                                                               |
+| `src/presentation/middleware/jwt_auth.rs`                    | JWT 认证中间件 + CurrentUser                                                                                                    |
+| `src/presentation/middleware/user_api_key_auth.rs`           | 用户 API key 认证                                                                                                               |
+| `src/infrastructure/persistence/partition_manager.rs`        | 分区管理                                                                                                                        |
+| `src-dashboard/api.ts`                                       | 前端 API 封装 (JWT 自动刷新)                                                                                                    |
+| `src-dashboard/components/access-point/modelMappingUtils.ts` | 模型映射工具 (ANTHROPIC_FAMILIES, MappingMatchType, matchTypeForSource)                                                         |
+| `src-dashboard/components/log/log-detail/tokenUsage.ts`      | Token 用量工具函数 (hasTokenData)                                                                                               |
+| `src-dashboard/components/session/TurnCard.tsx`              | 轮次卡片组件 (递归渲染内容块, 最大深度 5 层)                                                                                    |
+| `src-dashboard/components/session/TurnNavigator.tsx`         | Sticky 轮次导航条                                                                                                               |
+| `src-dashboard/hooks/useFetch.ts`                            | 通用数据获取 Hook (fetch-on-mount, {data, loading, error, refetch})                                                             |
+| `src-dashboard/pages/DashboardPage.tsx`                      | Dashboard 顶层 (timeRange + refreshKey + 3 个 useFetch 调度)                                                                    |
+| `src-dashboard/components/dashboard/`                        | Dashboard 组件 (KpiCard/CacheHitCard/Sparkline/ComparisonArrow/StackedBar/Top\*Ranking)                                         |
+| `src-dashboard/utils/parseLogs.ts`                           | 日志/会话解析工具 (SSE + JSON 双格式, buildConversationEvents + buildConversationTurns)                                         |
+| `cliff.toml`                                                 | CHANGELOG 自动生成配置 (git-cliff, feat→Added / fix→Fixed / perf→Changed)                                                       |
+| `rust-toolchain.toml`                                        | Rust 工具链版本固定 (channel = "1.96")                                                                                          |
+| `.prettierrc` / `.prettierignore`                            | Prettier 格式化配置与排除规则                                                                                                   |
+| `.dockerignore`                                              | Docker 构建上下文排除规则                                                                                                       |
+| `.github/workflows/ci.yml`                                   | CI 流水线 (fmt + clippy + build + PostgreSQL 集成测试)                                                                          |
+| `.github/dependabot.yml`                                     | 依赖自动更新配置 (cargo + npm 每周)                                                                                             |
+| `.claude/skills/release/SKILL.md`                            | 发布管理技能 (/release 命令)                                                                                                    |
 
 ## 注意事项（易错点）
 
 - 迁移文件在 `src/migrations/` 下，使用 `sea-orm-migration`
-- `domain/` 按聚合组织（5 个子目录），不再使用 entities/value_objects/repositories/services 技术类别目录
+- `domain/` 按聚合组织（7 个子目录：access_point/log/provider/proxy/shared/system/user），不再使用 entities/value_objects/repositories/services 技术类别目录
 - 跨聚合共享类型放在 `domain/shared/`，不要放在单个聚合内
 - `model_routing_grid` 的 `__unmatched__` 行是兜底规则，每个接入点自动生成
 - AccessPointDrawer 保存时过滤 `provider_ids` 必须属于账户池中的 Provider
 - 会话粘滞由 ProxyPipeline 自动管理，不感知前端
-- `ProxyLogger` 持有 `ProxyLogData` DTO（防腐），不直接构造领域实体；`LogService::record_proxy_log()` 内部构造 `LogMetadata`
+- `ProxyCallRecord` 持有 `ProxyLogInput` 入参（仅用作 LogService 一次性入参，不再是跨层 DTO），按业务时序累积日志数据；`LogService::record_proxy_log()` 内部构造 `LogMetadata`
+- `ProxyCallRecord` 的 `Drop` 兜底是 SSE 客户端中断时唯一可靠的落库机制，不要去除
+- 所有 fire-and-forget 后台写入（代理日志 + 会话粘滞）必须通过 `TrackedSpawner::spawn(operation, future)` 入队，禁止裸 `tokio::spawn`（会绕过 `in_flight_writes` 计数和 `try_current` 守卫）
+- 协议适配方法（`parse_inbound` / `extract_session_id` / `inject_api_key` / `replace_model_in_body` / `is_sse_response`）挂在 `AccessPointType` 枚举上，每协议实现位于 `domain/shared/protocols/<name>.rs`；新增协议时编译器会自动指出所有需要补 match 的位置
+- `session_id` 在请求路径上是 `Option<String>` 类型（`None` 表示请求未携带会话标识），禁止再使用字符串 `"unknown"` 作为 sentinel；只有写入 `log_metadata.session_id`（NOT NULL 列）时才回落为 `"unknown"` 字符串
+- `UpstreamOutcome::classify` 是响应分类的唯一入口；SSE 错误路径传 `resp_body=None`，body-based 故障规则会被静默忽略（doc 注释已明确）
+- `RetryDecision::Continue(AppError)` 强制重试时必须携带错误原因，类型系统替代了过去 `last_error = Some(...); continue;` 的配对约束
 - `log_metadata` 的 `account_id` 字段记录实际使用的账号
 - 会话详情页轮次判定：通过 `request_body.messages` 数组判定（非 tool_result 的用户消息 = 新轮次起点），`buildConversationTurns()` 在 `parseLogs.ts` 中实现；所有改进纯前端实施，不修改后端 API；不要使用 `buildConversationEvents()` 渲染详情页
 - 响应体格式检测（`detectResponseFormat`）优先通过 `response_headers` 的 `Content-Type` 判定；若无响应头或未匹配，`isJsonFormat` 通过 JSON.parse 试探兜底；`ResponseContentCard` 将检测结果通过 `format` 参数传递给各解析函数
