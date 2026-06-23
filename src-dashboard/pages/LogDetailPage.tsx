@@ -101,7 +101,11 @@ export default function LogDetailPage(): ReactNode {
       />
 
       {/* 4. 请求内容 */}
-      <RequestContentCard requestBody={data.request_body} style={{ marginBottom: 16 }} />
+      <RequestContentCard
+        requestBody={data.request_body}
+        api_type={data.api_type}
+        style={{ marginBottom: 16 }}
+      />
 
       {/* 5. 响应头 */}
       <HeadersCard
@@ -114,6 +118,7 @@ export default function LogDetailPage(): ReactNode {
       <ResponseContentCard
         responseBody={data.response_body}
         responseHeaders={data.response_headers as Record<string, unknown> | null}
+        api_type={data.api_type}
       />
     </div>
   );

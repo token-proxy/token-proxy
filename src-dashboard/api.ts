@@ -197,7 +197,7 @@ function buildDashboardQuery(q: TimeRangeQuery): string {
 /**
  * Dashboard 数据洞察 API 集合。
  *
- * 所有方法接受统一的 `TimeRangeQuery`，对应后端 3 个聚合端点：
+ * 所有方法接受统一的 `TimeRangeQuery`，对应后端 4 个聚合端点：
  * - `/api/dashboard/kpi` — 4 张 KPI 卡（含内嵌 sparkline）
  * - `/api/dashboard/top-users` — 成员请求量排行 Top 10
  * - `/api/dashboard/top-accounts` — 上游账号 Token 消耗排行 Top 10

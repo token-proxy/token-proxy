@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { Card, Descriptions, Tag } from '@douyinfe/semi-ui';
 import type { LogDetailFull } from '../../../types/log.ts';
 import { formatDateTime, formatNumber } from '../../../utils/format.ts';
+import { CLIENT_TYPE_LABELS } from '../../../utils/clientType.ts';
 import CopyableIdText from '@components/common/CopyableIdText';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -100,11 +101,26 @@ export default function BasicInfoCard({ data: d, style }: BasicInfoCardProps): R
     });
   }
 
-  const clientParts = [d.client_name, d.client_version, d.client_channel, d.client_platform].filter(
-    Boolean,
-  );
-  if (clientParts.length > 0) {
-    items.push({ key: '客户端', value: clientParts.join(' / ') });
+  // 客户端信息：优先展示 client_type 中文名 + 版本号，辅助展示原始 UA
+  const clientTypeLabel = CLIENT_TYPE_LABELS[d.client_type || ''] || d.client_type;
+  const clientDisplay = [clientTypeLabel, d.client_version].filter(Boolean).join(' ');
+  if (clientDisplay) {
+    items.push({
+      key: '客户端',
+      value: (
+        <div>
+          <span>{clientDisplay}</span>
+          {d.client_user_agent && (
+            <div
+              className="dashboard-deleted"
+              style={{ fontSize: 11, marginTop: 2, wordBreak: 'break-all' }}
+            >
+              {d.client_user_agent}
+            </div>
+          )}
+        </div>
+      ),
+    });
   }
 
   return (

@@ -57,10 +57,9 @@ export interface LogSummary {
   token_thinking_tokens?: number | null;
   token_total_tokens?: number | null;
   // 客户端信息
-  client_name?: string | null;
+  client_type?: string | null;
   client_version?: string | null;
-  client_channel?: string | null;
-  client_platform?: string | null;
+  client_user_agent?: string | null;
   // API 类型
   api_type?: string;
 }
@@ -140,10 +139,11 @@ export interface LogDetailFull {
   conversation_source: string;
   agent_id?: string | null;
   // 客户端信息
-  client_name?: string | null;
+  client_type?: string | null;
   client_version?: string | null;
-  client_channel?: string | null;
-  client_platform?: string | null;
+  client_user_agent?: string | null;
+  // API 类型
+  api_type?: string;
   // 请求 + 响应原始内容（前端自行解析）
   request_headers: Record<string, unknown> | null;
   response_headers: Record<string, unknown> | null;
@@ -165,6 +165,8 @@ export interface SessionContentItem {
   timestamp: string;
   conversation_source: string;
   agent_id?: string | null;
+  /** API 协议类型（"anthropic" | "openai"），用于按协议分发轮次判定逻辑 */
+  api_type?: string;
   request_headers: Record<string, unknown>;
   request_body: Record<string, unknown>;
   response_body: string;

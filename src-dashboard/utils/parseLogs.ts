@@ -191,7 +191,7 @@ function extractToolResults(messages: unknown[]): ToolResultInfo[] {
 }
 
 /**
- * 判断消息数组是否需要开启新轮次
+ * 判断消息数组是否需要开启新轮次（Anthropic 协议）
  *
  * 判定依据：最新一条 user 消息的 content 中是否包含非 tool_result 的内容块。
  * 如果只包含 tool_result，说明是工具执行结果的提交，属于同一轮次的延续。
@@ -217,6 +217,41 @@ function isNewTurnStart(messages: unknown[]): boolean {
 
     // 3. content 是字符串（非数组），说明是纯用户输入 → 新轮次
     return true;
+  }
+
+  return false;
+}
+
+/**
+ * 判定是否为 OpenAI 协议下的新轮次起点
+ *
+ * OpenAI Chat Completions：轮次边界在 role === 'user' 的消息处。
+ * 注意：OpenAI 的 tool 结果消息 role === 'tool'（非 user），因此天然不被识别为轮次起点。
+ *
+ * OpenAI Responses API：轮次边界在 input[] 中 role === 'user' 的条目处。
+ */
+function isNewTurnStartOpenAI(item: SessionContentItem): boolean {
+  const requestBody = item.request_body;
+  if (!requestBody) return false;
+
+  // request_body 已经是 JSON 对象（由后端反序列化），直接使用
+  const parsed = requestBody as Record<string, unknown>;
+
+  // Chat Completions 格式
+  if (parsed.messages && Array.isArray(parsed.messages)) {
+    const messages = parsed.messages as Array<Record<string, unknown>>;
+    // 取最后一条 user 消息
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
+    if (!lastUserMsg) return false;
+    // 如果 content 是纯字符串（非 tool_result 包装），为新轮次
+    return typeof lastUserMsg.content === 'string';
+  }
+
+  // Responses API 格式
+  if (parsed.input && Array.isArray(parsed.input)) {
+    const input = parsed.input as Array<Record<string, unknown>>;
+    const lastUserItem = [...input].reverse().find((item) => item.role === 'user');
+    return !!lastUserItem;
   }
 
   return false;
@@ -1133,7 +1168,9 @@ export function buildConversationTurns(
       continue;
     }
 
-    const isNew = currentTurn === null || isNewTurnStart(messages);
+    const isNew =
+      currentTurn === null ||
+      (item.api_type === 'openai' ? isNewTurnStartOpenAI(item) : isNewTurnStart(messages));
 
     if (isNew) {
       // 将上一个轮次写入结果

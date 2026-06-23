@@ -705,16 +705,27 @@ export default function AccessPointDrawer({
     },
   ];
 
-  // 模型族预设
-  const MODEL_FAMILIES = useMemo(
-    () => [
+  // 模型族预设：按 API 类型动态返回
+  const MODEL_FAMILIES = useMemo(() => {
+    const familyDefs =
+      formData.api_type === 'openai'
+        ? [
+            { label: 'GPT-5', value: 'gpt-5', matchType: 'prefix' as const },
+            { label: 'GPT-4o', value: 'gpt-4o', matchType: 'prefix' as const },
+            { label: 'GPT-4.1', value: 'gpt-4.1', matchType: 'prefix' as const },
+            { label: 'o4-mini', value: 'o4-mini', matchType: 'prefix' as const },
+            { label: 'o3/o3-mini', value: 'o3', matchType: 'prefix' as const },
+          ]
+        : [
+            { label: 'Claude Opus', value: 'claude-opus-', matchType: 'prefix' as const },
+            { label: 'Claude Sonnet', value: 'claude-sonnet-', matchType: 'prefix' as const },
+            { label: 'Claude Haiku', value: 'claude-haiku-', matchType: 'prefix' as const },
+          ];
+    return [
       { label: '未匹配', value: UNMATCHED_MODEL, matchType: 'prefix' as const },
-      { label: 'Claude Opus', value: 'claude-opus-', matchType: 'prefix' as const },
-      { label: 'Claude Sonnet', value: 'claude-sonnet-', matchType: 'prefix' as const },
-      { label: 'Claude Haiku', value: 'claude-haiku-', matchType: 'prefix' as const },
-    ],
-    [],
-  );
+      ...familyDefs,
+    ];
+  }, [formData.api_type]);
 
   const sourceModelOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -876,9 +887,7 @@ export default function AccessPointDrawer({
           style={{ width: '100%' }}
         >
           <Select.Option value="anthropic">Anthropic</Select.Option>
-          <Select.Option value="openai" disabled>
-            OpenAI（尚未支持）
-          </Select.Option>
+          <Select.Option value="openai">OpenAI</Select.Option>
         </Select>
 
         {/* 区域 2: 路由策略 */}

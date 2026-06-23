@@ -31,7 +31,7 @@ import './DashboardPage.css';
  * - 账号排行 Top 10
  *
  * 刷新策略：refreshKey 自增触发 useFetch 重新执行，避免 useFetch 内部 deps 不变时跳过。
- * 错误处理：3 个查询任一失败时通过 useEffect 单次弹出 Notification，避免每次 render 重复弹。
+ * 错误处理：任一查询失败时通过 useEffect 单次弹出 Notification，避免每次 render 重复弹。
  */
 export default function DashboardPage(): ReactNode {
   // 默认范围：近 7 天（与 TimeRangeSelector 的 last7 预设对齐）
@@ -55,7 +55,7 @@ export default function DashboardPage(): ReactNode {
     setRefreshKey((k) => k + 1);
   }, []);
 
-  // 错误聚合：3 个查询任一失败即视为页面级错误（useFetch 返回 error 为 string | null）
+  // 错误聚合：任一查询失败即视为页面级错误（useFetch 返回 error 为 string | null）
   const error = kpiQuery.error ?? topUsersQuery.error ?? topAccountsQuery.error;
 
   // 错误状态变化时单次弹通知；放在 useEffect 内防止每次 render 重复弹
@@ -130,7 +130,7 @@ export default function DashboardPage(): ReactNode {
         />
       </div>
 
-      {/* 排行区：双列布局，窄屏降级为单列 */}
+      {/* 排行区：双列自适应，窄屏降级为单列 */}
       <div className="dashboard-grid-rank">
         <TopUsersRanking items={topUsersQuery.data?.items ?? []} loading={topUsersQuery.loading} />
         <TopAccountsRanking

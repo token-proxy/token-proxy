@@ -40,7 +40,7 @@
   }
 }
 
-/* 排行双列：2 列 / 1 列 两段响应式 */
+/* 排行双列自适应：宽屏 2 列，窄屏单列 */
 .dashboard-grid-rank {
   display: grid;
   gap: 16px;
