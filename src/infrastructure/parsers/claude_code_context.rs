@@ -12,8 +12,6 @@ use axum::http::HeaderMap;
 pub struct ClaudeCodeContext {
     /// 客户端会话 ID（`x-claude-code-session-id` 请求头）
     pub client_session_id: Option<String>,
-    /// 客户端应用名称（`x-app` 请求头）
-    pub client_app: Option<String>,
     /// User-Agent 字符串
     pub client_user_agent: Option<String>,
     /// 会话来源类型：`main` / `subagent` / `unknown`
@@ -39,7 +37,6 @@ pub fn parse_headers(headers: &HeaderMap) -> ClaudeCodeContext {
 
     ClaudeCodeContext {
         client_session_id,
-        client_app: header_value(headers, "x-app"),
         client_user_agent: header_value(headers, "user-agent"),
         conversation_source,
         agent_id,

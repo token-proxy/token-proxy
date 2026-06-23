@@ -26,10 +26,8 @@ pub struct LogSummaryResponse {
     /// 会话来源（如 claude-code / claude-web）
     pub conversation_source: String,
     pub agent_id: Option<String>,
-    pub client_name: Option<String>,
+    /// 客户端版本号（从 User-Agent 解析的版本号段）
     pub client_version: Option<String>,
-    pub client_channel: Option<String>,
-    pub client_platform: Option<String>,
     pub api_type: String,
     /// Token 用量汇总
     pub token_input_tokens: Option<i32>,

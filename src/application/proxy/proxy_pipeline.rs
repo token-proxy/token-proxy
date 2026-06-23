@@ -21,7 +21,7 @@ use crate::domain::provider::repository::AccountRepository;
 use crate::domain::provider::repository::ProviderRepository;
 use crate::domain::provider::FaultService;
 use crate::domain::proxy::{RetryDecision, UpstreamOutcome};
-use crate::domain::shared::{EncryptionService, InboundRequest};
+use crate::domain::shared::{ClientType, EncryptionService, InboundRequest};
 use crate::infrastructure::http_client::ProxyClient;
 use crate::shared::error::AppError;
 
@@ -98,9 +98,12 @@ impl ProxyPipeline {
             return Err(AppError::Forbidden("接入点无可用账号".to_string()));
         }
 
-        // ── 2. 协议解析入站请求 + 提取会话标识 ──
-        let inbound = access_point.api_type.parse_inbound(headers, body)?;
-        let session_id = access_point.api_type.extract_session_id(&inbound);
+        // ── 2. 协议解析入站请求 + 识别客户端类型 + 提取会话标识 ──
+        let inbound = access_point
+            .api_type
+            .parse_inbound(headers, body, remainder)?;
+        let client_type = ClientType::from_request(&inbound.headers);
+        let session_id = client_type.extract_session_id(&inbound.headers);
 
         // ── 3. 账号排序（按路由策略）+ 会话粘滞 ──
         access_point.sort_accounts();
@@ -128,6 +131,7 @@ impl ProxyPipeline {
                     &access_point,
                     &inbound,
                     session_id.as_deref(),
+                    client_type,
                     user_id,
                     candidate,
                     remainder,
@@ -153,6 +157,7 @@ impl ProxyPipeline {
         access_point: &crate::domain::access_point::AccessPointEx,
         inbound: &InboundRequest,
         session_id: Option<&str>,
+        client_type: ClientType,
         user_id: Uuid,
         candidate: AccountCandidate,
         remainder: &str,
@@ -174,6 +179,7 @@ impl ProxyPipeline {
             &upstream,
             access_point,
             session_id.map(|s| s.to_string()),
+            client_type.to_string(),
             user_id,
             provider.id,
             account_id,

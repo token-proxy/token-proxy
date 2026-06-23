@@ -22,6 +22,8 @@ pub struct ProxyLogInput {
     pub model_original: String,
     pub model_mapped: String,
     pub api_type: String,
+    /// 客户端类型（如 claude_code、codex 等）
+    pub client_type: String,
     pub status_code: u16,
     pub request_headers: HeaderMap,
     pub request_body: serde_json::Value,

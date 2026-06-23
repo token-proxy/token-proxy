@@ -195,6 +195,11 @@ impl AccessPointService {
             ap.rename(name)?;
         }
 
+        if let Some(ref api_type_str) = req.api_type {
+            let api_type: AccessPointType = api_type_str.parse()?;
+            ap.set_api_type(api_type);
+        }
+
         if let Some(ref strategy_str) = req.routing_strategy {
             ap.set_routing_strategy(strategy_str.parse()?);
         }

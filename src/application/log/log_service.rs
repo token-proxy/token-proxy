@@ -16,7 +16,7 @@ use crate::domain::log::LogTokenUsageRepository;
 use crate::domain::log::{LogContent, LogMetadata, LogTokenUsage};
 use crate::domain::log::{LogQuery, LogRepository, SessionQuery};
 use crate::domain::user::UserRepository;
-use crate::infrastructure::parsers::{claude_code_context, client_info, parsed_token_usage};
+use crate::infrastructure::parsers::{claude_code_context, parsed_token_usage};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
@@ -87,18 +87,12 @@ impl LogService {
         // 解析 HTTP 头（会话 ID、Agent ID、conversation_source 等）
         let header_context = claude_code_context::parse_headers(&data.request_headers);
 
-        // 解析 User-Agent 获取客户端信息
-        let mut client_name = None;
-        let mut client_version = None;
-        let mut client_channel = None;
-        let mut client_platform = None;
-        if let Some(ref ua) = header_context.client_user_agent {
-            let info = client_info::parse_user_agent(ua);
-            client_name = info.client_name;
-            client_version = info.client_version;
-            client_channel = info.client_channel;
-            client_platform = info.client_platform;
-        }
+        // 从 User-Agent 提取版本号（斜杠 '/' 后、第一个空白字符前的部分）
+        let client_version = header_context.client_user_agent.as_ref().and_then(|ua| {
+            ua.split_once('/')
+                .and_then(|(_, rest)| rest.split_once(' ').map(|(ver, _)| ver))
+                .map(|v| v.to_string())
+        });
 
         // session_id 为 None 时存为 "unknown" 字符串
         // （log_metadata.session_id 是 NOT NULL 列，且历史数据约定 "unknown" 代表无会话标识）
@@ -118,20 +112,17 @@ impl LogService {
             model_original: Some(data.model_original.clone()),
             model_mapped: Some(data.model_mapped.clone()),
             api_type: data.api_type.clone(),
+            client_type: data.client_type.clone(),
             status_code: Some(data.status_code as i16),
             duration_ms: Some(data.duration_ms),
             is_interrupted: data.is_interrupted,
             error_message: data.error_message.clone(),
-            client_app: header_context.client_app,
             client_user_agent: header_context.client_user_agent,
             conversation_source: header_context.conversation_source,
             agent_id: header_context.agent_id,
             has_error: false,
             raw_content_available: true,
-            client_name,
             client_version,
-            client_channel,
-            client_platform,
         };
 
         // ── 阶段 1：保存元数据（主表，失败则后续无意义）──
@@ -191,6 +182,7 @@ impl LogService {
                     account_id: saved.account_id,
                     model_original: saved.model_original.clone(),
                     model_mapped: saved.model_mapped.clone(),
+                    client_type: saved.client_type.clone(),
                     conversation_source: Some(saved.conversation_source.clone()),
                     agent_id: saved.agent_id.clone(),
                     agent_type: None,
@@ -277,10 +269,7 @@ impl LogService {
                 is_interrupted: item.entry.is_interrupted,
                 conversation_source: item.entry.conversation_source.clone(),
                 agent_id: item.entry.agent_id.clone(),
-                client_name: item.entry.client_name.clone(),
                 client_version: item.entry.client_version.clone(),
-                client_channel: item.entry.client_channel.clone(),
-                client_platform: item.entry.client_platform.clone(),
                 api_type: item.entry.api_type.clone(),
                 token_input_tokens: item.input_tokens,
                 token_output_tokens: item.output_tokens,
@@ -377,10 +366,8 @@ impl LogService {
                     error_message: entry.error_message,
                     conversation_source: entry.conversation_source,
                     agent_id: entry.agent_id,
-                    client_name: entry.client_name,
                     client_version: entry.client_version,
-                    client_channel: entry.client_channel,
-                    client_platform: entry.client_platform,
+                    api_type: Some(entry.api_type.clone()),
                     request_headers: content.request_headers.unwrap_or(serde_json::Value::Null),
                     response_headers: content.response_headers.unwrap_or(serde_json::Value::Null),
                     request_body: content.request_body.unwrap_or(serde_json::Value::Null),
@@ -431,6 +418,7 @@ impl LogService {
                     timestamp: entry.timestamp.with_timezone(&chrono::Utc),
                     conversation_source: entry.conversation_source.clone(),
                     agent_id: entry.agent_id.clone(),
+                    api_type: entry.api_type.clone(),
                     request_headers: c.request_headers.unwrap_or(serde_json::Value::Null),
                     request_body: c.request_body.unwrap_or(serde_json::Value::Null),
                     response_body: c.response_body.unwrap_or_default(),
@@ -552,3 +540,5 @@ fn response_headers_to_json(headers: &axum::http::HeaderMap) -> serde_json::Valu
     }
     serde_json::Value::Object(map)
 }
+
+// ─── 响应头序列化（无需脱敏） ───────────────────────────────────

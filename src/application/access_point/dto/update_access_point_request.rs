@@ -10,6 +10,8 @@ use super::model_routing_grid_dto::ModelRoutingGridDto;
 pub struct UpdateAccessPointRequest {
     /// 接入点名称
     pub name: Option<String>,
+    /// API 类型（anthropic / openai）
+    pub api_type: Option<String>,
     /// 账户池（全量替换）
     pub accounts: Option<Vec<AccountDto>>,
     /// 路由策略（priority / weighted）

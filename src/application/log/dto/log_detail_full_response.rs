@@ -21,10 +21,9 @@ pub struct LogDetailFullResponse {
     pub error_message: Option<String>,
     pub conversation_source: String,
     pub agent_id: Option<String>,
-    pub client_name: Option<String>,
+    /// 客户端版本号（从 User-Agent 解析的版本号段）
     pub client_version: Option<String>,
-    pub client_channel: Option<String>,
-    pub client_platform: Option<String>,
+    pub api_type: Option<String>,
     pub request_headers: serde_json::Value,
     pub response_headers: serde_json::Value,
     pub request_body: serde_json::Value,
