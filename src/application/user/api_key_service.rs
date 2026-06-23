@@ -5,6 +5,8 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::dto::{CreateApiKeyResponse, UserApiKeyResponse};
+use crate::domain::log::AuditAction;
+use crate::domain::log::AuditEntityType;
 use crate::domain::log::AuditLog;
 use crate::domain::log::AuditLogRepository;
 use crate::domain::user::UserApiKey;
@@ -85,20 +87,18 @@ impl UserApiKeyService {
 
         let saved = self.api_key_repo.save(&entity).await?;
 
-        // 记录审计日志
-        let details = serde_json::json!({
-            "description": saved.description,
-            "key_prefix": saved.key_prefix,
-        });
-        let audit = AuditLog::new(
+        // 记录审计日志（fire-and-forget）
+        self.log_audit(
             Some(user_id),
-            "user",
-            "create_api_key",
-            "user_api_key",
+            AuditAction::CreateApiKey,
+            AuditEntityType::UserApiKey,
             Some(saved.id),
-            Some(details),
-        );
-        self.audit_log_repo.save(&audit).await?;
+            Some(serde_json::json!({
+                "description": saved.description,
+                "key_prefix": saved.key_prefix,
+            })),
+        )
+        .await;
 
         Ok(CreateApiKeyResponse {
             id: saved.id,
@@ -134,17 +134,18 @@ impl UserApiKeyService {
     }
 
     /// 管理员吊销任意用户的 API key（跳过所有权校验）
-    pub async fn admin_revoke(&self, key_id: Uuid) -> Result<(), AppError> {
+    pub async fn admin_revoke(&self, key_id: Uuid, operator_id: Uuid) -> Result<(), AppError> {
         let key = self
             .api_key_repo
             .find_by_id(key_id)
             .await?
             .ok_or_else(|| AppError::NotFound("API key 未找到".to_string()))?;
 
-        self.revoke_key_and_audit(key_id, &key, None).await
+        self.revoke_key_and_audit(key_id, &key, Some(operator_id))
+            .await
     }
 
-    /// 执行吊销操作并写入审计日志
+    /// 执行吊销操作并写入审计日志（fire-and-forget）
     async fn revoke_key_and_audit(
         &self,
         key_id: Uuid,
@@ -153,18 +154,16 @@ impl UserApiKeyService {
     ) -> Result<(), AppError> {
         self.api_key_repo.revoke(key_id).await?;
 
-        let details = serde_json::json!({
-            "key_prefix": key.key_prefix,
-        });
-        let audit = AuditLog::new(
+        self.log_audit(
             operator_user_id,
-            "user",
-            "revoke_api_key",
-            "user_api_key",
+            AuditAction::RevokeApiKey,
+            AuditEntityType::UserApiKey,
             Some(key_id),
-            Some(details),
-        );
-        self.audit_log_repo.save(&audit).await?;
+            Some(serde_json::json!({
+                "key_prefix": key.key_prefix,
+            })),
+        )
+        .await;
 
         Ok(())
     }
@@ -192,9 +191,19 @@ impl UserApiKeyService {
         }
 
         let mut updated = key;
-        updated.description = trimmed;
+        updated.description = trimmed.clone();
 
         let saved = self.api_key_repo.save(&updated).await?;
+
+        // 记录审计日志（fire-and-forget）
+        self.log_audit(
+            Some(user_id),
+            AuditAction::UpdateApiKeyDescription,
+            AuditEntityType::UserApiKey,
+            Some(key_id),
+            Some(serde_json::json!({"description": trimmed})),
+        )
+        .await;
 
         Ok(Self::to_response(&saved))
     }
@@ -220,6 +229,21 @@ impl UserApiKeyService {
         self.api_key_repo.update_last_used(api_key.id).await.ok();
 
         Ok(api_key.user_id)
+    }
+
+    /// fire-and-forget 审计日志写入
+    async fn log_audit(
+        &self,
+        operator_id: Option<Uuid>,
+        action: AuditAction,
+        entity_type: AuditEntityType,
+        entity_id: Option<Uuid>,
+        details: Option<serde_json::Value>,
+    ) {
+        let log = AuditLog::new(operator_id, "user", action, entity_type, entity_id, details);
+        if let Err(e) = self.audit_log_repo.save(&log).await {
+            tracing::error!(error = %e, action = %action, entity_type = %entity_type, "审计日志写入失败");
+        }
     }
 }
 

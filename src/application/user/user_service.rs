@@ -9,6 +9,8 @@ use uuid::Uuid;
 use super::dto::{
     ChangePasswordRequest, CreateUserRequest, UpdateProfileRequest, UpdateUserRequest, UserResponse,
 };
+use crate::domain::log::AuditAction;
+use crate::domain::log::AuditEntityType;
 use crate::domain::log::AuditLog;
 use crate::domain::log::AuditLogRepository;
 use crate::domain::shared::Status;
@@ -50,7 +52,11 @@ impl UserService {
     /// 创建用户
     ///
     /// 校验用户名唯一性和密码长度，哈希密码后保存。
-    pub async fn create(&self, req: CreateUserRequest) -> Result<UserResponse, AppError> {
+    pub async fn create(
+        &self,
+        req: CreateUserRequest,
+        operator_id: Option<Uuid>,
+    ) -> Result<UserResponse, AppError> {
         let trimmed_username = req.username.trim().to_string();
         if trimmed_username.is_empty() {
             return Err(AppError::Validation("用户名不能为空".to_string()));
@@ -77,18 +83,36 @@ impl UserService {
 
         let saved = self.user_repo.save(&user).await?;
 
+        self.log_audit(
+            operator_id,
+            AuditAction::Create,
+            AuditEntityType::User,
+            Some(saved.id),
+            Some(serde_json::json!({"username": saved.username})),
+        )
+        .await;
+
         Ok(Self::to_response(&saved))
     }
 
     /// 更新用户
     ///
     /// 支持更新显示名称、密码和状态（enabled/disabled）。
-    pub async fn update(&self, id: Uuid, req: UpdateUserRequest) -> Result<UserResponse, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        req: UpdateUserRequest,
+        operator_id: Option<Uuid>,
+    ) -> Result<UserResponse, AppError> {
         let mut user = self
             .user_repo
             .find_by_id(id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("用户 {} 未找到", id)))?;
+
+        // 记录更新前的状态和用户名，用于审计日志
+        let old_status = user.status.to_string();
+        let username = user.username.clone();
 
         if let Some(display_name) = req.display_name {
             user.set_display_name(display_name)?;
@@ -102,10 +126,12 @@ impl UserService {
             user.set_password_hash(hash);
         }
 
+        let mut status_changed = false;
         if let Some(status_str) = req.status {
             let status: Status = status_str
                 .parse()
                 .map_err(|e: AppError| AppError::Validation(e.to_string()))?;
+            status_changed = status_str != old_status;
             match status {
                 Status::Enabled => user.enable(),
                 Status::Disabled => user.disable(),
@@ -113,6 +139,29 @@ impl UserService {
         }
 
         let saved = self.user_repo.save(&user).await?;
+
+        // 按状态变化选择审计操作类型
+        let action = if status_changed {
+            match saved.status {
+                Status::Enabled => AuditAction::Enable,
+                Status::Disabled => AuditAction::Disable,
+            }
+        } else {
+            AuditAction::Update
+        };
+
+        self.log_audit(
+            operator_id,
+            action,
+            AuditEntityType::User,
+            Some(id),
+            Some(serde_json::json!({
+                "username": username,
+                "old_status": old_status,
+                "new_status": saved.status.to_string(),
+            })),
+        )
+        .await;
 
         Ok(Self::to_response(&saved))
     }
@@ -136,8 +185,24 @@ impl UserService {
     }
 
     /// 删除用户
-    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+    pub async fn delete(&self, id: Uuid, operator_id: Option<Uuid>) -> Result<(), AppError> {
+        // 先查询用户名，用于审计日志
+        let username = self
+            .user_repo
+            .find_by_id(id)
+            .await?
+            .map(|u| u.username.clone());
+
         self.user_repo.delete(id).await?;
+
+        self.log_audit(
+            operator_id,
+            AuditAction::Delete,
+            AuditEntityType::User,
+            Some(id),
+            username.map(|u| serde_json::json!({"username": u})),
+        )
+        .await;
 
         Ok(())
     }
@@ -157,6 +222,15 @@ impl UserService {
         user.set_display_name(req.display_name)?;
 
         let saved = self.user_repo.save(&user).await?;
+
+        self.log_audit(
+            Some(user_id),
+            AuditAction::UpdateProfile,
+            AuditEntityType::User,
+            Some(user_id),
+            Some(serde_json::json!({"display_name": saved.display_name})),
+        )
+        .await;
 
         Ok(Self::to_response(&saved))
     }
@@ -194,17 +268,33 @@ impl UserService {
 
         self.user_repo.save(&mutable_user).await?;
 
-        // 记录审计日志
-        let audit = AuditLog::new(
+        // 记录审计日志（fire-and-forget 模式）
+        self.log_audit(
             Some(user_id),
-            "user",
-            "change_password",
-            "user",
+            AuditAction::ChangePassword,
+            AuditEntityType::User,
             Some(user_id),
             Some(serde_json::json!({"action": "change_password"})),
-        );
-        self.audit_log_repo.save(&audit).await?;
+        )
+        .await;
 
         Ok(())
+    }
+
+    // ─── 私有辅助方法 ──────────────────────────────────────────────────
+
+    /// 写入审计日志（fire-and-forget，不阻塞主业务）
+    async fn log_audit(
+        &self,
+        operator_id: Option<Uuid>,
+        action: AuditAction,
+        entity_type: AuditEntityType,
+        entity_id: Option<Uuid>,
+        details: Option<serde_json::Value>,
+    ) {
+        let log = AuditLog::new(operator_id, "user", action, entity_type, entity_id, details);
+        if let Err(e) = self.audit_log_repo.save(&log).await {
+            tracing::error!(error = %e, action = %action, entity_type = %entity_type, "审计日志写入失败");
+        }
     }
 }

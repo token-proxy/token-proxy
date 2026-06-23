@@ -31,6 +31,7 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 - **聚合根**: `AccessPointEx` = 接入点 + 账户池 + 路由网格，ProxyPipeline 唯一交互入口
 - **仓库命名**: 所有 Repository 实现以 `SeaOrm` 为前缀
 - **实体 = ORM 实体**: domain 层直接使用 SeaORM DeriveEntityModel，聚合子目录内聚所有类型
+- **审计日志**: 类型安全审计 — `AuditAction`（18 variant）和 `AuditEntityType`（8 variant）替代裸字符串；所有 Service 通过私有 `log_audit` 辅助方法 fire-and-forget 写入，不阻塞主业务（禁止 `?` 传播审计错误）
 
 ## 关键决策（与编码直接相关）
 
@@ -57,6 +58,7 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 - **模型路由网格**: 二维表格（source_model × provider_id），匹配优先级：精确匹配 > 前缀匹配 > `__unmatched__` 兜底 > 原始模型值
 - **账号自动禁用**: `DisabledReason`（Manual/RateLimited/BalanceExhausted/Fault）+ `available_at`；`recover()` 清除；禁用账号自动跳过
 - **日志记录三阶段**: 元数据 → 内容 → token 用量；元数据失败立即 return，后续失败仅 warn/error 不阻断
+- **审计日志制度化**: 所有管理端写操作（CRUD + 登录/登出/刷新 + 模型发现）必须写入 `audit_logs` 表；operator_id 由各路由 handler 从 `CurrentUser` 提取后传入 Service；`AuditAction` 和 `AuditEntityType` 枚举强制类型安全（禁止使用裸字符串）；`log_audit` 辅助方法统一使用 fire-and-forget + error 日志，绝不阻塞主业务（旧的 `?` 传播错误模式已全部清理）；entity_id 无意义时传 `None`（如全局设置修改），不构造伪 UUID
 - **日志记录器位置**: `ProxyCallRecord` 位于 `application/proxy/`（而非基础设施层），因为它直接接受领域聚合根（`InboundRequest` / `UpstreamRequest` / `AccessPointEx`）；API 反映业务时序：`start → attach_response → append_body/set_body → finish`，`Drop` 兜底 SSE 中断
 - **日志默认不依赖 `log_contents`**: 列表优先用 `log_metadata`；原始内容按需加载（`/api/logs/{id}/raw`）
 - **Dashboard 数据分析**: 4 个独立 GET 端点（`/api/dashboard/kpi` / `/api/dashboard/top-users` / `/api/dashboard/top-accounts` / `/api/dashboard/top-clients`）共享 `?range=today|last7|last30|custom` 时间窗口；KPI 端点内嵌 sparkline（避免重复 SQL）；对比窗口为等长前期；所有 LEFT JOIN 容忍 `users` / `accounts` / `providers` 删除（`Option<String>` + 前端降级为 `已删除成员/账号 · <uuid 前 8 位>`）；`DashboardService` 仅依赖 `LogRepository`，所有聚合在 SQL 层（无 N+1）；缓存命中率分母为 `input + cache_read`（不含 cache_creation）；趋势对比覆盖 5 种边界（up/down/flat/new/empty）
@@ -343,8 +345,11 @@ aggr.resolve(x, y)
 | `src/application/dashboard/dashboard_service.rs`             | Dashboard 聚合服务 (get_kpi + get_top_users + get_top_accounts + get_top_clients + compute_trend)                               |
 | `src/application/dashboard/time_window.rs`                   | 时间窗口解析 (resolve_windows 纯函数，含等长前期对比)                                                                           |
 | `src/domain/log/dashboard_query.rs`                          | Dashboard 领域查询类型 (DashboardWindow + KpiAggregate + SparklineBucket + Top\*Row)                                            |
+| `src/domain/log/audit_action.rs`                             | 审计操作类型枚举 (18 variant: Create/Update/Delete/Enable/Disable/Recover/Login 等)                                             |
+| `src/domain/log/audit_entity_type.rs`                        | 审计实体类型枚举 (8 variant: AccessPoint/Account/Provider/User/UserApiKey/SystemSettings/AuthSession/RefreshToken)              |
+| `src/domain/log/audit_log.rs`                                | 审计日志实体 + AuditLog::new() 构造函数 (Accept 类型安全的 AuditAction/AuditEntityType)                                         |
 | `src/presentation/routes/dashboard_routes.rs`                | Dashboard 路由 (/api/dashboard/{kpi,top-users,top-accounts,top-clients})                                                        |
-| `src/application/user/api_key_service.rs`                    | 用户 API key 管理                                                                                                               |
+| `src/application/user/api_key_service.rs`                    | 用户 API key 管理 (含 update_description/admin_revoke 审计)                                                                     |
 | `src/presentation/middleware/jwt_auth.rs`                    | JWT 认证中间件 + CurrentUser                                                                                                    |
 | `src/presentation/middleware/user_api_key_auth.rs`           | 用户 API key 认证                                                                                                               |
 | `src/infrastructure/persistence/partition_manager.rs`        | 分区管理                                                                                                                        |
@@ -397,6 +402,10 @@ aggr.resolve(x, y)
 - 前端 Dashboard 已删除成员/账号统一用全局 `.dashboard-deleted` CSS class（灰色 + monospace）展示，不要单独写 `style={{ color: ... }}`
 - 性能优化遗留：`log_token_usage.timestamp` 无前导索引，`top_accounts` 查询可能 Seq Scan；建议在数据量增长后追加 BRIN 索引（未在本次实施）
 - SSE 广播通过 `NewLogEvent` DTO 传递，仅含标识信息（log_id / timestamp / session_id / api_type / user_id / access_point_id），不含请求体/响应体/请求头等敏感数据
+- `AuditAction` / `AuditEntityType` 新增 variant 需同步修改：Rust 枚举 + Display 实现（snake_case） + 数据库列约束（audit_logs.action / audit_logs.entity_type VARCHAR）
+- 所有 Service 的审计写入必须使用私有 `async fn log_audit(&self, ...)` fire-and-forget 模式；禁止在审计写入中使用 `?` 传播错误（会阻塞主业务）
+- 路由层 handler 从 `CurrentUser` 提取 `operator_id` 后传入 Service；Service 不需要自行获取当前用户
+- `AccessPointService::new()` 和 `AuthService::new()` 需注入 `Arc<dyn AuditLogRepository>`，其他 Service 已有此依赖则保持不变
 - `GET /api/logs/events` 端点的 JWT 认证通过 URL query 参数 `?token=` 传递（EventSource API 不支持自定义 header），中间件需兼容 query 参数提取
 - SSE channel (`broadcast::channel(256)`) 容量满时丢弃最旧事件（`send` 返回 `Lagged` 错误时仅记录 warn 日志），前端通过 `onVisibilityRecover` 全量刷新弥补丢失事件
 - `useLogEvents` Hook 在页面隐藏时暂停处理事件（节省资源、避免积压），恢复可见时不逐条消费积压事件，而是触发一次全量刷新；依赖 `visibilityCallbackRef` 注册回调

@@ -9,6 +9,8 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use super::dto::{CreateProviderRequest, ProviderResponse, ProviderSummary, UpdateProviderRequest};
+use crate::domain::log::AuditAction;
+use crate::domain::log::AuditEntityType;
 use crate::domain::log::AuditLog;
 use crate::domain::log::AuditLogRepository;
 use crate::domain::provider::repository::AccountRepository;
@@ -98,9 +100,8 @@ impl ProviderService {
         // 记录审计日志
         self.log_audit(
             user_id,
-            "user",
-            "create",
-            "provider",
+            AuditAction::Create,
+            AuditEntityType::Provider,
             Some(provider.id),
             Some(serde_json::json!({
                 "name": &provider.name,
@@ -174,19 +175,18 @@ impl ProviderService {
         let new_status = provider.status.to_string();
         let audit_action = if old_status != new_status {
             if new_status == "enabled" {
-                "enable"
+                AuditAction::Enable
             } else {
-                "disable"
+                AuditAction::Disable
             }
         } else {
-            "update"
+            AuditAction::Update
         };
 
         self.log_audit(
             user_id,
-            "user",
             audit_action,
-            "provider",
+            AuditEntityType::Provider,
             Some(id),
             Some(serde_json::json!({
                 "name": &provider.name,
@@ -274,9 +274,8 @@ impl ProviderService {
         // 记录审计日志
         self.log_audit(
             user_id,
-            "user",
-            "delete",
-            "provider",
+            AuditAction::Delete,
+            AuditEntityType::Provider,
             Some(id),
             Some(serde_json::json!({
                 "name": provider.name,
@@ -291,20 +290,12 @@ impl ProviderService {
     async fn log_audit(
         &self,
         operator_id: Option<Uuid>,
-        operator_type: &str,
-        action: &str,
-        entity_type: &str,
+        action: AuditAction,
+        entity_type: AuditEntityType,
         entity_id: Option<Uuid>,
         details: Option<serde_json::Value>,
     ) {
-        let log = AuditLog::new(
-            operator_id,
-            operator_type,
-            action,
-            entity_type,
-            entity_id,
-            details,
-        );
+        let log = AuditLog::new(operator_id, "user", action, entity_type, entity_id, details);
         if let Err(e) = self.audit_log_repo.save(&log).await {
             tracing::error!(error = %e, "审计日志写入失败");
         }
@@ -314,7 +305,11 @@ impl ProviderService {
     ///
     /// 调用上游 `/v1/models` 端点获取模型列表，合并去重后更新 Provider。
     /// 自动发现失败时返回错误，让用户感知到具体原因。
-    pub async fn discover_models(&self, provider_id: Uuid) -> Result<Vec<String>, AppError> {
+    pub async fn discover_models(
+        &self,
+        provider_id: Uuid,
+        operator_id: Option<Uuid>,
+    ) -> Result<Vec<String>, AppError> {
         tracing::info!(
             provider_id = %provider_id,
             "开始自动发现模型",
@@ -348,6 +343,17 @@ impl ProviderService {
         provider.merge_models(new_models);
 
         let saved = self.provider_repo.save(&provider).await?;
+        let new_models_count = saved.models.len() as u64;
+
+        // 记录审计日志
+        self.log_audit(
+            operator_id,
+            AuditAction::DiscoverModels,
+            AuditEntityType::Provider,
+            Some(provider_id),
+            Some(serde_json::json!({"models_count": new_models_count})),
+        )
+        .await;
 
         Ok(saved.models.into())
     }

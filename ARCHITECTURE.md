@@ -43,7 +43,7 @@ src/
 │   ├── provider/           # Provider 聚合 (配置持有者 + 密钥管理, 含限流/故障配置)
 │   ├── proxy/              # Proxy 聚合 (代理转发领域决策: UpstreamOutcome / RetryDecision)
 │   ├── user/               # User 聚合 (认证)
-│   ├── log/                # Log 聚合 (只读事件数据, 含 operator_type 和 client_type)
+│   ├── log/                # Log 聚合 (只读事件数据, 含 operator_type、client_type、AuditAction 和 AuditEntityType 枚举)
 │   ├── system/             # System 聚合 (系统设置)
 │   └── shared/             # 跨聚合共享 (Status, ApiKey, AccessPointType + 协议方法, ClientType, EncryptionService, InboundRequest, UpstreamRequest, protocols/)
 ├── application/            # 应用层 (用例编排, 依赖注入, 按聚合组织)
@@ -107,6 +107,8 @@ domain/
 │   ├── content.rs          # LogContent SeaORM Model
 │   ├── token_usage.rs      # LogTokenUsage SeaORM Model (含 client_type 列)
 │   ├── audit_log.rs        # AuditLog SeaORM Model (operator_id/operator_type 替代 user_id)
+│   ├── audit_action.rs     # AuditAction 枚举 (20 variants: Create/Update/Delete/Enable/Disable/Recover/AutoRecover/CreateApiKey/RevokeApiKey/UpdateApiKeyDescription/ChangePassword/UpdateProfile/UpdateSettings/Login/LoginFailed/Logout/RefreshRejected/DiscoverModels)
+│   ├── audit_entity_type.rs # AuditEntityType 枚举 (8 variants: AccessPoint/Account/Provider/User/UserApiKey/SystemSettings/AuthSession/RefreshToken)
 │   ├── dashboard_query.rs  # Dashboard 读模型 (DashboardWindow / KpiAggregate / SparklineBucket / TopUserRow / TopAccountRow / TopClientRow, LEFT JOIN 容忍删除)
 │   ├── repository_audit_log.rs # AuditLogRepository trait
 │   ├── repository_log.rs   # LogRepository trait (含 aggregate_kpi / aggregate_sparkline / top_users / top_accounts / top_clients 聚合方法)
@@ -159,7 +161,7 @@ domain/
 application/
 ├── access_point/           # AccessPoint 聚合用例
 │   ├── mod.rs              # 模块导出
-│   ├── access_point_service.rs # 接入点管理用例 (含 routing_strategy + model_routing_grid + accounts)
+│   ├── access_point_service.rs # 接入点管理用例 (含 routing_strategy + model_routing_grid + accounts + 审计日志写入)
 │   └── dto/                # 接入点增改查 DTO (含 account_dto, model_routing_grid_dto)
 │       ├── mod.rs
 │       ├── access_point_response.rs
@@ -171,7 +173,7 @@ application/
 ├── auth/                   # 跨聚合认证用例
 │   ├── mod.rs
 │   ├── claims.rs
-│   ├── auth_service.rs     # 认证用例 (登录/刷新/登出, Refresh Token Rotation)
+│   ├── auth_service.rs     # 认证用例 (登录/刷新/登出, Refresh Token Rotation, 审计日志写入)
 │   └── dto/                # Login/Refresh/TokenPair DTO
 ├── dashboard/              # Dashboard 只读视图用例 (仅依赖 LogRepository, 无跨聚合 Repository 依赖)
 │   ├── mod.rs
@@ -184,8 +186,8 @@ application/
 │   └── dto/                # 日志 DTO (含 proxy_log_input —— LogService::record_proxy_log 的一次性入参契约; NewLogEvent —— SSE 广播事件)
 ├── provider/               # Provider 聚合用例
 │   ├── mod.rs
-│   ├── provider_service.rs # 提供商管理用例 (含 rate_limit/balance_exhausted 配置)
-│   ├── account_service.rs  # 账号管理用例 (含加密解密、禁用/恢复)
+│   ├── provider_service.rs # 提供商管理用例 (含 rate_limit/balance_exhausted 配置 + 审计日志写入)
+│   ├── account_service.rs  # 账号管理用例 (含加密解密、禁用/恢复 + 审计日志写入)
 │   └── dto/                # Provider/Account 增改查 DTO
 ├── proxy/                  # 跨聚合代理转发用例 (调度骨架 + 编排子组件)
 │   ├── mod.rs
@@ -197,12 +199,12 @@ application/
 │   └── response_builder.rs     # axum 响应构造 (build_streaming_response / build_buffered_response + hop-by-hop 头过滤)
 ├── system/                 # System 聚合用例
 │   ├── mod.rs
-│   ├── settings_service.rs # 系统设置管理
+│   ├── settings_service.rs # 系统设置管理 (含审计日志写入)
 │   └── dto/
 ├── user/                   # User 聚合用例
 │   ├── mod.rs
-│   ├── user_service.rs     # 用户管理用例 (含密码哈希 + profile 更新 + 密码修改)
-│   ├── api_key_service.rs  # 用户 API key 管理 (生成/列表/撤销, SHA-256 哈希)
+│   ├── user_service.rs     # 用户管理用例 (含密码哈希 + profile 更新 + 密码修改 + 审计日志写入)
+│   ├── api_key_service.rs  # 用户 API key 管理 (生成/列表/撤销, SHA-256 哈希 + 审计日志写入)
 │   └── dto/                # User 增改查 DTO
 └── mod.rs                  # AppState 定义 (所有 Service 的引用容器)
 ```
@@ -233,7 +235,7 @@ start(请求侧已知, 启动计时)
 
 **后台写入调度**：所有 fire-and-forget 写入（代理日志 + 会话粘滞）统一通过 `TrackedSpawner::spawn(operation, future)` 入队，封装了 `fetch_add → Handle::try_current 守卫 → tokio::spawn → fetch_sub` 模板。`Handle::try_current` 守卫避免运行时关闭后 spawn 触发 panic；`in_flight_writes` 计数器供主进程优雅关闭时轮询归零。
 
-**AppState** 是全局共享状态，通过 axum 的 `with_state()` 注入到所有路由处理器，包含 Config、数据库连接、所有 Service 引用、JWT 服务、代理客户端，以及 SSE 相关基础设施（`log_event_tx: broadcast::Sender<NewLogEvent>`、`shutdown_rx: watch::Receiver<bool>`）。
+**AppState** 是全局共享状态，通过 axum 的 `with_state()` 注入到所有路由处理器，包含 Config、数据库连接、所有 Service 引用、JWT 服务、代理客户端、AuditLogRepository，以及 SSE 相关基础设施（`log_event_tx: broadcast::Sender<NewLogEvent>`、`shutdown_rx: watch::Receiver<bool>`）。
 
 ### 基础设施层 (infrastructure/)
 
@@ -620,6 +622,85 @@ LLM API 协议的差异点（请求头格式、session 标识 header 名、API k
 - **UpstreamOutcome::classify(provider, status, &resp_headers, resp_body, sse)** 是响应分类的唯一入口，统一调用 `FaultService::detect` 后归类为 `Success` / `ClientError` / `Fault` / `ServerError`。SSE 错误路径无法预读响应体，约定传 `resp_body=None`，body-based 故障规则被静默忽略（doc 注释已明确）。
 - **RetryDecision** 是 `try_one_account` 的返回类型，`Return(Response)` 终止重试、`Continue(AppError)` 切换下一候选 —— 类型系统强制重试时必须携带错误原因。
 
+## 审计日志标准化
+
+审计日志（`audit_logs` 表）记录系统中所有管理操作的审计轨迹，覆盖 7 个 Service 的 26 个写操作。审计日志仅后端写入，不暴露 API 路由和前端页面。
+
+### 领域模型
+
+**AuditAction 枚举**（`src/domain/log/audit_action.rs`）统一所有审计操作类型，通过 `Display` trait 序列化为 snake_case 字符串写入 VARCHAR 列：
+
+| Variant                 | 序列化字符串                 | 说明                         |
+| ----------------------- | ---------------------------- | ---------------------------- |
+| Create                  | `create`                     | 创建实体                     |
+| Update                  | `update`                     | 非状态类更新（名称、配置）   |
+| Delete                  | `delete`                     | 删除实体                     |
+| Enable                  | `enable`                     | 启用实体                     |
+| Disable                 | `disable`                    | 禁用实体                     |
+| Recover                 | `recover`                    | 手动恢复账号                 |
+| AutoRecover             | `auto_recover`               | 系统自动恢复账号（定时任务） |
+| CreateApiKey            | `create_api_key`             | 创建 API key                 |
+| RevokeApiKey            | `revoke_api_key`             | 吊销 API key                 |
+| UpdateApiKeyDescription | `update_api_key_description` | 更新 API key 备注            |
+| ChangePassword          | `change_password`            | 修改密码                     |
+| UpdateProfile           | `update_profile`             | 更新个人资料                 |
+| UpdateSettings          | `update_settings`            | 系统设置变更                 |
+| Login                   | `login`                      | 登录成功                     |
+| LoginFailed             | `login_failed`               | 登录失败（含失败原因）       |
+| Logout                  | `logout`                     | 登出                         |
+| RefreshRejected         | `refresh_rejected`           | refresh token 被拒绝         |
+| DiscoverModels          | `discover_models`            | 模型自动发现                 |
+
+**AuditEntityType 枚举**（`src/domain/log/audit_entity_type.rs`）定义受操作的实体类型：
+
+| Variant        | 序列化字符串      | 说明                      |
+| -------------- | ----------------- | ------------------------- |
+| AccessPoint    | `access_point`    | 接入点                    |
+| Account        | `account`         | 账号                      |
+| Provider       | `provider`        | 服务商                    |
+| User           | `user`            | 用户                      |
+| UserApiKey     | `user_api_key`    | 用户 API key              |
+| SystemSettings | `system_settings` | 系统设置                  |
+| AuthSession    | `auth_session`    | 认证会话（登录 / 登出）   |
+| RefreshToken   | `refresh_token`   | Refresh Token（刷新被拒） |
+
+### 审计日志覆盖率
+
+7 个 Service 的 26 个写操作全部覆盖审计日志，无遗漏：
+
+| Service            | 写操作数 | 覆盖 | 使用的 AuditAction                                                                           |
+| ------------------ | -------- | ---- | -------------------------------------------------------------------------------------------- |
+| UserService        | 5        | 5    | Create / Update / Delete / Enable / Disable / UpdateProfile / ChangePassword                 |
+| UserApiKeyService  | 4        | 4    | CreateApiKey / RevokeApiKey / UpdateApiKeyDescription (列表操作自身即为审计载体，不单独审计) |
+| ProviderService    | 4        | 4    | Create / Update / Delete / Enable / Disable / DiscoverModels                                 |
+| AccountService     | 6        | 6    | Create / Update / Delete / Enable / Disable / Recover / AutoRecover                          |
+| AccessPointService | 3        | 3    | Create / Update / Delete / Enable / Disable                                                  |
+| SettingsService    | 1        | 1    | UpdateSettings                                                                               |
+| AuthService        | 3        | 3    | Login / LoginFailed / Logout / RefreshRejected                                               |
+
+### 审计策略
+
+- **写入模式**：统一 fire-and-forget + `tracing::error!`，不阻塞主业务逻辑。各 Service 内聚私有 `write_audit_log()` 辅助方法封装日志构造和异步写入
+- **保留策略**：永久保留，不分区、不自动清理。审计日志总量较小，无需分区管理
+- **可见性**：仅后端写入，不暴露 API 路由和前端页面。`AuditLogRepository` 提供 `save`（用于写入）和 `find_all_paginated`（预留未来审计查询）两个方法
+- **敏感信息防护**：details 字段不记录 API key 明文、密码哈希、JWT token 等敏感信息。写入前各 Service 负责过滤敏感字段
+- **operator_id 策略**：管理员操作传入 `CurrentUser` 的 UUID，系统自动操作（如 AutoRecover、DiscoverModels）传 `None`
+
+### 审计日志数据结构
+
+`audit_logs` 表 7 个字段，结构自初始 Schema 确立以来未变：
+
+| 字段          | 类型             | 说明                                     |
+| ------------- | ---------------- | ---------------------------------------- |
+| id            | UUID (PK)        | 审计日志唯一标识                         |
+| operator_id   | UUID (nullable)  | 操作者 ID（系统操作为 NULL）             |
+| operator_type | VARCHAR          | 操作者类型（如 `admin` / `system`）      |
+| action        | VARCHAR          | 操作类型（AuditAction 序列化字符串）     |
+| entity_type   | VARCHAR          | 实体类型（AuditEntityType 序列化字符串） |
+| entity_id     | UUID (nullable)  | 被操作实体 ID                            |
+| details       | JSONB (nullable) | 操作详情（已过滤敏感字段）               |
+| timestamp     | TIMESTAMPTZ      | 操作时间                                 |
+
 ## 核心架构原则
 
 1. **Domain 层使用 SeaORM 宏定义实体**: 领域实体通过 DeriveEntityModel、DeriveActiveEnum、DeriveValueType、FromJsonQueryResult 等 SeaORM 宏定义，与基础设施层共用类型系统。消除 200+ 行 TryFrom/From 手动映射代码，但 domain 代码理论上可调用 SeaORM query API，需通过 code review 约束
@@ -794,6 +875,7 @@ Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules
 
 | 日期             | 变更说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-23       | 审计日志标准化: 新增 `AuditAction` 枚举（20 variants, domain/log/audit_action.rs）和 `AuditEntityType` 枚举（8 variants, domain/log/audit_entity_type.rs），通过 Display trait 序列化为 snake_case 字符串写入 VARCHAR 列。7 个 Service 的 26 个写操作全部覆盖审计日志（UserService 5 / UserApiKeyService 4 / ProviderService 4 / AccountService 6 / AccessPointService 3 / SettingsService 1 / AuthService 3），各 Service 内聚私有 `write_audit_log()` 辅助方法，统一 fire-and-forget + tracing::error! 模式。领域层、数据库 schema 无变更（audit_logs 表结构保持 7 字段不变）。审计日志永久保留、不分区、仅后端写入、不暴露 API 和前端页面。operator_id 管理员操作传入 CurrentUser，系统自动操作传 None。details 不记录 API key 明文、密码哈希、JWT token 等敏感信息                                                                                                                                                                                                                                                                                                                                                                                                 |
 | 2026-06-23       | 前端日志实时刷新（SSE 推送）: 新增 `NewLogEvent` DTO（`application/log/dto/new_log_event.rs`），LogService 集成 `broadcast::Sender` 在日志写入后广播事件；展示层新增 `GET /api/logs/events` SSE 端点（JWT 保护，`text/event-stream`，响应 `shutdown_rx` 优雅关闭信号）；AppState 新增 `log_event_tx` 和 `shutdown_rx` 字段；main.rs 创建 `broadcast::channel::<NewLogEvent>(256)`。选择 SSE 而非 WebSocket（仅需单向推送，axum 原生支持，EventSource 自动重连）；broadcast 容量 256 满时丢弃最旧事件，前端全量刷新兜底；JWT 通过 URL query 参数传递（EventSource API 不支持自定义 header）。前端：新增 `useLogEvents.ts` hook（EventSource 连接管理）、`ConnectionIndicator.tsx`（SSE 连接状态绿/黄/红三色圆点指示器）；`useFetch.ts` 改造 refetch 时 `setLoading(true)`；`RequestLogPage.tsx`、`SessionLogPage.tsx` 集成 SSE 自动刷新；`SessionDetailView.tsx` 新增 `beforeRefresh` prop。领域层和基础设施层无变更，数据库 schema 无变更                                                                                                                                                                                                                              |
 | 2026-06-23       | OpenAI 协议支持: `AccessPointType` 新增 `OpenAi` 变体 + 新建 `domain/shared/protocols/openai.rs` 实现 Chat Completions + Responses API 双端点协议适配；新增 `ClientType` 枚举（`domain/shared/client_type.rs`，ClaudeCode / Codex / Other / Unknown）与 `AccessPointType` 正交——前者描述调用客户端，后者描述上游协议。`InboundRequest` 新增 `client_type` 字段，`ProxyPipeline` 协议解析阶段从 User-Agent 和请求路径识别 ClientType；`log_metadata` 和 `log_token_usage` 新增 `client_type` 列（迁移 `m20260623_000003_client_type`）；`LogRepository` 新增 `top_clients` 聚合方法；`DashboardService` 新增 `get_top_clients`；`GET /api/dashboard/top-clients` 端点。前端：`parseOpenAI.ts` OpenAI 响应/请求解析器；`AccessPointDrawer` 启用 OpenAI 选项 + MODEL_FAMILIES 按 api_type 动态切换；`RequestContentCard` / `ResponseContentCard` 支持 OpenAI 协议渲染；`buildConversationTurns` 按 api_type 分发；`TopClientsRanking` 排行卡片；`DashboardPage` 集成第 4 个 `useFetch`。基础设施：`parsed_token_usage.rs` 扩展支持 OpenAI Chat/Responses token 格式；`Provider::base_url_for` 补 `OpenAi` 分支                                                            |
 | 2026-06-23       | Dashboard 数据分析重做: 新增 `application/dashboard/` 模块（`dashboard_service.rs` + `time_window.rs` + 12 个 DTO），仅依赖 `LogRepository`；`LogRepository` trait 扩展 4 个聚合方法（`aggregate_kpi` / `aggregate_sparkline` / `top_users` / `top_accounts`），SQL 统一用 `Statement::from_sql_and_values` 配合 `generate_series` 在 SQL 层补齐空桶；新增 `domain/log/dashboard_query.rs` 领域读模型（DashboardWindow / KpiAggregate / SparklineBucket / TopUserRow / TopAccountRow，LEFT JOIN 容忍删除）。新增 3 个 JWT 保护端点：`GET /api/dashboard/kpi` (KPI + 内嵌 sparkline) / `top-users` / `top-accounts`。删除旧 `stats_routes.rs` + `stats/dto/` 目录、`LogService` 4 个统计方法、`LogRepository` 5 个旧方法。前端 `components/dashboard/` 重写为 8 个组件（Sparkline / ComparisonArrow / StackedBar / KpiCard / CacheHitCard / TimeRangeSelector / TopUsersRanking / TopAccountsRanking），删除旧 `StatCard` / `TrendChart`；`DashboardPage.tsx` 完全重写为 CSS Grid 布局（1280/768 响应式断点）+ 3 个并行 `useFetch`；新增 `recharts@^3.8.1` 依赖、`formatTokenCompact` 工具函数、`.dashboard-deleted` 全局 CSS 类。新增架构原则 13「Dashboard 只读视图」 |

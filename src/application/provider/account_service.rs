@@ -10,6 +10,8 @@ use uuid::Uuid;
 
 use super::dto::{AccountResponse, CreateAccountRequest, UpdateAccountRequest};
 use crate::domain::access_point::repository::AccessPointRepository;
+use crate::domain::log::AuditAction;
+use crate::domain::log::AuditEntityType;
 use crate::domain::log::AuditLog;
 use crate::domain::log::AuditLogRepository;
 use crate::domain::provider::repository::AccountRepository;
@@ -64,11 +66,29 @@ impl AccountService {
         }
     }
 
+    /// 统一 fire-and-forget 审计日志写入
+    ///
+    /// 写入失败仅输出 error 日志，不阻塞主业务。
+    async fn log_audit(
+        &self,
+        operator_id: Option<Uuid>,
+        action: AuditAction,
+        entity_type: AuditEntityType,
+        entity_id: Option<Uuid>,
+        details: Option<serde_json::Value>,
+    ) {
+        let log = AuditLog::new(operator_id, "user", action, entity_type, entity_id, details);
+        if let Err(e) = self.audit_log_repo.save(&log).await {
+            tracing::error!(error = %e, action = %action, entity_type = %entity_type, "审计日志写入失败");
+        }
+    }
+
     /// 创建账号
     ///
     /// 校验 Provider 存在且启用，加密 API Key，保存账号记录。
     pub async fn create(
         &self,
+        operator_id: Option<Uuid>,
         provider_id: Uuid,
         req: CreateAccountRequest,
     ) -> Result<AccountResponse, AppError> {
@@ -113,6 +133,16 @@ impl AccountService {
             .save_with_encrypted_key(&account, &encrypted)
             .await?;
 
+        // 写入审计日志
+        self.log_audit(
+            operator_id,
+            AuditAction::Create,
+            AuditEntityType::Account,
+            Some(saved.id),
+            Some(serde_json::json!({"name": saved.name, "provider_id": saved.provider_id.to_string()})),
+        )
+        .await;
+
         Ok(Self::to_response(&saved))
     }
 
@@ -121,6 +151,7 @@ impl AccountService {
     /// 支持更新名称和 API Key（提供时触发重新加密）。
     pub async fn update(
         &self,
+        operator_id: Option<Uuid>,
         id: Uuid,
         req: UpdateAccountRequest,
     ) -> Result<AccountResponse, AppError> {
@@ -155,6 +186,16 @@ impl AccountService {
 
         let saved = self.account_repo.save(&account).await?;
 
+        // 写入审计日志
+        self.log_audit(
+            operator_id,
+            AuditAction::Update,
+            AuditEntityType::Account,
+            Some(id),
+            Some(serde_json::json!({"name": saved.name})),
+        )
+        .await;
+
         Ok(Self::to_response(&saved))
     }
 
@@ -180,7 +221,15 @@ impl AccountService {
     }
 
     /// 删除账号，同时从所有关联接入点的账户池中移除该账号
-    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+    pub async fn delete(&self, operator_id: Option<Uuid>, id: Uuid) -> Result<(), AppError> {
+        // 0. 查询账号名称用于审计日志
+        let account = self
+            .account_repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("账号 {} 未找到", id)))?;
+        let account_name = account.name.clone();
+
         // 1. 查找引用此账号的所有接入点
         let affected_aps = self.access_point_repo.find_by_account_id(id).await?;
 
@@ -207,11 +256,25 @@ impl AccountService {
         // 3. 删除账号本身
         self.account_repo.delete(id).await?;
 
+        // 写入审计日志
+        self.log_audit(
+            operator_id,
+            AuditAction::Delete,
+            AuditEntityType::Account,
+            Some(id),
+            Some(serde_json::json!({"name": account_name})),
+        )
+        .await;
+
         Ok(())
     }
 
     /// 恢复账号（清除 disabled_reason 和 available_at，重置为启用状态）
-    pub async fn recover(&self, id: Uuid) -> Result<AccountResponse, AppError> {
+    pub async fn recover(
+        &self,
+        operator_id: Option<Uuid>,
+        id: Uuid,
+    ) -> Result<AccountResponse, AppError> {
         let mut account = self
             .account_repo
             .find_by_id(id)
@@ -222,22 +285,53 @@ impl AccountService {
 
         let saved = self.account_repo.save(&account).await?;
 
+        // 写入审计日志
+        self.log_audit(
+            operator_id,
+            AuditAction::Recover,
+            AuditEntityType::Account,
+            Some(id),
+            Some(serde_json::json!({})),
+        )
+        .await;
+
         Ok(Self::to_response(&saved))
     }
 
     /// 设置账号状态
     ///
     /// 委托给 `Account::set_status()` 处理状态转换规则。
-    pub async fn set_status(&self, id: Uuid, status: Status) -> Result<AccountResponse, AppError> {
+    pub async fn set_status(
+        &self,
+        operator_id: Option<Uuid>,
+        id: Uuid,
+        status: Status,
+    ) -> Result<AccountResponse, AppError> {
         let mut account = self
             .account_repo
             .find_by_id(id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("账号 {} 未找到", id)))?;
 
+        let status_str = status.to_string();
         account.set_status(status);
 
         let saved = self.account_repo.save(&account).await?;
+
+        // 写入审计日志：按新状态选择 action
+        let action = if saved.status.is_enabled() {
+            AuditAction::Enable
+        } else {
+            AuditAction::Disable
+        };
+        self.log_audit(
+            operator_id,
+            action,
+            AuditEntityType::Account,
+            Some(id),
+            Some(serde_json::json!({"status": status_str})),
+        )
+        .await;
 
         Ok(Self::to_response(&saved))
     }
@@ -252,21 +346,14 @@ impl AccountService {
         let count = recovered_ids.len() as u64;
 
         for id in &recovered_ids {
-            let audit = AuditLog::new(
-                None,                   // operator_id: 系统自动操作
-                "system",               // operator_type
-                "account.auto_recover", // action
-                "account",              // entity_type
-                Some(*id),              // entity_id
+            self.log_audit(
+                None,                     // operator_id: 系统自动操作
+                AuditAction::AutoRecover, // action
+                AuditEntityType::Account, // entity_type
+                Some(*id),                // entity_id
                 Some(serde_json::json!({"reason": "available_at 到期，系统自动恢复"})),
-            );
-            if let Err(e) = self.audit_log_repo.save(&audit).await {
-                tracing::warn!(
-                    error = %e,
-                    account_id = %id,
-                    "账号自动恢复审计日志写入失败"
-                );
-            }
+            )
+            .await;
         }
 
         Ok(count)

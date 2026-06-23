@@ -9,6 +9,7 @@ use crate::application::provider::dto::{
     CreateProviderRequest, ProviderResponse, UpdateProviderRequest,
 };
 use crate::application::AppState;
+use crate::presentation::middleware::jwt_auth::CurrentUser;
 use crate::shared::error::AppError;
 
 /// 构建服务商管理路由
@@ -44,9 +45,10 @@ async fn list_providers(
 /// 创建新的服务商
 async fn create_provider(
     State(state): State<AppState>,
+    CurrentUser(user_id): CurrentUser,
     Json(req): Json<CreateProviderRequest>,
 ) -> Result<Json<ProviderResponse>, AppError> {
-    let provider = state.provider_service.create(req, None).await?;
+    let provider = state.provider_service.create(req, Some(user_id)).await?;
     Ok(Json(provider))
 }
 
@@ -67,9 +69,13 @@ async fn get_provider(
 async fn update_provider(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    CurrentUser(user_id): CurrentUser,
     Json(req): Json<UpdateProviderRequest>,
 ) -> Result<Json<ProviderResponse>, AppError> {
-    let provider = state.provider_service.update(id, req, None).await?;
+    let provider = state
+        .provider_service
+        .update(id, req, Some(user_id))
+        .await?;
     Ok(Json(provider))
 }
 
@@ -79,8 +85,9 @@ async fn update_provider(
 async fn delete_provider(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    CurrentUser(user_id): CurrentUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    state.provider_service.delete(id, None).await?;
+    state.provider_service.delete(id, Some(user_id)).await?;
     Ok(Json(serde_json::json!({"message": "服务商已删除"})))
 }
 
@@ -90,7 +97,11 @@ async fn delete_provider(
 async fn discover_models(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    CurrentUser(user_id): CurrentUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let models = state.provider_service.discover_models(id).await?;
+    let models = state
+        .provider_service
+        .discover_models(id, Some(user_id))
+        .await?;
     Ok(Json(serde_json::json!({ "models": models })))
 }

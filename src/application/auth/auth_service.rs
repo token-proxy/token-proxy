@@ -9,6 +9,10 @@ use uuid::Uuid;
 
 use super::claims::Claims;
 use super::dto::{LoginRequest, LoginResponse, RefreshRequest};
+use crate::domain::log::AuditAction;
+use crate::domain::log::AuditEntityType;
+use crate::domain::log::AuditLog;
+use crate::domain::log::AuditLogRepository;
 use crate::domain::user::RefreshToken;
 use crate::domain::user::RefreshTokenRepository;
 use crate::domain::user::UserRepository;
@@ -23,6 +27,7 @@ pub struct AuthService {
     user_repo: Arc<dyn UserRepository>,
     refresh_token_repo: Arc<dyn RefreshTokenRepository>,
     jwt_service: Arc<JwtService>,
+    audit_log_repo: Arc<dyn AuditLogRepository>,
 }
 
 impl AuthService {
@@ -30,11 +35,13 @@ impl AuthService {
         user_repo: Arc<dyn UserRepository>,
         refresh_token_repo: Arc<dyn RefreshTokenRepository>,
         jwt_service: Arc<JwtService>,
+        audit_log_repo: Arc<dyn AuditLogRepository>,
     ) -> Self {
         AuthService {
             user_repo,
             refresh_token_repo,
             jwt_service,
+            audit_log_repo,
         }
     }
 
@@ -44,17 +51,62 @@ impl AuthService {
         hex::encode(hasher.finalize())
     }
 
+    /// 写入审计日志（fire-and-forget 风格，失败仅记 error 不阻断主流程）
+    ///
+    /// `operator_type` 使用 `"system"` 因为登录 / 登出 / 刷新场景下请求方尚未经过身份认证。
+    async fn log_audit(
+        &self,
+        operator_id: Option<Uuid>,
+        action: AuditAction,
+        entity_type: AuditEntityType,
+        entity_id: Option<Uuid>,
+        details: Option<serde_json::Value>,
+    ) {
+        let log = AuditLog::new(
+            operator_id,
+            "system",
+            action,
+            entity_type,
+            entity_id,
+            details,
+        );
+        if let Err(e) = self.audit_log_repo.save(&log).await {
+            tracing::error!(error = %e, action = %action, entity_type = %entity_type, "审计日志写入失败");
+        }
+    }
+
     /// 用户登录
     ///
     /// 验证用户名密码，生成 access_token 和 refresh_token。
     pub async fn login(&self, req: LoginRequest) -> Result<LoginResponse, AppError> {
-        let user = self
-            .user_repo
-            .find_by_username(&req.username)
-            .await?
-            .ok_or_else(|| AppError::Unauthorized("用户名或密码错误".to_string()))?;
+        let user = match self.user_repo.find_by_username(&req.username).await? {
+            Some(user) => user,
+            None => {
+                // 用户名不存在
+                self.log_audit(
+                    None,
+                    AuditAction::LoginFailed,
+                    AuditEntityType::AuthSession,
+                    None,
+                    Some(
+                        serde_json::json!({"username": req.username, "reason": "用户名或密码错误"}),
+                    ),
+                )
+                .await;
+                return Err(AppError::Unauthorized("用户名或密码错误".to_string()));
+            }
+        };
 
         if !user.status.is_enabled() {
+            // 用户已被禁用
+            self.log_audit(
+                None,
+                AuditAction::LoginFailed,
+                AuditEntityType::AuthSession,
+                None,
+                Some(serde_json::json!({"username": req.username, "reason": "用户已被禁用"})),
+            )
+            .await;
             return Err(AppError::Unauthorized("用户已被禁用".to_string()));
         }
 
@@ -62,6 +114,15 @@ impl AuthService {
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
         if !valid {
+            // 密码错误
+            self.log_audit(
+                None,
+                AuditAction::LoginFailed,
+                AuditEntityType::AuthSession,
+                None,
+                Some(serde_json::json!({"username": req.username, "reason": "用户名或密码错误"})),
+            )
+            .await;
             return Err(AppError::Unauthorized("用户名或密码错误".to_string()));
         }
 
@@ -89,6 +150,16 @@ impl AuthService {
         let refresh_token_entity = RefreshToken::new(user.id, token_hash, expires_at);
         self.refresh_token_repo.save(&refresh_token_entity).await?;
 
+        // 登录成功
+        self.log_audit(
+            None,
+            AuditAction::Login,
+            AuditEntityType::AuthSession,
+            None,
+            Some(serde_json::json!({"username": req.username})),
+        )
+        .await;
+
         Ok(LoginResponse {
             access_token,
             refresh_token: refresh_token_str,
@@ -105,13 +176,36 @@ impl AuthService {
     pub async fn refresh(&self, req: RefreshRequest) -> Result<LoginResponse, AppError> {
         let token_hash = Self::hash_token(&req.refresh_token);
 
-        let stored_token = self
+        let stored_token = match self
             .refresh_token_repo
             .find_by_token_hash(&token_hash)
             .await?
-            .ok_or_else(|| AppError::Unauthorized("无效的 refresh token".to_string()))?;
+        {
+            Some(token) => token,
+            None => {
+                // refresh token 不存在
+                self.log_audit(
+                    None,
+                    AuditAction::RefreshRejected,
+                    AuditEntityType::RefreshToken,
+                    None,
+                    Some(serde_json::json!({"reason": "无效的 refresh token"})),
+                )
+                .await;
+                return Err(AppError::Unauthorized("无效的 refresh token".to_string()));
+            }
+        };
 
         if !stored_token.is_valid() {
+            // refresh token 已过期或已吊销
+            self.log_audit(
+                None,
+                AuditAction::RefreshRejected,
+                AuditEntityType::RefreshToken,
+                None,
+                Some(serde_json::json!({"reason": "refresh token 已过期或已吊销"})),
+            )
+            .await;
             return Err(AppError::Unauthorized(
                 "refresh token 已过期或已吊销".to_string(),
             ));
@@ -121,13 +215,32 @@ impl AuthService {
         self.refresh_token_repo.revoke(stored_token.id).await?;
 
         // 获取用户信息
-        let user = self
-            .user_repo
-            .find_by_id(stored_token.user_id)
-            .await?
-            .ok_or_else(|| AppError::Unauthorized("用户不存在".to_string()))?;
+        let user = match self.user_repo.find_by_id(stored_token.user_id).await? {
+            Some(user) => user,
+            None => {
+                // 用户不存在
+                self.log_audit(
+                    None,
+                    AuditAction::RefreshRejected,
+                    AuditEntityType::RefreshToken,
+                    None,
+                    Some(serde_json::json!({"reason": "用户不存在"})),
+                )
+                .await;
+                return Err(AppError::Unauthorized("用户不存在".to_string()));
+            }
+        };
 
         if !user.status.is_enabled() {
+            // 用户已被禁用
+            self.log_audit(
+                None,
+                AuditAction::RefreshRejected,
+                AuditEntityType::RefreshToken,
+                None,
+                Some(serde_json::json!({"reason": "用户已被禁用"})),
+            )
+            .await;
             return Err(AppError::Unauthorized("用户已被禁用".to_string()));
         }
 
@@ -166,6 +279,15 @@ impl AuthService {
     /// 退出登录（吊销该用户的所有 refresh token）
     pub async fn logout(&self, user_id: Uuid) -> Result<(), AppError> {
         self.refresh_token_repo.revoke_all_for_user(user_id).await?;
+
+        self.log_audit(
+            None,
+            AuditAction::Logout,
+            AuditEntityType::AuthSession,
+            None,
+            Some(serde_json::json!({"user_id": user_id.to_string()})),
+        )
+        .await;
 
         Ok(())
     }

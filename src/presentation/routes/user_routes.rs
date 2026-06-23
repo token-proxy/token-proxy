@@ -9,6 +9,7 @@ use crate::application::user::dto::{
     CreateUserRequest, UpdateUserRequest, UserApiKeyResponse, UserResponse,
 };
 use crate::application::AppState;
+use crate::presentation::middleware::jwt_auth::CurrentUser;
 use crate::shared::error::AppError;
 
 /// 构建用户管理路由
@@ -47,9 +48,10 @@ async fn list_users(State(state): State<AppState>) -> Result<Json<Vec<UserRespon
 /// 创建新用户
 async fn create_user(
     State(state): State<AppState>,
+    CurrentUser(operator_id): CurrentUser,
     Json(req): Json<CreateUserRequest>,
 ) -> Result<Json<UserResponse>, AppError> {
-    let user = state.user_service.create(req).await?;
+    let user = state.user_service.create(req, Some(operator_id)).await?;
     Ok(Json(user))
 }
 
@@ -69,10 +71,14 @@ async fn get_user(
 /// 更新指定用户
 async fn update_user(
     State(state): State<AppState>,
+    CurrentUser(operator_id): CurrentUser,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateUserRequest>,
 ) -> Result<Json<UserResponse>, AppError> {
-    let user = state.user_service.update(id, req).await?;
+    let user = state
+        .user_service
+        .update(id, req, Some(operator_id))
+        .await?;
     Ok(Json(user))
 }
 
@@ -81,9 +87,10 @@ async fn update_user(
 /// 删除指定用户
 async fn delete_user(
     State(state): State<AppState>,
+    CurrentUser(operator_id): CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    state.user_service.delete(id).await?;
+    state.user_service.delete(id, Some(operator_id)).await?;
     Ok(Json(serde_json::json!({"message": "用户已删除"})))
 }
 
@@ -103,8 +110,12 @@ async fn list_user_api_keys(
 /// 管理员吊销指定用户的 API key
 async fn revoke_user_api_key(
     State(state): State<AppState>,
+    CurrentUser(operator_id): CurrentUser,
     Path((_user_id, key_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    state.user_api_key_service.admin_revoke(key_id).await?;
+    state
+        .user_api_key_service
+        .admin_revoke(key_id, operator_id)
+        .await?;
     Ok(Json(serde_json::json!({"message": "API key 已撤销"})))
 }

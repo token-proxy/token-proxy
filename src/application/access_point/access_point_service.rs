@@ -16,6 +16,10 @@ use crate::domain::access_point::model_routing_grid::{ModelRoutingGrid, ModelRou
 use crate::domain::access_point::repository::AccessPointRepository;
 use crate::domain::access_point::ShortCode;
 use crate::domain::access_point::{AccessPoint, AccessPointEx};
+use crate::domain::log::AuditAction;
+use crate::domain::log::AuditEntityType;
+use crate::domain::log::AuditLog;
+use crate::domain::log::AuditLogRepository;
 use crate::domain::shared::AccessPointType;
 use crate::domain::shared::Status;
 use crate::shared::error::AppError;
@@ -25,11 +29,18 @@ use crate::shared::error::AppError;
 /// 编排接入点 CRUD 操作，包括账户池和模型路由网格的关联管理。
 pub struct AccessPointService {
     access_point_repo: Arc<dyn AccessPointRepository>,
+    audit_log_repo: Arc<dyn AuditLogRepository>,
 }
 
 impl AccessPointService {
-    pub fn new(access_point_repo: Arc<dyn AccessPointRepository>) -> Self {
-        AccessPointService { access_point_repo }
+    pub fn new(
+        access_point_repo: Arc<dyn AccessPointRepository>,
+        audit_log_repo: Arc<dyn AuditLogRepository>,
+    ) -> Self {
+        AccessPointService {
+            access_point_repo,
+            audit_log_repo,
+        }
     }
 
     fn base_response_fields(ap: &AccessPoint) -> AccessPointResponse {
@@ -106,10 +117,12 @@ impl AccessPointService {
     /// 1. 校验短码唯一性（提供时）或自动生成
     /// 2. 解析接入类型（默认 Anthropic）
     /// 3. 保存接入点及关联账户池
+    /// 4. 写入审计日志
     pub async fn create(
         &self,
         req: CreateAccessPointRequest,
         created_by: Uuid,
+        operator_id: Option<Uuid>,
     ) -> Result<AccessPointResponse, AppError> {
         // 检查短码唯一性（如果提供了短码）
         let short_code = if let Some(ref code_str) = req.short_code {
@@ -173,6 +186,19 @@ impl AccessPointService {
                 .await?;
         }
 
+        self.log_audit(
+            operator_id,
+            AuditAction::Create,
+            AuditEntityType::AccessPoint,
+            Some(saved.id),
+            Some(serde_json::json!({
+                "name": &saved.name,
+                "api_type": saved.api_type.to_string(),
+                "short_code": saved.short_code.to_string(),
+            })),
+        )
+        .await;
+
         Ok(Self::to_response(&self.access_point_repo, &saved).await)
     }
 
@@ -180,16 +206,20 @@ impl AccessPointService {
     ///
     /// 仅更新请求中提供的字段（名称、路由策略、模型网格、状态），
     /// 账户池全量替换。
+    /// 状态变更时审计日志使用 Enable / Disable action，其他变更使用 Update。
     pub async fn update(
         &self,
         id: Uuid,
         req: UpdateAccessPointRequest,
+        operator_id: Option<Uuid>,
     ) -> Result<AccessPointResponse, AppError> {
         let mut ap = self
             .access_point_repo
             .find_by_id(id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("接入点 {} 未找到", id)))?;
+
+        let old_status = ap.status.to_string();
 
         if let Some(name) = req.name {
             ap.rename(name)?;
@@ -233,6 +263,30 @@ impl AccessPointService {
                 .save_accounts(saved.id, &account_entries)
                 .await?;
         }
+
+        // 记录审计日志 — 状态变更时使用 Enable / Disable
+        let new_status = saved.status.to_string();
+        let audit_action = if old_status != new_status {
+            if new_status == "enabled" {
+                AuditAction::Enable
+            } else {
+                AuditAction::Disable
+            }
+        } else {
+            AuditAction::Update
+        };
+        self.log_audit(
+            operator_id,
+            audit_action,
+            AuditEntityType::AccessPoint,
+            Some(id),
+            Some(serde_json::json!({
+                "name": &saved.name,
+                "old_status": old_status,
+                "new_status": new_status,
+            })),
+        )
+        .await;
 
         Ok(Self::to_response(&self.access_point_repo, &saved).await)
     }
@@ -300,8 +354,42 @@ impl AccessPointService {
     }
 
     /// 删除接入点（级联删除关联的账户池和路由配置）
-    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+    pub async fn delete(&self, id: Uuid, operator_id: Option<Uuid>) -> Result<(), AppError> {
+        // 先查询获取名称用于审计日志
+        let ap = self
+            .access_point_repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("接入点 {} 未找到", id)))?;
+
         self.access_point_repo.delete(id).await?;
+
+        self.log_audit(
+            operator_id,
+            AuditAction::Delete,
+            AuditEntityType::AccessPoint,
+            Some(id),
+            Some(serde_json::json!({
+                "name": ap.name,
+            })),
+        )
+        .await;
+
         Ok(())
+    }
+
+    /// 写入审计日志（异步，忽略错误）
+    async fn log_audit(
+        &self,
+        operator_id: Option<Uuid>,
+        action: AuditAction,
+        entity_type: AuditEntityType,
+        entity_id: Option<Uuid>,
+        details: Option<serde_json::Value>,
+    ) {
+        let log = AuditLog::new(operator_id, "user", action, entity_type, entity_id, details);
+        if let Err(e) = self.audit_log_repo.save(&log).await {
+            tracing::error!(error = %e, action = %action, entity_type = %entity_type, "审计日志写入失败");
+        }
     }
 }

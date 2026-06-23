@@ -4,6 +4,10 @@
 
 use std::sync::Arc;
 
+use uuid::Uuid;
+
+use crate::domain::log::AuditAction;
+use crate::domain::log::AuditEntityType;
 use crate::domain::log::AuditLog;
 use crate::domain::log::AuditLogRepository;
 use crate::domain::system::SystemSettings;
@@ -45,7 +49,7 @@ impl SettingsService {
     pub async fn update_settings(
         &self,
         input: UpdateSettingsRequest,
-        user_id: Option<uuid::Uuid>,
+        user_id: Uuid,
     ) -> Result<SettingsResponse, AppError> {
         // 校验范围
         if !(1..=36).contains(&input.log_retention_months) {
@@ -60,23 +64,34 @@ impl SettingsService {
 
         self.settings_repo.save(&settings).await?;
 
-        // 审计日志（忽略写入失败）
-        let audit = AuditLog::new(
-            user_id,
-            "user",
-            "update",
-            "system_settings",
-            Some(uuid::Uuid::new_v4()),
+        self.log_audit(
+            Some(user_id),
+            AuditAction::UpdateSettings,
+            AuditEntityType::SystemSettings,
+            None,
             Some(serde_json::json!({
                 "log_retention_months": input.log_retention_months,
             })),
-        );
-        if let Err(e) = self.audit_log_repo.save(&audit).await {
-            tracing::error!(error = %e, "系统设置审计日志写入失败");
-        }
+        )
+        .await;
 
         Ok(SettingsResponse {
             log_retention_months: input.log_retention_months,
         })
+    }
+
+    /// fire-and-forget 审计日志写入
+    async fn log_audit(
+        &self,
+        operator_id: Option<Uuid>,
+        action: AuditAction,
+        entity_type: AuditEntityType,
+        entity_id: Option<Uuid>,
+        details: Option<serde_json::Value>,
+    ) {
+        let log = AuditLog::new(operator_id, "user", action, entity_type, entity_id, details);
+        if let Err(e) = self.audit_log_repo.save(&log).await {
+            tracing::error!(error = %e, action = %action, entity_type = %entity_type, "审计日志写入失败");
+        }
     }
 }

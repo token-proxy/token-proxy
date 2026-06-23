@@ -284,12 +284,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let user_service = Arc::new(UserService::new(user_repo.clone(), audit_log_repo.clone()));
 
-    let access_point_service = Arc::new(AccessPointService::new(access_point_repo.clone()));
+    let access_point_service = Arc::new(AccessPointService::new(
+        access_point_repo.clone(),
+        audit_log_repo.clone(),
+    ));
 
     let auth_service = Arc::new(AuthService::new(
         user_repo.clone(),
         refresh_token_repo.clone(),
         jwt_service.clone(),
+        audit_log_repo.clone(),
     ));
 
     // ─── 日志事件广播 channel（SSE 实时推送）───

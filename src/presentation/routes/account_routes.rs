@@ -10,6 +10,7 @@ use crate::application::provider::dto::{
 };
 use crate::application::AppState;
 use crate::domain::shared::Status;
+use crate::presentation::middleware::jwt_auth::CurrentUser;
 use crate::shared::error::AppError;
 
 /// 构建账号管理路由
@@ -64,9 +65,13 @@ async fn list_accounts(
 async fn create_account(
     State(state): State<AppState>,
     Path(provider_id): Path<Uuid>,
+    CurrentUser(user_id): CurrentUser,
     Json(req): Json<CreateAccountRequest>,
 ) -> Result<Json<AccountResponse>, AppError> {
-    let account = state.account_service.create(provider_id, req).await?;
+    let account = state
+        .account_service
+        .create(Some(user_id), provider_id, req)
+        .await?;
     Ok(Json(account))
 }
 
@@ -87,9 +92,10 @@ async fn get_account(
 async fn update_account(
     State(state): State<AppState>,
     Path((_provider_id, id)): Path<(Uuid, Uuid)>,
+    CurrentUser(user_id): CurrentUser,
     Json(req): Json<UpdateAccountRequest>,
 ) -> Result<Json<AccountResponse>, AppError> {
-    let account = state.account_service.update(id, req).await?;
+    let account = state.account_service.update(Some(user_id), id, req).await?;
     Ok(Json(account))
 }
 
@@ -99,8 +105,9 @@ async fn update_account(
 async fn delete_account(
     State(state): State<AppState>,
     Path((_provider_id, id)): Path<(Uuid, Uuid)>,
+    CurrentUser(user_id): CurrentUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    state.account_service.delete(id).await?;
+    state.account_service.delete(Some(user_id), id).await?;
     Ok(Json(serde_json::json!({"message": "账号已删除"})))
 }
 
@@ -110,13 +117,17 @@ async fn delete_account(
 async fn set_account_status(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    CurrentUser(user_id): CurrentUser,
     Json(req): Json<SetAccountStatusRequest>,
 ) -> Result<Json<AccountResponse>, AppError> {
     let status: Status = req
         .status
         .parse()
         .map_err(|e: AppError| AppError::Validation(e.to_string()))?;
-    let account = state.account_service.set_status(id, status).await?;
+    let account = state
+        .account_service
+        .set_status(Some(user_id), id, status)
+        .await?;
     Ok(Json(account))
 }
 
@@ -126,7 +137,8 @@ async fn set_account_status(
 async fn recover_account(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    CurrentUser(user_id): CurrentUser,
 ) -> Result<Json<AccountResponse>, AppError> {
-    let account = state.account_service.recover(id).await?;
+    let account = state.account_service.recover(Some(user_id), id).await?;
     Ok(Json(account))
 }

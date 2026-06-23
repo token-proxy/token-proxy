@@ -7,6 +7,9 @@ use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::entity::prelude::*;
 use uuid::Uuid;
 
+use super::audit_action::AuditAction;
+use super::audit_entity_type::AuditEntityType;
+
 /// SeaORM 实体映射 audit_logs 表
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "audit_logs")]
@@ -37,8 +40,8 @@ impl Model {
     pub fn new(
         operator_id: Option<Uuid>,
         operator_type: impl Into<String>,
-        action: impl Into<String>,
-        entity_type: impl Into<String>,
+        action: AuditAction,
+        entity_type: AuditEntityType,
         entity_id: Option<Uuid>,
         details: Option<serde_json::Value>,
     ) -> Self {
@@ -47,8 +50,8 @@ impl Model {
             id: Uuid::new_v4(),
             operator_id,
             operator_type: operator_type.into(),
-            action: action.into(),
-            entity_type: entity_type.into(),
+            action: action.to_string(),
+            entity_type: entity_type.to_string(),
             entity_id,
             details,
             timestamp: Utc::now().with_timezone(&offset),

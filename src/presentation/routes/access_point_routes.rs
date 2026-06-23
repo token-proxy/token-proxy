@@ -43,10 +43,13 @@ async fn list_access_points(
 /// 创建新的接入点，需认证
 async fn create_access_point(
     State(state): State<AppState>,
-    CurrentUser(created_by): CurrentUser,
+    CurrentUser(user_id): CurrentUser,
     Json(req): Json<CreateAccessPointRequest>,
 ) -> Result<Json<AccessPointResponse>, AppError> {
-    let access_point = state.access_point_service.create(req, created_by).await?;
+    let access_point = state
+        .access_point_service
+        .create(req, user_id, Some(user_id))
+        .await?;
     Ok(Json(access_point))
 }
 
@@ -66,10 +69,14 @@ async fn get_access_point(
 /// 更新指定接入点
 async fn update_access_point(
     State(state): State<AppState>,
+    CurrentUser(user_id): CurrentUser,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateAccessPointRequest>,
 ) -> Result<Json<AccessPointResponse>, AppError> {
-    let access_point = state.access_point_service.update(id, req).await?;
+    let access_point = state
+        .access_point_service
+        .update(id, req, Some(user_id))
+        .await?;
     Ok(Json(access_point))
 }
 
@@ -78,8 +85,9 @@ async fn update_access_point(
 /// 删除指定接入点
 async fn delete_access_point(
     State(state): State<AppState>,
+    CurrentUser(user_id): CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    state.access_point_service.delete(id).await?;
+    state.access_point_service.delete(id, Some(user_id)).await?;
     Ok(Json(serde_json::json!({"message": "接入点已删除"})))
 }

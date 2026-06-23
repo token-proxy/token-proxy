@@ -34,7 +34,7 @@ async fn update_settings(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let settings = state
         .settings_service
-        .update_settings(input, Some(user_id))
+        .update_settings(input, user_id)
         .await?;
     Ok(Json(serde_json::json!(settings)))
 }
