@@ -118,8 +118,41 @@ impl AccountRepository for SeaOrmAccountRepository {
     async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         let db = &*self.db;
         AccountEntity::delete_by_id(id).exec(db).await?;
-
         Ok(())
+    }
+
+    /// 批量恢复已到恢复时间的自动禁用账号。
+    ///
+    /// 单条 UPDATE ... RETURNING id 完成：
+    /// 将满足条件的账号重置为启用状态，返回被恢复的账号 ID 列表。
+    async fn recover_expired_auto_disabled(&self) -> Result<Vec<Uuid>, AppError> {
+        use sea_orm::{DbBackend, FromQueryResult, Statement};
+
+        let db = &*self.db;
+        let sql = r#"
+            UPDATE accounts
+            SET status           = 'enabled',
+                disabled_reason  = NULL,
+                available_at     = NULL,
+                updated_at       = NOW()
+            WHERE status          = 'disabled'
+              AND disabled_reason IN ('rate_limited', 'balance_exhausted', 'fault')
+              AND available_at   IS NOT NULL
+              AND available_at   <= NOW()
+            RETURNING id
+        "#;
+
+        #[derive(Debug, FromQueryResult)]
+        struct IdRow {
+            id: Uuid,
+        }
+
+        let rows =
+            IdRow::find_by_statement(Statement::from_sql_and_values(DbBackend::Postgres, sql, []))
+                .all(db)
+                .await?;
+
+        Ok(rows.into_iter().map(|r| r.id).collect())
     }
 
     async fn save_with_encrypted_key(

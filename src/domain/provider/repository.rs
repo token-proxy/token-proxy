@@ -56,4 +56,6 @@ pub trait AccountRepository: Send + Sync {
     ) -> Result<(), AppError>;
     /// 删除账号
     async fn delete(&self, id: Uuid) -> Result<(), AppError>;
+    /// 批量恢复已到恢复时间的自动禁用账号，返回实际恢复的账号 ID 列表
+    async fn recover_expired_auto_disabled(&self) -> Result<Vec<Uuid>, AppError>;
 }

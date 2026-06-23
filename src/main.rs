@@ -277,6 +277,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         provider_repo.clone(),
         access_point_repo.clone(),
         encryption_service.clone(),
+        audit_log_repo.clone(),
     ));
 
     let user_service = Arc::new(UserService::new(user_repo.clone(), audit_log_repo.clone()));
@@ -387,6 +388,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     _ = task_shutdown_rx.changed() => {
                         tracing::info!("后台任务退出：分区维护");
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
+    // 启动后台定时任务：自动恢复已到恢复时间的账号
+    let ar_account_service = account_service.clone();
+    let recover_interval = std::time::Duration::from_secs(config.partition_check_interval_secs);
+    {
+        let mut task_shutdown_rx = shutdown_rx.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(recover_interval);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        match ar_account_service.recover_expired().await {
+                            Ok(0) => {}
+                            Ok(n) => tracing::info!(recovered = n, "账号自动恢复完成"),
+                            Err(e) => tracing::error!(error = %e, "账号自动恢复失败"),
+                        }
+                    }
+                    _ = task_shutdown_rx.changed() => {
+                        tracing::info!("后台任务退出：账号自动恢复");
                         break;
                     }
                 }

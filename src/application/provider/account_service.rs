@@ -10,6 +10,8 @@ use uuid::Uuid;
 
 use super::dto::{AccountResponse, CreateAccountRequest, UpdateAccountRequest};
 use crate::domain::access_point::repository::AccessPointRepository;
+use crate::domain::log::AuditLog;
+use crate::domain::log::AuditLogRepository;
 use crate::domain::provider::repository::AccountRepository;
 use crate::domain::provider::repository::ProviderRepository;
 use crate::domain::provider::Account;
@@ -26,6 +28,7 @@ pub struct AccountService {
     provider_repo: Arc<dyn ProviderRepository>,
     access_point_repo: Arc<dyn AccessPointRepository>,
     encryption_service: Arc<dyn EncryptionService>,
+    audit_log_repo: Arc<dyn AuditLogRepository>,
 }
 
 impl AccountService {
@@ -34,12 +37,14 @@ impl AccountService {
         provider_repo: Arc<dyn ProviderRepository>,
         access_point_repo: Arc<dyn AccessPointRepository>,
         encryption_service: Arc<dyn EncryptionService>,
+        audit_log_repo: Arc<dyn AuditLogRepository>,
     ) -> Self {
         AccountService {
             account_repo,
             provider_repo,
             access_point_repo,
             encryption_service,
+            audit_log_repo,
         }
     }
 
@@ -235,5 +240,35 @@ impl AccountService {
         let saved = self.account_repo.save(&account).await?;
 
         Ok(Self::to_response(&saved))
+    }
+
+    /// 批量恢复已到恢复时间的自动禁用账号。
+    ///
+    /// 委托给 Repository 的 `recover_expired_auto_disabled` 批量执行，
+    /// 并为每个被恢复的账号写入审计日志。
+    /// 返回实际恢复的账号数量。
+    pub async fn recover_expired(&self) -> Result<u64, AppError> {
+        let recovered_ids = self.account_repo.recover_expired_auto_disabled().await?;
+        let count = recovered_ids.len() as u64;
+
+        for id in &recovered_ids {
+            let audit = AuditLog::new(
+                None,                   // operator_id: 系统自动操作
+                "system",               // operator_type
+                "account.auto_recover", // action
+                "account",              // entity_type
+                Some(*id),              // entity_id
+                Some(serde_json::json!({"reason": "available_at 到期，系统自动恢复"})),
+            );
+            if let Err(e) = self.audit_log_repo.save(&audit).await {
+                tracing::warn!(
+                    error = %e,
+                    account_id = %id,
+                    "账号自动恢复审计日志写入失败"
+                );
+            }
+        }
+
+        Ok(count)
     }
 }
