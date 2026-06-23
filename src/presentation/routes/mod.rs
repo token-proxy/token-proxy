@@ -7,7 +7,7 @@ use sea_orm::ConnectionTrait;
 
 use crate::application::AppState;
 use crate::presentation::frontend;
-use crate::presentation::middleware::{jwt_auth, user_api_key_auth};
+use crate::presentation::middleware::{jwt_auth, sse_auth, user_api_key_auth};
 
 pub mod access_point_routes;
 pub mod account_routes;
@@ -53,6 +53,14 @@ pub fn build(state: AppState) -> Router {
         ))
         .with_state(state.clone());
 
+    // SSE 路由 — 自行认证（通过 URL query ?token= 传递 JWT，因 EventSource 不支持自定义 header）
+    let sse_protected = log_routes::sse_routes()
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            sse_auth::sse_auth_middleware,
+        ))
+        .with_state(state.clone());
+
     // API key 保护的路由（代理转发）
     let proxy = proxy_routes::routes()
         .layer(middleware::from_fn_with_state(
@@ -64,6 +72,7 @@ pub fn build(state: AppState) -> Router {
     Router::new()
         .merge(public)
         .merge(jwt_protected)
+        .merge(sse_protected)
         .merge(proxy)
         .fallback(get(frontend::serve_frontend))
 }

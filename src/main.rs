@@ -6,6 +6,7 @@ use std::sync::Arc;
 use axum::Router;
 use sea_orm::Database;
 use tokio::signal;
+use tokio::sync::broadcast;
 use tokio::sync::watch;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -16,6 +17,7 @@ use uuid::Uuid;
 use token_proxy::application::access_point::AccessPointService;
 use token_proxy::application::auth::AuthService;
 use token_proxy::application::dashboard::DashboardService;
+use token_proxy::application::log::dto::NewLogEvent;
 use token_proxy::application::log::LogService;
 use token_proxy::application::provider::AccountService;
 use token_proxy::application::provider::ProviderService;
@@ -290,11 +292,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         jwt_service.clone(),
     ));
 
+    // ─── 日志事件广播 channel（SSE 实时推送）───
+    let (log_event_tx, _log_event_rx) = broadcast::channel::<NewLogEvent>(256);
+
     let log_service = Arc::new(LogService::new(
         log_repo.clone(),
         log_token_usage_repo.clone(),
         user_repo.clone(),
         access_point_repo.clone(),
+        log_event_tx.clone(),
     ));
 
     let dashboard_service = Arc::new(DashboardService::new(log_repo.clone()));
@@ -473,6 +479,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         session_affinity_repo,
         shutting_down: shutting_down.clone(),
         in_flight_writes: in_flight_writes.clone(),
+        log_event_tx: log_event_tx.clone(),
+        shutdown_rx: shutdown_rx.clone(),
     };
 
     // ─── 构建 Router ───

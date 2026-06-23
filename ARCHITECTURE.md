@@ -6,7 +6,7 @@
 
 ```
 ├── src/                    # 后端 Rust 核心代码 (~170 个 .rs 文件)
-├── src-dashboard/          # 前端管理面板 SPA (~70 个 .ts/.tsx 源文件)
+├── src-dashboard/          # 前端管理面板 SPA (~73 个 .ts/.tsx 源文件)
 ├── public/                 # 前端静态资源 (favicon, icons)
 ├── index.html              # 前端 HTML 入口 (Vite)
 ├── vite.config.ts          # Vite 构建配置
@@ -69,7 +69,7 @@ src/
 │   ├── error.rs            # AppError (9 种错误变体)
 │   └── types.rs            # PaginatedResult, PaginationParams, Timestamp
 ├── config.rs               # 环境变量配置加载
-├── main.rs                 # 启动入口 (依赖组装 + 路由构建 + 分区初始化 + 后台定时分区维护 + 过期令牌清理任务 + 后台 RateLimited 账号恢复任务)
+├── main.rs                 # 启动入口 (依赖组装 + broadcast channel 创建 + 路由构建 + 分区初始化 + 后台定时分区维护 + 过期令牌清理任务 + 后台 RateLimited 账号恢复任务)
 └── lib.rs                  # Crate 根模块 (模块导出)
 ```
 
@@ -180,8 +180,8 @@ application/
 │   └── dto/                # 14 个 DTO: TimeRangeQuery / KpiResponse / KpiTrendItem / TrendBadge / CacheHitRate / SparklineSeries / TopUserItem / TopAccountItem / TopClientItem 等
 ├── log/                    # Log 聚合用例
 │   ├── mod.rs
-│   ├── log_service.rs      # 日志写入/查询用例 (metadata、content、events、token usage)
-│   └── dto/                # 日志查询 DTO (含 proxy_log_input —— LogService::record_proxy_log 的一次性入参契约)
+│   ├── log_service.rs      # 日志写入/查询用例 (metadata、content、events、token usage); 集成 broadcast::Sender 广播新日志事件
+│   └── dto/                # 日志 DTO (含 proxy_log_input —— LogService::record_proxy_log 的一次性入参契约; NewLogEvent —— SSE 广播事件)
 ├── provider/               # Provider 聚合用例
 │   ├── mod.rs
 │   ├── provider_service.rs # 提供商管理用例 (含 rate_limit/balance_exhausted 配置)
@@ -229,9 +229,11 @@ start(请求侧已知, 启动计时)
 
 中断检测由 `ProxyCallRecord::Drop` 隐式处理——`async_stream` 闭包被 drop 时（如客户端断开 SSE 连接）触发 `is_interrupted = true` 标记并 spawn 落库，是 SSE 中断场景下唯一可靠的落库机制。
 
+**日志实时推送**：`LogService::record_proxy_log` 在每次日志写入成功后，通过 `tokio::sync::broadcast::Sender<NewLogEvent>` 广播 `NewLogEvent`（含 `log_id` 和 `short_code`）。前端 `useLogEvents` hook 通过 `GET /api/logs/events` SSE 端点（JWT 认证，`text/event-stream`）接收事件，触发页面全量刷新。broadcast channel 容量 256，满时丢弃最旧事件以避免背压，前端通过全量刷新作为兜底。SSE 端点响应优雅关闭信号（`shutdown_rx`），与主进程优雅关闭联动。JWT 令牌通过 URL query 参数传递（EventSource API 不支持自定义 header）。选择 SSE 而非 WebSocket：仅需单向推送（后端到前端），axum 原生支持，EventSource 浏览器 API 自动重连。
+
 **后台写入调度**：所有 fire-and-forget 写入（代理日志 + 会话粘滞）统一通过 `TrackedSpawner::spawn(operation, future)` 入队，封装了 `fetch_add → Handle::try_current 守卫 → tokio::spawn → fetch_sub` 模板。`Handle::try_current` 守卫避免运行时关闭后 spawn 触发 panic；`in_flight_writes` 计数器供主进程优雅关闭时轮询归零。
 
-**AppState** 是全局共享状态，通过 axum 的 `with_state()` 注入到所有路由处理器，包含 Config、数据库连接、所有 Service 引用、JWT 服务和代理客户端。
+**AppState** 是全局共享状态，通过 axum 的 `with_state()` 注入到所有路由处理器，包含 Config、数据库连接、所有 Service 引用、JWT 服务、代理客户端，以及 SSE 相关基础设施（`log_event_tx: broadcast::Sender<NewLogEvent>`、`shutdown_rx: watch::Receiver<bool>`）。
 
 ### 基础设施层 (infrastructure/)
 
@@ -287,7 +289,7 @@ presentation/
 │   ├── me_routes.rs        # GET/PUT /api/users/me/* (个人 profile/密码/API key)
 │   ├── access_point_routes.rs # CRUD /api/access-points (含 accounts/model_routing_grid)
 │   ├── proxy_routes.rs     # POST /ap/{short_code}/v1/messages (强制 API key 认证)
-│   ├── log_routes.rs       # GET /api/logs, /api/logs/sessions, /api/logs/sessions/:id
+│   ├── log_routes.rs       # GET /api/logs, /api/logs/events (SSE, JWT 保护), /api/logs/sessions, /api/logs/sessions/:id
 │   ├── dashboard_routes.rs # GET /api/dashboard/{kpi,top-users,top-accounts,top-clients} (JWT 保护)
 │   ├── settings_routes.rs  # GET/PUT /api/settings
 │   └── frontend.rs         # 前端静态资源服务
@@ -298,18 +300,18 @@ presentation/
 
 **路由认证策略**：
 
-| 路径                   | 认证要求                                             |
-| ---------------------- | ---------------------------------------------------- |
-| `/api/auth/*`          | 公开 (登录/刷新)                                     |
-| `/ap/*`                | Bearer 用户 API key 认证 (SHA-256, Authorization 头) |
-| `/api/health`          | 公开                                                 |
-| `/api/providers/*`     | JWT 认证                                             |
-| `/api/accounts/*`      | JWT 认证                                             |
-| `/api/users/*`         | JWT 认证                                             |
-| `/api/users/me/*`      | JWT 认证 (当前用户个人设置)                          |
-| `/api/access-points/*` | JWT 认证                                             |
-| `/api/logs/*`          | JWT 认证                                             |
-| `/api/dashboard/*`     | JWT 认证                                             |
+| 路径                   | 认证要求                                                               |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `/api/auth/*`          | 公开 (登录/刷新)                                                       |
+| `/ap/*`                | Bearer 用户 API key 认证 (SHA-256, Authorization 头)                   |
+| `/api/health`          | 公开                                                                   |
+| `/api/providers/*`     | JWT 认证                                                               |
+| `/api/accounts/*`      | JWT 认证                                                               |
+| `/api/users/*`         | JWT 认证                                                               |
+| `/api/users/me/*`      | JWT 认证 (当前用户个人设置)                                            |
+| `/api/access-points/*` | JWT 认证                                                               |
+| `/api/logs/*`          | JWT 认证 (其中 `/api/logs/events` SSE 端点通过 URL query 参数传递 JWT) |
+| `/api/dashboard/*`     | JWT 认证                                                               |
 
 ### 共享模块 (shared/)
 
@@ -362,9 +364,10 @@ shared/
 │   ├── api.ts                      # API 通信层 (fetch 封装)
 │   ├── assets/                     # 静态资源
 │   ├── components/                 # 组件 (按功能分组子目录, 通过 @components 路径别名引用)
-│   │   ├── common/                 # 通用 UI 组件 (7 个, 跨领域复用)
+│   │   ├── common/                 # 通用 UI 组件 (8 个, 跨领域复用)
 │   │   │   ├── CollapsibleCard.tsx      # 可折叠卡片 (header 区域可点击折叠/展开)
 │   │   │   ├── CodeHighlight.tsx        # 代码高亮组件
+│   │   │   ├── ConnectionIndicator.tsx  # SSE 连接状态指示器 (绿/黄/红三色圆点)
 │   │   │   ├── CopyableIdText.tsx       # 可复制 ID 文本 (等宽字体 + 点击复制)
 │   │   │   ├── ExpandableContentBlock.tsx # 可展开/收起的长内容块
 │   │   │   ├── MarkdownRender.tsx       # Markdown 渲染组件
@@ -405,9 +408,9 @@ shared/
 │   │   │           ├── TextBlockCard.tsx
 │   │   │           ├── ThinkingBlockCard.tsx
 │   │   │           └── ToolUseBlockCard.tsx
-│   │   ├── session/                # 会话查看组件 (5 个)
-│   │   │   ├── SessionListView.tsx      # 会话列表视图 (过滤栏 + 分页表格)
-│   │   │   ├── SessionDetailView.tsx    # 会话详情视图 (轮次导航 + 轮次卡片列表)
+│   │   ├── session/                # 会话查看组件 (8 个)
+│   │   │   ├── SessionListView.tsx      # 会话列表视图 (过滤栏 + 分页表格; 集成 SSE 自动刷新)
+│   │   │   ├── SessionDetailView.tsx    # 会话详情视图 (轮次导航 + 轮次卡片列表; 集成 SSE 增量刷新 + beforeRefresh prop)
 │   │   │   ├── TurnCard.tsx             # 轮次卡片组件 (请求/响应/工具调用等消息块)
 │   │   │   ├── TurnNavigator.tsx        # 轮次导航条组件 (编号/状态/摘要)
 │   │   │   └── RawContentModal.tsx      # 原始内容查看弹窗
@@ -424,9 +427,10 @@ shared/
 │   │   └── user/                   # 用户管理组件 (1 个)
 │   │       └── ApiKeyManager.tsx        # API Key 表格 + 创建/编辑/吊销 Modal (从 ProfilePage 提取)
 │   ├── hooks/                      # 自定义 hooks
-│   │   ├── useFetch.ts             # 通用数据获取 hook (useFetch<T>(fetcher, deps) → { data, loading, error, refetch }; loading 初始 true, setState 仅在异步回调中执行)
+│   │   ├── useFetch.ts             # 通用数据获取 hook (useFetch<T>(fetcher, deps) → { data, loading, error, refetch }; loading 初始 true, setState 仅在异步回调中执行; refetch 时 setLoading(true))
 │   │   ├── useTheme.ts             # 主题管理 (ThemeProvider + useTheme, 三种模式)
-│   │   └── useAccessPoints.ts      # 接入点数据管理 (Provider/Account 加载; 创建/编辑时过滤 target_model 不在 Provider.models + Provider.default_model + DEFAULT_MODEL 哨兵的映射; 删除/切换状态/复制 URL)
+│   │   ├── useAccessPoints.ts      # 接入点数据管理 (Provider/Account 加载; 创建/编辑时过滤 target_model 不在 Provider.models + Provider.default_model + DEFAULT_MODEL 哨兵的映射; 删除/切换状态/复制 URL)
+│   │   └── useLogEvents.ts         # SSE 事件监听 hook (EventSource 连接管理, 接入 JWT 令牌, 连接状态: connected/disconnected/error; 收到事件后触发全量刷新)
 │   ├── layouts/
 │   │   └── AdminLayout.tsx         # 管理界面布局 (Semi Design Navigation)
 │   ├── pages/
@@ -436,8 +440,8 @@ shared/
 │   │   ├── AccessPointManagement.tsx # CRUD /api/access-points (Provider 切换时, 创建态下若有 default_model 则自动生成 __unmatched__(prefix) → __default_model__ 哨兵映射; 保存委托 useAccessPoints hook 过滤无效映射)
 │   │   ├── UserManagement.tsx      # CRUD /api/users
 │   │   ├── ProfilePage.tsx         # 个人设置 (profile/密码/API key 管理)
-│   │   ├── SessionLogPage.tsx      # 会话日志路由壳 (根据 URL 中 sessionId 参数切换列表/详情视图: 无 sessionId 渲染 SessionListView, 有 sessionId 渲染 SessionDetailView)
-│   │   ├── RequestLogPage.tsx      # GET /api/logs (数据加载 + 过滤 + 委托 RequestLogTable 渲染表格)
+│   │   ├── SessionLogPage.tsx      # 会话日志路由壳 (根据 URL 中 sessionId 参数切换列表/详情视图: 无 sessionId 渲染 SessionListView, 有 sessionId 渲染 SessionDetailView; 集成 useLogEvents 自动刷新)
+│   │   ├── RequestLogPage.tsx      # GET /api/logs (数据加载 + 过滤 + 委托 RequestLogTable 渲染表格; 集成 useLogEvents 自动刷新)
 │   │   ├── LogDetailPage.tsx       # GET /api/logs/:id (单条日志详情, 含请求/响应内容展示)
 │   │   └── SettingsPage.tsx        # 设置页面
 │   ├── types/                      # TypeScript 类型定义 (accessPoint.ts, dashboard.ts, log.ts)
@@ -775,7 +779,7 @@ Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules
 | ----------- | ----------------------------------------------------------------------------- |
 | Phase 1 MVP | 已完成                                                                        |
 | 后端        | ~170 个 .rs 文件, cargo check 零错误零警告                                    |
-| 前端        | ~70 个 .ts/.tsx 源文件, tsc --noEmit 零错误                                   |
+| 前端        | ~73 个 .ts/.tsx 源文件, tsc --noEmit 零错误                                   |
 | Schema 迁移 | 3 个迁移文件 (初始表 + 账户池 + client_type)                                  |
 | Docker 构建 | 多阶段构建就绪 (含 .dockerignore + HEALTHCHECK)                               |
 | 镜像分发    | GitHub Container Registry (`ghcr.io/your-org/token-proxy`)                    |
@@ -790,6 +794,7 @@ Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules
 
 | 日期             | 变更说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-23       | 前端日志实时刷新（SSE 推送）: 新增 `NewLogEvent` DTO（`application/log/dto/new_log_event.rs`），LogService 集成 `broadcast::Sender` 在日志写入后广播事件；展示层新增 `GET /api/logs/events` SSE 端点（JWT 保护，`text/event-stream`，响应 `shutdown_rx` 优雅关闭信号）；AppState 新增 `log_event_tx` 和 `shutdown_rx` 字段；main.rs 创建 `broadcast::channel::<NewLogEvent>(256)`。选择 SSE 而非 WebSocket（仅需单向推送，axum 原生支持，EventSource 自动重连）；broadcast 容量 256 满时丢弃最旧事件，前端全量刷新兜底；JWT 通过 URL query 参数传递（EventSource API 不支持自定义 header）。前端：新增 `useLogEvents.ts` hook（EventSource 连接管理）、`ConnectionIndicator.tsx`（SSE 连接状态绿/黄/红三色圆点指示器）；`useFetch.ts` 改造 refetch 时 `setLoading(true)`；`RequestLogPage.tsx`、`SessionLogPage.tsx` 集成 SSE 自动刷新；`SessionDetailView.tsx` 新增 `beforeRefresh` prop。领域层和基础设施层无变更，数据库 schema 无变更                                                                                                                                                                                                                              |
 | 2026-06-23       | OpenAI 协议支持: `AccessPointType` 新增 `OpenAi` 变体 + 新建 `domain/shared/protocols/openai.rs` 实现 Chat Completions + Responses API 双端点协议适配；新增 `ClientType` 枚举（`domain/shared/client_type.rs`，ClaudeCode / Codex / Other / Unknown）与 `AccessPointType` 正交——前者描述调用客户端，后者描述上游协议。`InboundRequest` 新增 `client_type` 字段，`ProxyPipeline` 协议解析阶段从 User-Agent 和请求路径识别 ClientType；`log_metadata` 和 `log_token_usage` 新增 `client_type` 列（迁移 `m20260623_000003_client_type`）；`LogRepository` 新增 `top_clients` 聚合方法；`DashboardService` 新增 `get_top_clients`；`GET /api/dashboard/top-clients` 端点。前端：`parseOpenAI.ts` OpenAI 响应/请求解析器；`AccessPointDrawer` 启用 OpenAI 选项 + MODEL_FAMILIES 按 api_type 动态切换；`RequestContentCard` / `ResponseContentCard` 支持 OpenAI 协议渲染；`buildConversationTurns` 按 api_type 分发；`TopClientsRanking` 排行卡片；`DashboardPage` 集成第 4 个 `useFetch`。基础设施：`parsed_token_usage.rs` 扩展支持 OpenAI Chat/Responses token 格式；`Provider::base_url_for` 补 `OpenAi` 分支                                                            |
 | 2026-06-23       | Dashboard 数据分析重做: 新增 `application/dashboard/` 模块（`dashboard_service.rs` + `time_window.rs` + 12 个 DTO），仅依赖 `LogRepository`；`LogRepository` trait 扩展 4 个聚合方法（`aggregate_kpi` / `aggregate_sparkline` / `top_users` / `top_accounts`），SQL 统一用 `Statement::from_sql_and_values` 配合 `generate_series` 在 SQL 层补齐空桶；新增 `domain/log/dashboard_query.rs` 领域读模型（DashboardWindow / KpiAggregate / SparklineBucket / TopUserRow / TopAccountRow，LEFT JOIN 容忍删除）。新增 3 个 JWT 保护端点：`GET /api/dashboard/kpi` (KPI + 内嵌 sparkline) / `top-users` / `top-accounts`。删除旧 `stats_routes.rs` + `stats/dto/` 目录、`LogService` 4 个统计方法、`LogRepository` 5 个旧方法。前端 `components/dashboard/` 重写为 8 个组件（Sparkline / ComparisonArrow / StackedBar / KpiCard / CacheHitCard / TimeRangeSelector / TopUsersRanking / TopAccountsRanking），删除旧 `StatCard` / `TrendChart`；`DashboardPage.tsx` 完全重写为 CSS Grid 布局（1280/768 响应式断点）+ 3 个并行 `useFetch`；新增 `recharts@^3.8.1` 依赖、`formatTokenCompact` 工具函数、`.dashboard-deleted` 全局 CSS 类。新增架构原则 13「Dashboard 只读视图」 |
 | 2026-06-22       | 前端 TypeScript/ESLint 错误修复 (共 20 个): 新增通用数据获取 hook `useFetch.ts`（替代 11 个文件中的手动 `useState + useCallback + useEffect` 模式）；组件工具函数分离模式（`ModelMappingEditor.tsx` → `modelMappingUtils.ts`、`TokenUsageCard.tsx` → `tokenUsage.ts`）；派生状态模式（`AdminLayout` 和 `AccessPointDrawer` 中的 `useState + useEffect` 改为 `useMemo`）；tsconfig 移除 `baseUrl`（TypeScript 7.0 废弃）、paths 改为 `./` 相对路径。前端源文件数从 64 更新为 67                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |

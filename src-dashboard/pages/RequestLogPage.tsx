@@ -1,5 +1,7 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useFetch } from '../hooks/useFetch.ts';
+import { useLogEvents } from '../hooks/useLogEvents';
+import ConnectionIndicator from '@components/common/ConnectionIndicator';
 import { Button, Input, Select, Typography } from '@douyinfe/semi-ui';
 import { IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
@@ -162,8 +164,75 @@ export default function RequestLogPage(): ReactNode {
     setPage(1);
   };
 
+  // ─── SSE 实时推送 ───
+
+  const { status: sseStatus, lastEvent, onVisibilityRecover } = useLogEvents();
+
+  // 翻页/有筛选时，累积未查看的新事件数
+  const [pendingEventCount, setPendingEventCount] = useState(0);
+  // 首页自动刷新后，短暂展示新增条数（null = 不展示）
+  const [addedCount, setAddedCount] = useState<number | null>(null);
+  // 自动刷新前记录当前 total，用于计算增量
+  const preRefreshTotalRef = useRef(0);
+  const isAutoRefreshingRef = useRef(false);
+
+  // 判断是否在首页且无筛选（此时自动刷新不会影响用户浏览体验）
+  const isFirstPageNoFilters = useMemo(
+    () => page === 1 && Object.keys(filters).length === 0,
+    [page, filters],
+  );
+
+  // 收到新日志事件时的行为
+  useEffect(() => {
+    if (!lastEvent) return;
+    if (isFirstPageNoFilters) {
+      preRefreshTotalRef.current = total;
+      isAutoRefreshingRef.current = true;
+      fetchLogs();
+    } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPendingEventCount((prev) => prev + 1);
+    }
+    // 依赖 lastEvent 更新时间戳，每次新事件触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastEvent]);
+
+  // 检测自动刷新完成，计算并展示增量
+  useEffect(() => {
+    if (!isAutoRefreshingRef.current) return;
+    if (loading) return;
+    const delta = total - preRefreshTotalRef.current;
+    if (delta > 0) {
+      setAddedCount(delta);
+    }
+    isAutoRefreshingRef.current = false;
+  }, [total, loading]);
+
+  // addedCount 展示后 4 秒自动消失
+  useEffect(() => {
+    if (addedCount === null) return;
+    const timer = setTimeout(() => setAddedCount(null), 4000);
+    return () => clearTimeout(timer);
+  }, [addedCount]);
+
+  // 页面恢复可见时全量刷新
+  useEffect(() => {
+    onVisibilityRecover(() => {
+      preRefreshTotalRef.current = total;
+      isAutoRefreshingRef.current = true;
+      fetchLogs();
+      setPendingEventCount(0);
+    });
+  }, [fetchLogs, onVisibilityRecover, total]);
+
+  // ─── 分页 ───
+
   const handlePageChange = (newPage: number) => {
     setPage(newPage);
+    // 手动翻回第 1 页时清除待查看横幅
+    if (newPage === 1) {
+      setPendingEventCount(0);
+    }
   };
 
   return (
@@ -189,9 +258,12 @@ export default function RequestLogPage(): ReactNode {
         hideUserSelect
         hideAccessPointSelect
         beforeReset={
-          <Button icon={<IconRefresh />} loading={loading} onClick={() => fetchLogs()}>
-            刷新
-          </Button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ConnectionIndicator status={sseStatus} />
+            <Button icon={<IconRefresh />} loading={loading} onClick={() => fetchLogs()}>
+              刷新
+            </Button>
+          </div>
         }
       >
         <div>
@@ -315,6 +387,38 @@ export default function RequestLogPage(): ReactNode {
           </Select>
         </div>
       </LogFilterBar>
+
+      {addedCount !== null && (
+        <div
+          style={{
+            background: 'var(--semi-color-success-light-default)',
+            padding: '8px 16px',
+            borderRadius: 4,
+            marginBottom: 12,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span>新增了 {addedCount} 条日志</span>
+          <Button size="small" type="tertiary" onClick={() => setAddedCount(null)}>
+            知道了
+          </Button>
+        </div>
+      )}
+
+      {pendingEventCount > 0 && (
+        <div
+          style={{
+            background: 'var(--semi-color-info-light-default)',
+            padding: '8px 16px',
+            borderRadius: 4,
+            marginBottom: 12,
+          }}
+        >
+          <span>有 {pendingEventCount} 条新日志，返回第 1 页查看</span>
+        </div>
+      )}
 
       <RequestLogTable
         logs={logs}

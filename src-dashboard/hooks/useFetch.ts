@@ -46,6 +46,7 @@ export function useFetch<T>(
 
   const execute = useMemo(
     () => () => {
+      setLoading(true);
       fetcher()
         .then((result) => {
           if (mountedRef.current) setData(result);

@@ -60,6 +60,7 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 - **日志记录器位置**: `ProxyCallRecord` 位于 `application/proxy/`（而非基础设施层），因为它直接接受领域聚合根（`InboundRequest` / `UpstreamRequest` / `AccessPointEx`）；API 反映业务时序：`start → attach_response → append_body/set_body → finish`，`Drop` 兜底 SSE 中断
 - **日志默认不依赖 `log_contents`**: 列表优先用 `log_metadata`；原始内容按需加载（`/api/logs/{id}/raw`）
 - **Dashboard 数据分析**: 4 个独立 GET 端点（`/api/dashboard/kpi` / `/api/dashboard/top-users` / `/api/dashboard/top-accounts` / `/api/dashboard/top-clients`）共享 `?range=today|last7|last30|custom` 时间窗口；KPI 端点内嵌 sparkline（避免重复 SQL）；对比窗口为等长前期；所有 LEFT JOIN 容忍 `users` / `accounts` / `providers` 删除（`Option<String>` + 前端降级为 `已删除成员/账号 · <uuid 前 8 位>`）；`DashboardService` 仅依赖 `LogRepository`，所有聚合在 SQL 层（无 N+1）；缓存命中率分母为 `input + cache_read`（不含 cache_creation）；趋势对比覆盖 5 种边界（up/down/flat/new/empty）
+- **SSE 实时广播**: `LogService::record_proxy_log` 完成后通过 `tokio::sync::broadcast` channel 广播 `NewLogEvent`；channel 容量 256，满时丢弃最旧事件；前端通过 `EventSource` 消费 `GET /api/logs/events` 端点（JWT 通过 URL query 参数传递，因 EventSource 不支持自定义 header）；页面不可见时暂停处理，恢复可见时触发全量刷新；仅用于通知前端有新数据到达，不含敏感内容（request_body、response_body 等）
 
 ## Makefile 任务
 
@@ -357,6 +358,10 @@ aggr.resolve(x, y)
 | `src-dashboard/components/dashboard/`                        | Dashboard 组件 (KpiCard/CacheHitCard/Sparkline/ComparisonArrow/StackedBar/Top\*Ranking)                                         |
 | `src-dashboard/utils/parseLogs.ts`                           | 日志/会话解析工具 (SSE + JSON 双格式, buildConversationEvents + buildConversationTurns)                                         |
 | `src-dashboard/utils/parseOpenAI.ts`                         | OpenAI 响应/请求体解析工具 (Chat Completions + Responses API 双格式，SSE + 非流式)                                              |
+| `src/application/log/dto/new_log_event.rs`                   | SSE 广播事件 DTO (NewLogEvent，不含敏感数据)                                                                                    |
+| `src/presentation/routes/log_routes.rs`                      | 日志路由 (`GET /api/logs/events` SSE 端点 + `/api/logs` CRUD)                                                                   |
+| `src-dashboard/hooks/useLogEvents.ts`                        | SSE 实时日志事件消费 Hook (EventSource 连接管理、JWT 传递、自动重连、页面可见性暂停/恢复)                                       |
+| `src-dashboard/components/common/ConnectionIndicator.tsx`    | SSE 连接状态指示器 (彩色圆点 + 文字标签)                                                                                        |
 | `cliff.toml`                                                 | CHANGELOG 自动生成配置 (git-cliff, feat→Added / fix→Fixed / perf→Changed)                                                       |
 | `rust-toolchain.toml`                                        | Rust 工具链版本固定 (channel = "1.96")                                                                                          |
 | `.prettierrc` / `.prettierignore`                            | Prettier 格式化配置与排除规则                                                                                                   |
@@ -391,3 +396,8 @@ aggr.resolve(x, y)
 - Dashboard sparkline 空桶补齐由 SQL 端 `generate_series` 完成，应用层无需再补；新增时间粒度（如小时级）需同步扩展 `DashboardWindow` 与 SQL 系列生成步长
 - 前端 Dashboard 已删除成员/账号统一用全局 `.dashboard-deleted` CSS class（灰色 + monospace）展示，不要单独写 `style={{ color: ... }}`
 - 性能优化遗留：`log_token_usage.timestamp` 无前导索引，`top_accounts` 查询可能 Seq Scan；建议在数据量增长后追加 BRIN 索引（未在本次实施）
+- SSE 广播通过 `NewLogEvent` DTO 传递，仅含标识信息（log_id / timestamp / session_id / api_type / user_id / access_point_id），不含请求体/响应体/请求头等敏感数据
+- `GET /api/logs/events` 端点的 JWT 认证通过 URL query 参数 `?token=` 传递（EventSource API 不支持自定义 header），中间件需兼容 query 参数提取
+- SSE channel (`broadcast::channel(256)`) 容量满时丢弃最旧事件（`send` 返回 `Lagged` 错误时仅记录 warn 日志），前端通过 `onVisibilityRecover` 全量刷新弥补丢失事件
+- `useLogEvents` Hook 在页面隐藏时暂停处理事件（节省资源、避免积压），恢复可见时不逐条消费积压事件，而是触发一次全量刷新；依赖 `visibilityCallbackRef` 注册回调
+- 前端 `useFetch` 的 `refetch` 方法现已自动设置 `loading=true`，因此 SSE 事件触发的 refetch 不再需要在调用方额外手动设置 loading 状态

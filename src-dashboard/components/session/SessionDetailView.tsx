@@ -37,6 +37,8 @@ interface SessionDetailViewProps {
   rawModalContent: string;
   /** 关闭原始内容弹窗的回调 */
   onCloseRawModal: () => void;
+  /** 刷新按钮之前插入的内容（如连接状态指示器） */
+  beforeRefresh?: ReactNode;
 }
 
 /**
@@ -56,6 +58,7 @@ export default function SessionDetailView({
   rawModalTitle,
   rawModalContent,
   onCloseRawModal,
+  beforeRefresh,
 }: SessionDetailViewProps): ReactNode {
   // 当前活跃（在视口内）的轮次 ID，用于导航条高亮
   const [activeTurnId, setActiveTurnId] = useState<string>('');
@@ -132,6 +135,7 @@ export default function SessionDetailView({
         <Title heading={3} style={{ margin: 0 }}>
           会话详情
         </Title>
+        {beforeRefresh}
         <Button icon={<IconRefresh />} loading={detailLoading} onClick={onRefresh}>
           刷新
         </Button>

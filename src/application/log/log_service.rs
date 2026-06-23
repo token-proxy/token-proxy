@@ -5,11 +5,12 @@
 
 use std::sync::Arc;
 
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use super::dto::{
-    LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse, ProxyLogInput,
-    SessionContentItemResponse, SessionSummaryResponse, TokenUsageResponse,
+    LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse, NewLogEvent,
+    ProxyLogInput, SessionContentItemResponse, SessionSummaryResponse, TokenUsageResponse,
 };
 use crate::domain::access_point::repository::AccessPointRepository;
 use crate::domain::log::LogTokenUsageRepository;
@@ -29,6 +30,8 @@ pub struct LogService {
     token_usage_repo: Arc<dyn LogTokenUsageRepository>,
     user_repo: Arc<dyn UserRepository>,
     access_point_repo: Arc<dyn AccessPointRepository>,
+    /// 日志事件广播发送端（SSE 实时推送）
+    event_tx: broadcast::Sender<NewLogEvent>,
 }
 
 impl LogService {
@@ -37,12 +40,14 @@ impl LogService {
         token_usage_repo: Arc<dyn LogTokenUsageRepository>,
         user_repo: Arc<dyn UserRepository>,
         access_point_repo: Arc<dyn AccessPointRepository>,
+        event_tx: broadcast::Sender<NewLogEvent>,
     ) -> Self {
         LogService {
             log_repo,
             token_usage_repo,
             user_repo,
             access_point_repo,
+            event_tx,
         }
     }
 
@@ -209,6 +214,17 @@ impl LogService {
                 );
             }
         }
+
+        // ─── 广播新日志事件（SSE 实时推送）───
+        let event = NewLogEvent {
+            log_id: saved.id,
+            timestamp: saved.timestamp_utc(),
+            session_id: saved.session_id.clone(),
+            api_type: saved.api_type.clone(),
+            user_id: data.user_id,
+            access_point_id: data.access_point_id,
+        };
+        let _ = self.event_tx.send(event);
 
         Ok(saved.id)
     }

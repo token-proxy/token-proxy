@@ -8,6 +8,9 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 
+use tokio::sync::broadcast;
+use tokio::sync::watch;
+
 pub mod access_point;
 pub mod auth;
 pub mod dashboard;
@@ -60,4 +63,8 @@ pub struct AppState {
     /// 每次 fire-and-forget 的 `tokio::spawn` 入队前 +1，任务尾 -1。
     /// 主线程在 axum 排空连接后轮询此计数归零，确保所有写入落库再退出。
     pub in_flight_writes: Arc<AtomicI64>,
+    /// 日志事件广播发送端（SSE 实时推送）
+    pub log_event_tx: broadcast::Sender<crate::application::log::dto::NewLogEvent>,
+    /// 优雅关闭信号接收端
+    pub shutdown_rx: watch::Receiver<bool>,
 }

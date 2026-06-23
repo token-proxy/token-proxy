@@ -1,8 +1,11 @@
 use axum::{
     extract::{Path, Query, State},
+    response::sse::{Event as SseEvent, KeepAlive, Sse},
     routing::get,
     Json, Router,
 };
+use futures::stream::Stream;
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::application::log::dto::{
@@ -13,7 +16,7 @@ use crate::application::AppState;
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
-/// 构建日志查询路由
+/// 构建日志查询路由（受 JWT 中间件保护）
 ///
 /// - `GET /api/logs`                          → query_logs
 /// - `GET /api/logs/sessions`                 → get_sessions
@@ -37,6 +40,14 @@ pub fn routes() -> Router<AppState> {
         .route("/api/logs/{id}", get(get_log_detail_full))
         .route("/api/logs/{id}/raw", get(get_log_detail))
         .route("/api/logs/{id}/token-usage", get(get_log_token_usage))
+}
+
+/// 构建 SSE 日志事件路由（自行认证，不走 JWT 中间件）
+///
+/// 因浏览器 `EventSource` API 不支持自定义 HTTP header，
+/// JWT 通过 URL query 参数 `?token=<jwt>` 传递，handler 内部自行验证。
+pub fn sse_routes() -> Router<AppState> {
+    Router::new().route("/api/logs/events", get(log_events))
 }
 
 /// GET /api/logs
@@ -129,4 +140,57 @@ async fn get_session_token_usage(
         .get_session_token_usage_response(&session_id)
         .await?;
     Ok(Json(usages))
+}
+
+/// GET /api/logs/events
+///
+/// SSE 端点，实时推送新日志写入事件。
+/// 认证由 `sse_auth_middleware` 处理（从 URL query `?token=` 提取 JWT，
+/// 因浏览器 EventSource API 不支持自定义 header）。
+/// 客户端断开或收到关闭信号时自动结束。
+async fn log_events(
+    State(state): State<AppState>,
+) -> Sse<impl Stream<Item = Result<SseEvent, std::convert::Infallible>>> {
+    let mut rx = state.log_event_tx.subscribe();
+    let mut shutdown_rx = state.shutdown_rx.clone();
+
+    let stream = async_stream::stream! {
+        // 立即发送初始事件，确保浏览器 EventSource 尽快触发 onopen
+        // （部分浏览器需要收到第一块数据才认为连接就绪）
+        yield Ok(SseEvent::default().event("connected").data("{}"));
+
+        loop {
+            tokio::select! {
+                result = rx.recv() => {
+                    match result {
+                        Ok(event) => {
+                            match serde_json::to_string(&event) {
+                                Ok(json) => {
+                                    yield Ok(SseEvent::default().data(json));
+                                }
+                                Err(_) => continue,
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                            tracing::warn!(skipped, "SSE 客户端消息滞后，已跳过");
+                            continue;
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            break;
+                        }
+                    }
+                }
+                _ = shutdown_rx.changed() => {
+                    tracing::debug!("SSE 连接因服务关闭而结束");
+                    break;
+                }
+            }
+        }
+    };
+
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    )
 }

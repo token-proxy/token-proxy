@@ -1,4 +1,5 @@
 pub mod jwt_auth;
+pub mod sse_auth;
 pub mod user_api_key_auth;
 
 pub use jwt_auth::CurrentUser;
