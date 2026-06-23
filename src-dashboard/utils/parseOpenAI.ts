@@ -307,154 +307,206 @@ export function parseOpenAIResponsesResponse(body: string): ContentBlockInfo[] {
 /**
  * 解析 OpenAI Responses API 的 SSE 流式响应体。
  *
- * 按事件 type 累积：
- * - response.output_text.delta → 累积文本
- * - response.reasoning_text.delta → 累积推理
- * - response.function_call_arguments.delta → 累积工具调用参数
- * - response.output_item.done → 触发块边界
+ * Responses API 使用标准 SSE 格式，支持 13+ 种事件类型。
+ * 解析按 item_id 分组累积增量，输出统一的 ContentBlockInfo[]。
+ *
+ * 事件类型映射：
+ * - response.reasoning_summary_text.delta  → thinking block
+ * - response.output_text.delta              → text block
+ * - response.function_call_arguments.delta  → tool_use block
  */
 export function parseOpenAIResponsesSSE(body: string): ContentBlockInfo[] {
-  const lines = body.split('\n');
+  const events = parseResponsesEvents(body);
+  if (events.length === 0) return [];
 
-  const blocks: ContentBlockInfo[] = [];
-  let currentBlock: ContentBlockInfo | null = null;
-  let index = 0;
-
-  let i = 0;
-  while (i < lines.length) {
-    // 收集 SSE 事件行
-    let eventType = '';
-    const dataLines: string[] = [];
-
-    while (i < lines.length && lines[i].trim() !== '') {
-      const trimmed = lines[i].trim();
-      if (trimmed.startsWith('event: ')) {
-        eventType = trimmed.slice(7);
-      } else if (trimmed.startsWith('data: ')) {
-        const data = trimmed.slice(6);
-        if (data !== '[DONE]') {
-          dataLines.push(data);
-        }
-      }
-      i++;
+  // 按 item_id 分组累积增量
+  const items = new Map<
+    string,
+    {
+      type: string;
+      index: number;
+      textParts: string[];
+      thinkingParts: string[];
+      fnName: string;
+      fnArgs: string;
+      fnCallId: string;
     }
-    // 跳过空行
-    i++;
+  >();
 
-    if (dataLines.length === 0) continue;
+  let outputIndex = 0;
 
-    try {
-      const parsed = JSON.parse(dataLines.join('\n'));
+  for (const ev of events) {
+    const itemId = (ev.data.item_id as string) || (ev.data.id as string) || '';
 
-      switch (eventType) {
-        case 'response.output_text.delta': {
-          const delta = typeof parsed.delta === 'string' ? parsed.delta : '';
-          if (!currentBlock || currentBlock.block_type !== 'text') {
-            // 结束上一个块
-            if (currentBlock) {
-              blocks.push(currentBlock);
-            }
-            currentBlock = {
-              index: index++,
-              block_type: 'text',
-              text: delta,
-            };
-          } else {
-            currentBlock.text = (currentBlock.text || '') + delta;
-          }
-          break;
-        }
+    // ── 输出项开始 ──
+    if (ev.type === 'response.output_item.added') {
+      const item = ev.data.item as Record<string, unknown> | undefined;
+      const itemType = String(item?.type ?? '');
 
-        case 'response.reasoning_text.delta': {
-          const delta = typeof parsed.delta === 'string' ? parsed.delta : '';
-          if (!currentBlock || currentBlock.block_type !== 'thinking') {
-            if (currentBlock) {
-              blocks.push(currentBlock);
-            }
-            currentBlock = {
-              index: index++,
-              block_type: 'thinking',
-              thinking: delta,
-            };
-          } else {
-            currentBlock.thinking = (currentBlock.thinking || '') + delta;
-          }
-          break;
-        }
-
-        case 'response.function_call_arguments.delta': {
-          const delta = typeof parsed.delta === 'string' ? parsed.delta : '';
-          if (!currentBlock || currentBlock.block_type !== 'tool_use') {
-            if (currentBlock) {
-              blocks.push(currentBlock);
-            }
-            currentBlock = {
-              index: index++,
-              block_type: 'tool_use',
-              input: {},
-              _argsBuffer: delta,
-            } as ContentBlockInfo & { _argsBuffer?: string };
-          } else {
-            (currentBlock as ContentBlockInfo & { _argsBuffer: string })._argsBuffer =
-              ((currentBlock as ContentBlockInfo & { _argsBuffer?: string })._argsBuffer || '') +
-              delta;
-          }
-          break;
-        }
-
-        case 'response.output_item.done': {
-          // 块边界：完善当前块的信息
-          if (currentBlock) {
-            const item = parsed.item;
-            if (item) {
-              if (item.type === 'function_call' || item.type === 'web_search_call') {
-                currentBlock.block_type = 'tool_use';
-                currentBlock.tool_name = item.name || currentBlock.tool_name || 'web_search';
-                currentBlock.tool_use_id = item.call_id || item.id || currentBlock.tool_use_id;
-              }
-              // 尝试解析累积的 JSON 参数
-              if (item.type === 'function_call') {
-                const argsStr = item.arguments;
-                if (typeof argsStr === 'string') {
-                  try {
-                    currentBlock.input = JSON.parse(argsStr);
-                  } catch {
-                    // 保留原始参数
-                  }
-                }
-              }
-            }
-            blocks.push(currentBlock);
-            currentBlock = null;
-          }
-          break;
-        }
-
-        default:
-          break;
+      if (!items.has(itemId)) {
+        items.set(itemId, {
+          type: itemType,
+          index: outputIndex++,
+          textParts: [],
+          thinkingParts: [],
+          fnName: itemType === 'function_call' ? String(item?.name ?? '') : '',
+          fnArgs: '',
+          fnCallId: itemType === 'function_call' ? String(item?.id ?? '') : '',
+        });
       }
-    } catch {
-      // 跳过无效 JSON
+      continue;
+    }
+
+    // ── 推理摘要文本增量 ──
+    if (ev.type === 'response.reasoning_summary_text.delta') {
+      let entry = items.get(itemId);
+      if (!entry) {
+        entry = {
+          type: 'reasoning',
+          index: outputIndex++,
+          textParts: [],
+          thinkingParts: [],
+          fnName: '',
+          fnArgs: '',
+          fnCallId: '',
+        };
+        items.set(itemId, entry);
+      }
+      const delta = ev.data.delta as string;
+      if (typeof delta === 'string') entry.thinkingParts.push(delta);
+      continue;
+    }
+
+    // ── 输出文本增量 ──
+    if (ev.type === 'response.output_text.delta') {
+      const entry = items.get(itemId);
+      if (entry) {
+        const delta = ev.data.delta as string;
+        if (typeof delta === 'string') entry.textParts.push(delta);
+      }
+      continue;
+    }
+
+    // ── 工具调用参数增量 ──
+    if (ev.type === 'response.function_call_arguments.delta') {
+      const entry = items.get(itemId);
+      if (entry) {
+        const delta = ev.data.delta as string;
+        if (typeof delta === 'string') entry.fnArgs += delta;
+      }
+      continue;
+    }
+
+    // ── 工具调用参数完成 ──
+    if (ev.type === 'response.function_call_arguments.done') {
+      const entry = items.get(itemId);
+      if (entry && typeof ev.data.arguments === 'string') {
+        entry.fnArgs = ev.data.arguments as string;
+      }
+      continue;
+    }
+
+    // ── 输出项完成 ──
+    if (ev.type === 'response.output_item.done') {
+      const entry = items.get(itemId);
+      if (entry) {
+        const item = ev.data.item as Record<string, unknown> | undefined;
+        if (item) {
+          if (item.type === 'function_call') {
+            entry.type = 'function_call';
+            entry.fnName = String(item.name ?? entry.fnName);
+            entry.fnCallId = String(item.call_id ?? item.id ?? entry.fnCallId);
+            if (typeof item.arguments === 'string') entry.fnArgs = item.arguments;
+          }
+          if (item.type === 'web_search_call') {
+            entry.type = 'web_search_call';
+            entry.fnName = 'web_search';
+          }
+        }
+      }
+      continue;
     }
   }
 
-  // 处理未结束的最后一个块
-  if (currentBlock) {
-    // 尝试解析 _argsBuffer
-    const buf = (currentBlock as ContentBlockInfo & { _argsBuffer?: string })._argsBuffer;
-    if (buf && currentBlock.block_type === 'tool_use') {
-      try {
-        currentBlock.input = JSON.parse(buf);
-      } catch {
-        currentBlock.input = { partial_json: buf };
-      }
+  // 构建 ContentBlockInfo[]
+  const blocks: ContentBlockInfo[] = [];
+  for (const [, item] of [...items.entries()].sort(([, a], [, b]) => a.index - b.index)) {
+    const thinkingJoined = item.thinkingParts.join('');
+    const textJoined = item.textParts.join('');
+
+    if (thinkingJoined) {
+      blocks.push({ index: blocks.length, block_type: 'thinking', thinking: thinkingJoined });
     }
-    // 清理内部字段
-    delete (currentBlock as unknown as Record<string, unknown>)._argsBuffer;
-    blocks.push(currentBlock);
+
+    if (item.type === 'function_call' && item.fnName) {
+      let input: Record<string, unknown> | undefined;
+      if (item.fnArgs) {
+        try {
+          input = JSON.parse(item.fnArgs);
+        } catch {
+          input = { partial_json: item.fnArgs };
+        }
+      }
+      blocks.push({
+        index: blocks.length,
+        block_type: 'tool_use',
+        tool_name: item.fnName,
+        tool_use_id: item.fnCallId || undefined,
+        input,
+      });
+    }
+
+    if (textJoined) {
+      blocks.push({ index: blocks.length, block_type: 'text', text: textJoined });
+    }
   }
 
   return blocks;
+}
+
+// ─── Responses API SSE 底层事件解析 ───
+
+interface ParsedResponseEvent {
+  type: string;
+  data: Record<string, unknown>;
+}
+
+/** 解析 Responses API 的 SSE 响应体为事件数组，从 JSON data 的 type 字段提取事件类型 */
+function parseResponsesEvents(body: string): ParsedResponseEvent[] {
+  const events: ParsedResponseEvent[] = [];
+  const lines = body.split('\n');
+  let pendingData: string[] = [];
+
+  const flush = () => {
+    if (pendingData.length === 0) return;
+    const jsonStr = pendingData.join('');
+    try {
+      const parsed = JSON.parse(jsonStr);
+      events.push({ type: (parsed.type as string) || '', data: parsed });
+    } catch {
+      // 跳过无效 JSON
+    }
+    pendingData = [];
+  };
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line === '') {
+      flush();
+      continue;
+    }
+    if (line.startsWith('event:')) {
+      flush();
+      continue;
+    }
+    if (line.startsWith('data:')) {
+      const data = line.slice(5).trim();
+      if (data !== '[DONE]') pendingData.push(data);
+    }
+  }
+  flush();
+
+  return events;
 }
 
 // ─── 请求体解析 ───

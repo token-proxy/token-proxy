@@ -223,38 +223,99 @@ function isNewTurnStart(messages: unknown[]): boolean {
 }
 
 /**
- * 判定是否为 OpenAI 协议下的新轮次起点
+ * 判定是否为 OpenAI 协议下的新轮次起点。
  *
  * OpenAI Chat Completions：轮次边界在 role === 'user' 的消息处。
  * 注意：OpenAI 的 tool 结果消息 role === 'tool'（非 user），因此天然不被识别为轮次起点。
  *
- * OpenAI Responses API：轮次边界在 input[] 中 role === 'user' 的条目处。
+ * OpenAI Responses API：input[] 数组逐轮累积增长。通过比较最后一条 user 消息
+ * 的索引是否大于上一轮次的追踪值来判定新轮次——索引增长表示 input 中新增了
+ * 用户消息（新轮次），索引不变表示重试同一请求（同轮次延续）。
+ *
+ * @param lastIndex - 上一轮次追踪的最后一条 user 消息索引，-1 表示首轮
+ * @returns true 表示新轮次起点
  */
-function isNewTurnStartOpenAI(item: SessionContentItem): boolean {
+function isNewTurnStartOpenAI(item: SessionContentItem, lastIndex: number): boolean {
   const requestBody = item.request_body;
   if (!requestBody) return false;
 
-  // request_body 已经是 JSON 对象（由后端反序列化），直接使用
   const parsed = requestBody as Record<string, unknown>;
 
   // Chat Completions 格式
   if (parsed.messages && Array.isArray(parsed.messages)) {
     const messages = parsed.messages as Array<Record<string, unknown>>;
-    // 取最后一条 user 消息
-    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
-    if (!lastUserMsg) return false;
-    // 如果 content 是纯字符串（非 tool_result 包装），为新轮次
-    return typeof lastUserMsg.content === 'string';
+    // 找到最后一条 user 消息的索引
+    let currentUserIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === 'user') {
+        currentUserIdx = i;
+        break;
+      }
+    }
+    return currentUserIdx >= 0 && currentUserIdx !== lastIndex;
   }
 
   // Responses API 格式
   if (parsed.input && Array.isArray(parsed.input)) {
     const input = parsed.input as Array<Record<string, unknown>>;
-    const lastUserItem = [...input].reverse().find((item) => item.role === 'user');
-    return !!lastUserItem;
+    let currentUserIdx = -1;
+    for (let i = input.length - 1; i >= 0; i--) {
+      if (input[i]?.role === 'user') {
+        currentUserIdx = i;
+        break;
+      }
+    }
+    // 找到 user 消息且索引与上一轮不同 → 新轮次
+    return currentUserIdx >= 0 && currentUserIdx !== lastIndex;
   }
 
   return false;
+}
+
+/**
+ * 从 OpenAI 请求体中提取最后一条用户消息文本。
+ *
+ * Chat Completions：读 messages 数组中 role === 'user' 的最后一条消息。
+ * Responses API：读 input 数组中 role === 'user' 且 type === 'message' 的最后一条输入。
+ */
+function extractOpenAIUserMessage(requestBody: Record<string, unknown>): string {
+  // Chat Completions
+  if (requestBody.messages && Array.isArray(requestBody.messages)) {
+    const msgs = requestBody.messages as Array<Record<string, unknown>>;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i]?.role === 'user') {
+        const content = msgs[i]!.content;
+        if (typeof content === 'string') return content;
+        if (Array.isArray(content)) {
+          const texts = (content as Array<Record<string, unknown>>)
+            .filter((c) => c.type === 'text' && typeof c.text === 'string')
+            .map((c) => c.text as string);
+          return texts.join('') || '';
+        }
+        return '';
+      }
+    }
+  }
+
+  // Responses API
+  if (requestBody.input && Array.isArray(requestBody.input)) {
+    const input = requestBody.input as Array<Record<string, unknown>>;
+    for (let i = input.length - 1; i >= 0; i--) {
+      const item = input[i]!;
+      if (item.role === 'user' && item.type === 'message') {
+        const content = item.content;
+        if (Array.isArray(content)) {
+          const texts = (content as Array<Record<string, unknown>>)
+            .filter((c) => c.type === 'input_text' && typeof c.text === 'string')
+            .map((c) => c.text as string);
+          return texts.join('') || '';
+        }
+        return '';
+      }
+    }
+  }
+
+  return '';
 }
 
 /**
@@ -1159,18 +1220,43 @@ export function buildConversationTurns(
     logIds: string[];
   } | null = null;
 
+  // OpenAI Responses API：input 数组逐轮累积增长。跟踪上一轮次的
+  // 最后一条 user 消息的索引，索引增长 = 新轮次，相同 = 重试。
+  let lastOpenAIUserIndex = -1;
+
   for (const entry of preprocessed) {
     const { item } = entry;
     const messages = item.request_body.messages as unknown[];
 
-    // 跳过无 messages 的条目
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    // 跳过无 messages 的条目（OpenAI 请求需额外检查 input 数组）
+    const hasMessages = messages && Array.isArray(messages) && messages.length > 0;
+    const hasInput =
+      item.api_type === 'openai' &&
+      Array.isArray((item.request_body as Record<string, unknown>).input);
+    if (!hasMessages && !hasInput) {
       continue;
     }
 
     const isNew =
       currentTurn === null ||
-      (item.api_type === 'openai' ? isNewTurnStartOpenAI(item) : isNewTurnStart(messages));
+      (item.api_type === 'openai'
+        ? isNewTurnStartOpenAI(item, lastOpenAIUserIndex)
+        : isNewTurnStart(messages));
+
+    // 更新 OpenAI Responses 的追踪索引
+    if (item.api_type === 'openai') {
+      const input = (item.request_body as Record<string, unknown>).input as Array<
+        Record<string, unknown>
+      >;
+      if (Array.isArray(input)) {
+        for (let i = input.length - 1; i >= 0; i--) {
+          if (input[i]?.role === 'user') {
+            lastOpenAIUserIndex = i;
+            break;
+          }
+        }
+      }
+    }
 
     if (isNew) {
       // 将上一个轮次写入结果
@@ -1179,7 +1265,10 @@ export function buildConversationTurns(
       }
 
       // 开启新轮次
-      const userMsg = extractUserMessage(messages) || '';
+      const userMsg =
+        item.api_type === 'openai'
+          ? extractOpenAIUserMessage(item.request_body as Record<string, unknown>)
+          : extractUserMessage(messages) || '';
       currentTurn = {
         items: [entry],
         userMessage: userMsg,

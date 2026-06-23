@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useMemo, useState } from 'react';
 import { Collapse, Switch, Typography } from '@douyinfe/semi-ui';
 import CollapsibleCard from '@components/common/CollapsibleCard';
 import RawResponseView from '@components/log/RawResponseView';
@@ -99,33 +99,62 @@ export default function ResponseContentCard({
       return <Text type="secondary">(无响应内容)</Text>;
     }
 
+    // 汇总信息：统计各类型 block 和字符数
+    const thinkingBlocks = contentBlocks.filter((b) => b.block_type === 'thinking');
+    const textBlocks = contentBlocks.filter((b) => b.block_type === 'text');
+    const toolBlocks = contentBlocks.filter((b) => b.block_type === 'tool_use');
+    const thinkingChars = thinkingBlocks.reduce((s, b) => s + (b.thinking?.length || 0), 0);
+    const textChars = textBlocks.reduce((s, b) => s + (b.text?.length || 0), 0);
+
+    const parts: string[] = [];
+    if (thinkingBlocks.length > 0)
+      parts.push(`推理 ${thinkingBlocks.length} 块 (${thinkingChars.toLocaleString()} 字)`);
+    if (textBlocks.length > 0)
+      parts.push(`助手回复 ${textBlocks.length} 块 (${textChars.toLocaleString()} 字)`);
+    if (toolBlocks.length > 0) parts.push(`工具调用 ${toolBlocks.length} 个`);
+
     return (
-      <Collapse defaultActiveKey={defaultActiveKeys}>
-        {/* 按 index 顺序渲染 content blocks */}
-        {contentBlocks.map((block, idx) => {
-          const itemKey = String(idx);
-          switch (block.block_type) {
-            case 'thinking':
-              return <ThinkingBlockCard key={itemKey} block={block} itemKey={itemKey} />;
-            case 'text':
-              return <TextBlockCard key={itemKey} block={block} itemKey={itemKey} />;
-            case 'tool_use':
-              return <ToolUseBlockCard key={itemKey} block={block} itemKey={itemKey} />;
-            default:
-              return null;
-          }
-        })}
-      </Collapse>
+      <div>
+        {parts.length > 0 && (
+          <Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12 }}>
+            {parts.join(' · ')}
+          </Text>
+        )}
+        <Collapse defaultActiveKey={defaultActiveKeys}>
+          {contentBlocks.map((block, idx) => {
+            const itemKey = String(idx);
+            switch (block.block_type) {
+              case 'thinking':
+                return <ThinkingBlockCard key={itemKey} block={block} itemKey={itemKey} />;
+              case 'text':
+                return <TextBlockCard key={itemKey} block={block} itemKey={itemKey} />;
+              case 'tool_use':
+                return <ToolUseBlockCard key={itemKey} block={block} itemKey={itemKey} />;
+              default:
+                return null;
+            }
+          })}
+        </Collapse>
+      </div>
     );
   }, [hasBody, contentBlocks, defaultActiveKeys]);
 
-  // 原始视图 JSX 树
+  // 原始视图 JSX 树 — 延迟渲染（仅当用户切换到原始视图时才解析大文本）
+  const [rawRendered, setRawRendered] = useState(false);
   const rawView = useMemo<ReactNode>(() => {
     if (!hasBody) {
       return <Text type="secondary">(无响应内容)</Text>;
     }
+    if (!rawRendered) return null;
     return <RawResponseView body={responseBody!} />;
-  }, [hasBody, responseBody]);
+  }, [hasBody, responseBody, rawRendered]);
+
+  // 切换到原始视图时触发延迟渲染
+  const handleViewModeChange = useCallback((checked: boolean) => {
+    const newMode = checked ? 'json' : 'formatted';
+    setViewMode(newMode);
+    if (newMode === 'json') setRawRendered(true);
+  }, []);
 
   // 原始视图标签（根据格式动态显示）
   const rawLabel = format === 'sse' ? '原始 SSE' : '原始 JSON';
@@ -139,11 +168,7 @@ export default function ResponseContentCard({
             <Text size="small" style={{ color: 'var(--semi-color-text-2)' }}>
               {viewMode === 'formatted' ? '结构化' : rawLabel}
             </Text>
-            <Switch
-              size="small"
-              checked={viewMode === 'json'}
-              onChange={(checked) => setViewMode(checked ? 'json' : 'formatted')}
-            />
+            <Switch size="small" checked={viewMode === 'json'} onChange={handleViewModeChange} />
           </div>
         ) : undefined
       }
