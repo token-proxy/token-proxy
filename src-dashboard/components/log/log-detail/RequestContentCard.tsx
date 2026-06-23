@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useMemo, useState } from 'react';
 import { Card, Descriptions, Switch, Tag, Typography } from '@douyinfe/semi-ui';
 import CodeHighlight from '@components/common/CodeHighlight';
 import CollapsibleCard from '@components/common/CollapsibleCard';
@@ -43,6 +43,9 @@ export default function RequestContentCard({
 
   const hasContent = requestBody != null && Object.keys(requestBody).length > 0;
 
+  // 延迟渲染：大 JSON 文本仅在用户切换到原始视图后才解析（192KB+ 请求体常见）
+  const [jsonRendered, setJsonRendered] = useState(false);
+
   // 解析 OpenAI 请求体（仅当 api_type === 'openai' 时）
   const openaiParsed = useMemo(() => {
     if (api_type !== 'openai' || !requestBody) return null;
@@ -52,12 +55,18 @@ export default function RequestContentCard({
   // isOpenAI 判定
   const isOpenAI = api_type === 'openai' && openaiParsed !== null;
 
-  // 原始 JSON 视图：用 useMemo 缓存 JSX 元素树
+  // 原始 JSON 视图：延迟渲染，仅在用户切换到 JSON 视图后才执行 JSON.stringify
   const jsonView = useMemo(() => {
-    if (!hasContent) return null;
+    if (!hasContent || !jsonRendered) return null;
     const jsonText = JSON.stringify(requestBody, null, 2);
     return <CodeHighlight content={jsonText} />;
-  }, [requestBody, hasContent]);
+  }, [requestBody, hasContent, jsonRendered]);
+
+  // 切换视图时触发延迟渲染
+  const handleJsonToggle = useCallback((checked: boolean) => {
+    setIsJsonViewMode(checked);
+    if (checked) setJsonRendered(true);
+  }, []);
 
   // 结构化视图：用 useMemo 缓存 JSX 元素树
   const formattedView = useMemo(() => {
@@ -120,7 +129,7 @@ export default function RequestContentCard({
           <Text size="small" style={{ color: 'var(--semi-color-text-2)' }}>
             JSON 视图
           </Text>
-          <Switch size="small" checked={isJsonViewMode} onChange={setIsJsonViewMode} />
+          <Switch size="small" checked={isJsonViewMode} onChange={handleJsonToggle} />
         </div>
       }
       style={style}
@@ -311,21 +320,31 @@ function OpenAIResponsesRequestView({ parsed }: { parsed: OpenAIResponsesRequest
     }
   }
 
+  // 统计 input 中各类型 item 分布
+  const itemCounts: Record<string, number> = {};
+  for (const item of input as Array<Record<string, unknown>>) {
+    const role = String(item.role ?? '');
+    const typ = String(item.type ?? '');
+    const key = role ? `${role} (${typ})` : typ;
+    itemCounts[key] = (itemCounts[key] || 0) + 1;
+  }
+  const statsStr = Object.entries(itemCounts)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(' · ');
+
   return (
     <div>
-      {/* 模型 */}
-      {model && (
-        <AccordionSection title="请求配置" defaultExpanded={false}>
-          <Descriptions
-            row
-            size="small"
-            data={[
-              { key: '模型', value: model },
-              ...configItems.map((d) => ({ key: d.key, value: d.value })),
-            ]}
-          />
-        </AccordionSection>
-      )}
+      {/* 模型与配置 */}
+      <AccordionSection title="请求配置" defaultExpanded={false}>
+        <Descriptions
+          row
+          size="small"
+          data={[
+            { key: '模型', value: model },
+            ...configItems.map((d) => ({ key: d.key, value: d.value })),
+          ]}
+        />
+      </AccordionSection>
 
       {/* Instructions */}
       {instructions && (
@@ -334,19 +353,148 @@ function OpenAIResponsesRequestView({ parsed }: { parsed: OpenAIResponsesRequest
         </AccordionSection>
       )}
 
-      {/* Input */}
+      {/* Input — 结构化渲染每条 item */}
       {input.length > 0 && (
-        <AccordionSection title={`输入（共 ${input.length} 项）`}>
-          <CodeHighlight content={JSON.stringify(input, null, 2)} language="json" />
+        <AccordionSection title={`输入（${input.length} 项）`} defaultExpanded>
+          <Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12 }}>
+            {statsStr}
+          </Text>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {renderInputItems(input as Array<Record<string, unknown>>)}
+          </div>
         </AccordionSection>
       )}
 
       {/* 工具定义 */}
       {tools && tools.length > 0 && (
         <AccordionSection title={`工具定义（共 ${tools.length} 个）`} defaultExpanded={false}>
-          <CodeHighlight content={JSON.stringify(tools, null, 2)} language="json" />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {tools.map((tool, idx) => (
+              <Tag key={idx} size="small" color="grey">
+                {String(
+                  (tool as Record<string, unknown>).type === 'function'
+                    ? (tool as Record<string, unknown>).name || 'function'
+                    : (tool as Record<string, unknown>).type || 'unknown',
+                )}
+              </Tag>
+            ))}
+          </div>
         </AccordionSection>
       )}
     </div>
   );
+}
+
+// ─── Responses API Input 结构化渲染 ───
+
+/** 单条 input item 的展示标签信息 */
+interface InputItemLabel {
+  tag: string;
+  color: 'blue' | 'green' | 'orange' | 'purple' | 'grey' | undefined;
+}
+
+/** 从 input item 提取标签和颜色 */
+function getInputItemLabel(item: Record<string, unknown>): InputItemLabel {
+  const typ = String(item.type ?? '');
+  const role = String(item.role ?? '');
+
+  if (role === 'developer') return { tag: '开发', color: 'grey' };
+  if (role === 'user') return { tag: '用户', color: 'blue' };
+  if (role === 'assistant') return { tag: '助手', color: 'green' };
+  if (typ === 'function_call') {
+    const name = String(item.name ?? 'unknown');
+    return { tag: `工具调用: ${name}`, color: 'orange' };
+  }
+  if (typ === 'function_call_output') {
+    const isErr = String(item.status ?? '') === 'error';
+    return { tag: isErr ? '工具结果 (错误)' : '工具结果', color: 'purple' };
+  }
+  if (typ === 'reasoning') return { tag: '推理', color: 'purple' };
+  if (typ === 'message') return { tag: '消息', color: 'grey' };
+  return { tag: typ || '未知', color: 'grey' };
+}
+
+/** 从 input item 提取可展示的文本内容 */
+function extractInputItemText(item: Record<string, unknown>): string | null {
+  const typ = String(item.type ?? '');
+  const role = String(item.role ?? '');
+
+  // message / user / developer / assistant 类型：从 content 数组提取文本
+  if (typ === 'message' || role === 'user' || role === 'developer' || role === 'assistant') {
+    const content = item.content;
+    if (Array.isArray(content)) {
+      const texts = (content as Array<Record<string, unknown>>)
+        .filter(
+          (c) =>
+            (c.type === 'input_text' || c.type === 'output_text') && typeof c.text === 'string',
+        )
+        .map((c) => c.text as string);
+      if (texts.length > 0) return texts.join('\n');
+    }
+    if (typeof content === 'string') return content;
+    return null;
+  }
+
+  // function_call：展示参数 JSON
+  if (typ === 'function_call') {
+    const args = item.arguments;
+    if (typeof args === 'string') {
+      try {
+        return JSON.stringify(JSON.parse(args), null, 2);
+      } catch {
+        return args;
+      }
+    }
+    return null;
+  }
+
+  // function_call_output：展示输出文本
+  if (typ === 'function_call_output') {
+    const output = item.output;
+    if (typeof output === 'string') return output;
+    return null;
+  }
+
+  // reasoning：展示摘要文本
+  if (typ === 'reasoning') {
+    const summary = item.summary;
+    if (Array.isArray(summary)) {
+      return (summary as Array<Record<string, unknown>>)
+        .filter((s) => s.type === 'summary_text' && typeof s.text === 'string')
+        .map((s) => s.text as string)
+        .join('\n');
+    }
+    return null;
+  }
+
+  return null;
+}
+
+const INLINE_INPUT_CARD: React.CSSProperties = {
+  padding: '8px 12px',
+  border: '1px solid var(--semi-color-border)',
+  borderRadius: 6,
+  backgroundColor: 'var(--semi-color-bg-0)',
+};
+
+/** 渲染 Responses API input 数组为结构化组件，每条 item 一行卡片 */
+function renderInputItems(items: Array<Record<string, unknown>>): ReactNode {
+  return items.map((item, idx) => {
+    const { tag, color } = getInputItemLabel(item);
+    const text = extractInputItemText(item);
+
+    return (
+      <div key={idx} style={INLINE_INPUT_CARD}>
+        <div style={{ marginBottom: text ? 6 : 0 }}>
+          <Tag size="small" color={color}>
+            {tag}
+          </Tag>
+          <Text size="small" type="tertiary" style={{ marginLeft: 8 }}>
+            #{idx}
+          </Text>
+        </div>
+        {text && <ExpandableContentBlock content={text} collapseLabel="收起内容" />}
+      </div>
+    );
+  });
 }
