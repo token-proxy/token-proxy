@@ -5,6 +5,40 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.0] - 2026-06-23
+
+### Added
+
+- 审计日志全面标准化改造
+- 实现 SSE 实时日志推送，支持列表自动刷新和会话详情增量更新
+- 实现账号自动恢复定时任务及审计日志
+- 支持 OpenAI 协议渲染和客户端类型展示
+- 新增 client_type 列并清理冗余客户端解析字段
+- 集成管线、Token 解析、接入点更新 API 和字段清理
+- 新增 OpenAI 协议适配、ClientType 识别和客户端字段清理
+
+### Changed
+
+- 请求日志详情 OpenAI Input 结构化渲染
+- 优化 OpenAI 响应体解析和会话轮次展示
+- 重构 execute 控制流为骨架式调度
+- 重构日志记录器和后台写入调度
+- 重构协议适配层和请求侧数据结构
+
+### Documentation
+
+- 同步架构文档和 CLI 配置
+- 同步代理转发链路重构后的文档
+
+### Fixed
+
+- Resolve clippy warnings (too_many_arguments + unnecessary_map_or)
+
+### Miscellaneous
+
+- Bump version to 1.2.0
+- Add CHANGELOG for 1.1.0
+
 ## [1.1.0] - 2026-06-23
 
 ### Added
