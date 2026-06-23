@@ -8,7 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::dto::{
-    LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse, ProxyLogData,
+    LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse, ProxyLogInput,
     SessionContentItemResponse, SessionSummaryResponse, TokenUsageResponse,
 };
 use crate::domain::access_point::repository::AccessPointRepository;
@@ -77,13 +77,13 @@ impl LogService {
 
     /// 记录代理日志的核心入口
     ///
-    /// 接收 ProxyLogData DTO，内部负责：
-    /// - 从 DTO 构造 LogMetadata（LogMetadata）
+    /// 接收 `ProxyLogInput` DTO，内部负责：
+    /// - 从入参构造 LogMetadata
     /// - HTTP 头解析（claude_code、user_agent）
     /// - 请求头脱敏 + JSON 序列化
     /// - Token 用量提取（从 SSE message_delta）
     /// - 原始内容存储（request_body、response_body）
-    pub async fn record_proxy_log(&self, data: ProxyLogData) -> Result<Uuid, AppError> {
+    pub async fn record_proxy_log(&self, data: ProxyLogInput) -> Result<Uuid, AppError> {
         // 解析 HTTP 头（会话 ID、Agent ID、conversation_source 等）
         let header_context = claude_code_context::parse_headers(&data.request_headers);
 
@@ -100,10 +100,17 @@ impl LogService {
             client_platform = info.client_platform;
         }
 
+        // session_id 为 None 时存为 "unknown" 字符串
+        // （log_metadata.session_id 是 NOT NULL 列，且历史数据约定 "unknown" 代表无会话标识）
+        let session_id_for_db = data
+            .session_id
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+
         let entry = LogMetadata {
             id: Uuid::new_v4(),
             timestamp: data.timestamp,
-            session_id: data.session_id.clone(),
+            session_id: session_id_for_db,
             user_id: Some(data.user_id),
             access_point_id: Some(data.access_point_id),
             provider_id: Some(data.provider_id),
