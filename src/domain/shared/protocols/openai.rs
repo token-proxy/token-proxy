@@ -57,7 +57,7 @@ fn parse_chat_inbound(
         .to_string();
 
     // 验证 messages 数组存在
-    if !json.get("messages").map_or(false, |v| v.is_array()) {
+    if !json.get("messages").is_some_and(|v| v.is_array()) {
         return Err(AppError::Validation(
             "Chat Completions 请求体缺少 messages 数组".into(),
         ));

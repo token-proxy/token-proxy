@@ -152,6 +152,7 @@ impl ProxyPipeline {
     /// 返回值的两个分支由类型系统强制完整性：
     /// - `RetryDecision::Return` — 终止重试，把响应交给客户端
     /// - `RetryDecision::Continue` — 禁用当前账号后切换下一个候选
+    #[allow(clippy::too_many_arguments)]
     async fn try_one_account(
         &self,
         access_point: &crate::domain::access_point::AccessPointEx,
