@@ -48,6 +48,31 @@ export function formatDate(dateStr: string): string {
 }
 
 /**
+ * 紧凑 token 数字格式化（用于 Dashboard 大数字展示）。
+ *
+ * - 值 >= 1_000_000 → "X.YM"
+ * - 值 >= 1_000 → "X.YK"
+ * - 否则保留原数字（中文千分位）
+ *
+ * 非有限数返回占位符 '—'。
+ *
+ * @example
+ * formatTokenCompact(12_500_000) // "12.5M"
+ * formatTokenCompact(8_429) // "8.4K"
+ * formatTokenCompact(342) // "342"
+ */
+export function formatTokenCompact(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  if (Math.abs(n) >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(1)}M`;
+  }
+  if (Math.abs(n) >= 1_000) {
+    return `${(n / 1_000).toFixed(1)}K`;
+  }
+  return n.toLocaleString('zh-CN');
+}
+
+/**
  * 格式化数字为带分隔符的字符串
  *
  * Chinese style (useChineseStyle=true) 时每四位加逗号，符合中文数字习惯；

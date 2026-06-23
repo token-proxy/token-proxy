@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use token_proxy::application::access_point::AccessPointService;
 use token_proxy::application::auth::AuthService;
+use token_proxy::application::dashboard::DashboardService;
 use token_proxy::application::log::LogService;
 use token_proxy::application::provider::AccountService;
 use token_proxy::application::provider::ProviderService;
@@ -295,6 +296,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         access_point_repo.clone(),
     ));
 
+    let dashboard_service = Arc::new(DashboardService::new(log_repo.clone()));
+
     let proxy_pipeline = Arc::new(ProxyPipeline::new(
         access_point_repo.clone(),
         provider_repo.clone(),
@@ -435,6 +438,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         auth_service,
         proxy_pipeline,
         log_service,
+        dashboard_service,
         settings_service,
         jwt_service,
         proxy_client,

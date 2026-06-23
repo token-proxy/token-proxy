@@ -18,14 +18,14 @@
 
 DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentation/`
 
-| 层         | 路径                                                                    | 职责                             |
-| ---------- | ----------------------------------------------------------------------- | -------------------------------- |
-| 领域层     | `src/domain/{access_point,provider,user,log,system,shared}/`            | 实体、值对象、Repository trait   |
-| 应用层     | `src/application/{access_point,auth,log,provider,proxy,system,user}/`   | 用例编排、DTO                    |
-| 基础设施层 | `src/infrastructure/{persistence,encryption,auth,http_client,parsers}/` | Repository 实现、加密、JWT、HTTP |
-| 展示层     | `src/presentation/{routes,middleware}/`                                 | axum handlers、认证中间件        |
-| 共享       | `src/shared/`                                                           | AppError (9 种)、PaginatedResult |
-| 前端       | `src-dashboard/`                                                        | React SPA，构建产物嵌入二进制    |
+| 层         | 路径                                                                            | 职责                             |
+| ---------- | ------------------------------------------------------------------------------- | -------------------------------- |
+| 领域层     | `src/domain/{access_point,provider,user,log,system,shared}/`                    | 实体、值对象、Repository trait   |
+| 应用层     | `src/application/{access_point,auth,dashboard,log,provider,proxy,system,user}/` | 用例编排、DTO                    |
+| 基础设施层 | `src/infrastructure/{persistence,encryption,auth,http_client,parsers}/`         | Repository 实现、加密、JWT、HTTP |
+| 展示层     | `src/presentation/{routes,middleware}/`                                         | axum handlers、认证中间件        |
+| 共享       | `src/shared/`                                                                   | AppError (9 种)、PaginatedResult |
+| 前端       | `src-dashboard/`                                                                | React SPA，构建产物嵌入二进制    |
 
 - **依赖注入**: `Arc<dyn Trait>`，`main.rs` 组装；应用层 Service 注入 Repository trait，不直接依赖 SeaORM
 - **聚合根**: `AccessPointEx` = 接入点 + 账户池 + 路由网格，ProxyPipeline 唯一交互入口
@@ -51,6 +51,7 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 - **账号自动禁用**: `DisabledReason`（Manual/RateLimited/BalanceExhausted/Fault）+ `available_at`；`recover()` 清除；禁用账号自动跳过
 - **日志记录三阶段**: 元数据 → 内容 → token 用量；元数据失败立即 return，后续失败仅 warn/error 不阻断
 - **日志默认不依赖 `log_contents`**: 列表优先用 `log_metadata`；原始内容按需加载（`/api/logs/{id}/raw`）
+- **Dashboard 数据分析**: 3 个独立 GET 端点（`/api/dashboard/kpi` / `/api/dashboard/top-users` / `/api/dashboard/top-accounts`）共享 `?range=today|last7|last30|custom` 时间窗口；KPI 端点内嵌 sparkline（避免重复 SQL）；对比窗口为等长前期；所有 LEFT JOIN 容忍 `users` / `accounts` / `providers` 删除（`Option<String>` + 前端降级为 `已删除成员/账号 · <uuid 前 8 位>`）；`DashboardService` 仅依赖 `LogRepository`，所有聚合在 SQL 层（无 N+1）；缓存命中率分母为 `input + cache_read`（不含 cache_creation）；趋势对比覆盖 5 种边界（up/down/flat/new/empty）
 
 ## Makefile 任务
 
@@ -125,6 +126,8 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 ```
 
 管理侧边栏: Dashboard, 服务商管理, 接入点管理, 会话日志, 请求日志, 用户管理, 系统设置
+
+- **DashboardPage**: Linear Insights / Vercel Analytics 极简风格数据分析页，含 KPI 卡片、缓存命中率卡、Top Users / Top Accounts 排行；顶层组件管理 `timeRange` + `refreshKey`，调度 3 个独立 `useFetch`；响应式 Grid 布局（断点 1280 / 768），暗色优先双主题适配；零 Mock 数据，所有同比箭头基于真实查询
 
 ## 编码规范
 
@@ -317,6 +320,10 @@ aggr.resolve(x, y)
 | `src/infrastructure/http_client/proxy_logger.rs`             | 日志积累器 (Drop 自动 flush)                                                            |
 | `src/infrastructure/http_client/processed_request.rs`        | 上游请求变换 (防腐)                                                                     |
 | `src/application/log/log_service.rs`                         | 日志写入/查询 (三阶段)                                                                  |
+| `src/application/dashboard/dashboard_service.rs`             | Dashboard 聚合服务 (get_kpi + get_top_users + get_top_accounts + compute_trend)         |
+| `src/application/dashboard/time_window.rs`                   | 时间窗口解析 (resolve_windows 纯函数，含等长前期对比)                                   |
+| `src/domain/log/dashboard_query.rs`                          | Dashboard 领域查询类型 (DashboardWindow + KpiAggregate + SparklineBucket + Top\*Row)    |
+| `src/presentation/routes/dashboard_routes.rs`                | Dashboard 路由 (/api/dashboard/{kpi,top-users,top-accounts})                            |
 | `src/application/user/api_key_service.rs`                    | 用户 API key 管理                                                                       |
 | `src/presentation/middleware/jwt_auth.rs`                    | JWT 认证中间件 + CurrentUser                                                            |
 | `src/presentation/middleware/user_api_key_auth.rs`           | 用户 API key 认证                                                                       |
@@ -327,6 +334,8 @@ aggr.resolve(x, y)
 | `src-dashboard/components/session/TurnCard.tsx`              | 轮次卡片组件 (递归渲染内容块, 最大深度 5 层)                                            |
 | `src-dashboard/components/session/TurnNavigator.tsx`         | Sticky 轮次导航条                                                                       |
 | `src-dashboard/hooks/useFetch.ts`                            | 通用数据获取 Hook (fetch-on-mount, {data, loading, error, refetch})                     |
+| `src-dashboard/pages/DashboardPage.tsx`                      | Dashboard 顶层 (timeRange + refreshKey + 3 个 useFetch 调度)                            |
+| `src-dashboard/components/dashboard/`                        | Dashboard 组件 (KpiCard/CacheHitCard/Sparkline/ComparisonArrow/StackedBar/Top\*Ranking) |
 | `src-dashboard/utils/parseLogs.ts`                           | 日志/会话解析工具 (SSE + JSON 双格式, buildConversationEvents + buildConversationTurns) |
 | `cliff.toml`                                                 | CHANGELOG 自动生成配置 (git-cliff, feat→Added / fix→Fixed / perf→Changed)               |
 | `rust-toolchain.toml`                                        | Rust 工具链版本固定 (channel = "1.96")                                                  |
@@ -348,3 +357,7 @@ aggr.resolve(x, y)
 - `log_metadata` 的 `account_id` 字段记录实际使用的账号
 - 会话详情页轮次判定：通过 `request_body.messages` 数组判定（非 tool_result 的用户消息 = 新轮次起点），`buildConversationTurns()` 在 `parseLogs.ts` 中实现；所有改进纯前端实施，不修改后端 API；不要使用 `buildConversationEvents()` 渲染详情页
 - 响应体格式检测（`detectResponseFormat`）优先通过 `response_headers` 的 `Content-Type` 判定；若无响应头或未匹配，`isJsonFormat` 通过 JSON.parse 试探兜底；`ResponseContentCard` 将检测结果通过 `format` 参数传递给各解析函数
+- Dashboard 聚合查询全部走 `LogRepository` 的 `aggregate_kpi` / `aggregate_sparkline` / `top_users` / `top_accounts` 四个方法，禁止在 `LogService` 中重新实现统计逻辑（已删除旧的 `get_overview_stats` / `get_trends` / `top_access_points` / `top_models`）；新增 Dashboard 指标时优先扩展现有四个聚合方法
+- Dashboard sparkline 空桶补齐由 SQL 端 `generate_series` 完成，应用层无需再补；新增时间粒度（如小时级）需同步扩展 `DashboardWindow` 与 SQL 系列生成步长
+- 前端 Dashboard 已删除成员/账号统一用全局 `.dashboard-deleted` CSS class（灰色 + monospace）展示，不要单独写 `style={{ color: ... }}`
+- 性能优化遗留：`log_token_usage.timestamp` 无前导索引，`top_accounts` 查询可能 Seq Scan；建议在数据量增长后追加 BRIN 索引（未在本次实施）

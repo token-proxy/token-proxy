@@ -1,212 +1,143 @@
-import { type ReactNode, useEffect, useState } from 'react';
-import { Card, Col, Row, Table, Typography } from '@douyinfe/semi-ui';
-import api from '../api';
-import StatCard from '@components/dashboard/StatCard';
-import TrendChart from '@components/dashboard/TrendChart';
-import type { OverviewData, TopAccessPoint, TopModel, TrendItem } from '../types/dashboard.ts';
-import { formatNumber } from '../utils/format.ts';
+/**
+ * Dashboard 主页面。
+ *
+ * 面向技术主管的数据洞察视图，组合 F3 ~ F9 交付的所有 dashboard 组件：
+ * - 顶部时间范围切换器（全局过滤器 + 刷新按钮）
+ * - 4 张 KPI 卡（总请求数 / Token 总量 / 活跃成员数 / 缓存命中率）
+ * - 双列排行（成员请求量 Top 10 / 账号 Token 消耗 Top 10）
+ *
+ * 设计风格参照 Linear Insights / Vercel Analytics 的极简数据洞察布局。
+ */
 
-const { Title } = Typography;
-
-// --- API 不可用时的 Mock 兜底数据 ---
-
-const MOCK_OVERVIEW: OverviewData = {
-  total_requests: 128456,
-  total_requests_change: 12.5,
-  active_access_points: 24,
-  active_access_points_change: 8.3,
-  active_users: 156,
-  active_users_change: -2.1,
-  error_rate: 2.3,
-  error_rate_change: -0.5,
-};
-
-const MOCK_TRENDS: TrendItem[] = [
-  { date: '05-13', count: 3200 },
-  { date: '05-14', count: 4100 },
-  { date: '05-15', count: 3800 },
-  { date: '05-16', count: 5200 },
-  { date: '05-17', count: 4900 },
-  { date: '05-18', count: 6100 },
-  { date: '05-19', count: 5800 },
-];
-
-const MOCK_TOP_ACCESS_POINTS: TopAccessPoint[] = [
-  { short_code: 'gp4', name: 'GPT-4 接入点', count: 45200 },
-  { short_code: 'cla3', name: 'Claude 3 接入点', count: 32100 },
-  { short_code: 'gemini', name: 'Gemini 接入点', count: 19800 },
-  { short_code: 'glm4', name: 'GLM-4 接入点', count: 12400 },
-  { short_code: 'qwen', name: '通义千问接入点', count: 8900 },
-];
-
-const MOCK_TOP_MODELS: TopModel[] = [
-  { model: 'gpt-4-turbo', count: 28500 },
-  { model: 'gpt-3.5-turbo', count: 22100 },
-  { model: 'claude-3-opus-20240229', count: 15300 },
-  { model: 'claude-3-sonnet-20240229', count: 12100 },
-  { model: 'gemini-1.5-pro', count: 9800 },
-];
-
-// --- Top-N 表格列定义 ---
-
-const ACCESS_POINT_COLUMNS = [
-  {
-    title: '排名',
-    width: 60,
-    align: 'center' as const,
-    render: (_: unknown, __: unknown, idx: number) => idx + 1,
-  },
-  { title: '短码', dataIndex: 'short_code' },
-  { title: '名称', dataIndex: 'name' },
-  {
-    title: '请求量',
-    dataIndex: 'count',
-    align: 'right' as const,
-    render: (v: number) => formatNumber(v),
-  },
-];
-
-const MODEL_COLUMNS = [
-  {
-    title: '排名',
-    width: 60,
-    align: 'center' as const,
-    render: (_: unknown, __: unknown, idx: number) => idx + 1,
-  },
-  { title: '模型', dataIndex: 'model' },
-  {
-    title: '使用次数',
-    dataIndex: 'count',
-    align: 'right' as const,
-    render: (v: number) => formatNumber(v),
-  },
-];
-
-// --- 主页面组件 ---
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Notification, Typography } from '@douyinfe/semi-ui';
+import { dashboardApi } from '../api';
+import { CacheHitCard } from '../components/dashboard/CacheHitCard';
+import { KpiCard } from '../components/dashboard/KpiCard';
+import { TimeRangeSelector } from '../components/dashboard/TimeRangeSelector';
+import { TopAccountsRanking } from '../components/dashboard/TopAccountsRanking';
+import { TopUsersRanking } from '../components/dashboard/TopUsersRanking';
+import { useFetch } from '../hooks/useFetch';
+import type { TimeRangeQuery } from '../types/dashboard';
+import { formatNumber, formatTokenCompact } from '../utils/format';
+import './DashboardPage.css';
 
 /**
- * DashboardPage - Dashboard 概览页面
+ * Dashboard 主页面组件。
  *
- * 展示系统核心统计数据：总请求量、活跃接入点、活跃用户、错误率，
- * 近 7 天请求趋势图、Top-N 接入点和模型排名。
- * API 未就绪时回退到 Mock 数据用于 UI 演示。
+ * 顶层管理 timeRange 和 refreshKey 两个状态，通过 useFetch 并行加载 3 个数据源：
+ * - KPI（含 4 张卡 + sparkline 时间序列）
+ * - 成员排行 Top 10
+ * - 账号排行 Top 10
+ *
+ * 刷新策略：refreshKey 自增触发 useFetch 重新执行，避免 useFetch 内部 deps 不变时跳过。
+ * 错误处理：3 个查询任一失败时通过 useEffect 单次弹出 Notification，避免每次 render 重复弹。
  */
 export default function DashboardPage(): ReactNode {
-  const [loading, setLoading] = useState(true);
-  const [overview, setOverview] = useState<OverviewData | null>(null);
-  const [trends, setTrends] = useState<TrendItem[]>([]);
-  const [topAccessPoints, setTopAccessPoints] = useState<TopAccessPoint[]>([]);
-  const [topModels, setTopModels] = useState<TopModel[]>([]);
+  // 默认范围：近 7 天（与 TimeRangeSelector 的 last7 预设对齐）
+  const [timeRange, setTimeRange] = useState<TimeRangeQuery>({ range: 'last7' });
+  // refreshKey 自增触发 useFetch 重新执行；时间范围切换本身已会触发 fetch，仅刷新按钮使用
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
+  // useFetch 的 deps 通过 useMemo 稳定引用，避免每次 render 创建新数组
+  // 拆为基础字段而非整个 timeRange 对象，确保浅比较生效
+  const fetchDeps = useMemo(
+    () => [timeRange.range, timeRange.start, timeRange.end, refreshKey],
+    [timeRange.range, timeRange.start, timeRange.end, refreshKey],
+  );
 
-    const fetchData = async () => {
-      try {
-        const [ov, tr, ap, md] = await Promise.all([
-          api.get<OverviewData>('/api/stats/overview'),
-          api.get<TrendItem[]>('/api/stats/trends?days=7'),
-          api.get<TopAccessPoint[]>('/api/stats/top-access-points?limit=5'),
-          api.get<TopModel[]>('/api/stats/top-models?limit=5'),
-        ]);
-        if (cancelled) return;
-        setOverview(ov);
-        setTrends(tr);
-        setTopAccessPoints(ap);
-        setTopModels(md);
-      } catch {
-        console.warn('[DashboardPage] Dashboard API 尚未就绪，回退到 Mock 数据');
-        if (cancelled) return;
-        setOverview(MOCK_OVERVIEW);
-        setTrends(MOCK_TRENDS);
-        setTopAccessPoints(MOCK_TOP_ACCESS_POINTS);
-        setTopModels(MOCK_TOP_MODELS);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
+  const kpiQuery = useFetch(() => dashboardApi.getKpi(timeRange), fetchDeps);
+  const topUsersQuery = useFetch(() => dashboardApi.getTopUsers(timeRange), fetchDeps);
+  const topAccountsQuery = useFetch(() => dashboardApi.getTopAccounts(timeRange), fetchDeps);
 
-    fetchData();
-    return () => {
-      cancelled = true;
-    };
+  /** 刷新按钮回调：refreshKey 自增以触发 useFetch 重新执行 */
+  const handleRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
   }, []);
 
+  // 错误聚合：3 个查询任一失败即视为页面级错误（useFetch 返回 error 为 string | null）
+  const error = kpiQuery.error ?? topUsersQuery.error ?? topAccountsQuery.error;
+
+  // 错误状态变化时单次弹通知；放在 useEffect 内防止每次 render 重复弹
+  useEffect(() => {
+    if (error) {
+      Notification.error({
+        title: 'Dashboard 数据加载失败',
+        content: error,
+        duration: 5,
+      });
+    }
+  }, [error]);
+
+  // 任一查询加载中即整体显示加载（驱动刷新按钮 spinner）
+  const isLoading = kpiQuery.loading || topUsersQuery.loading || topAccountsQuery.loading;
+
+  // 从 KPI 响应中提取三条 sparkline 序列，缺失时回退空数组
+  const sparklineBuckets = kpiQuery.data?.sparkline.buckets ?? [];
+  const sparklineRequests = sparklineBuckets.map((b) => b.request_count);
+  const sparklineTokens = sparklineBuckets.map((b) => b.total_tokens);
+  const sparklineUsers = sparklineBuckets.map((b) => b.active_user_count);
+
   return (
-    <div>
-      <Title heading={3} style={{ marginBottom: 24 }}>
-        Dashboard
-      </Title>
-
-      {/* ---- 统计卡片行 ---- */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
-          <StatCard
-            title="总请求量 (近 30 天)"
-            value={overview ? formatNumber(overview.total_requests) : '-'}
-            change={overview?.total_requests_change}
-            loading={loading}
-          />
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <StatCard
-            title="活跃接入点"
-            value={overview?.active_access_points ?? '-'}
-            change={overview?.active_access_points_change}
-            loading={loading}
-          />
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <StatCard
-            title="活跃用户"
-            value={overview?.active_users ?? '-'}
-            change={overview?.active_users_change}
-            loading={loading}
-          />
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <StatCard
-            title="错误率"
-            value={overview && overview.error_rate !== undefined ? `${overview.error_rate}%` : '-'}
-            change={overview?.error_rate_change}
-            loading={loading}
-            invertChange
-          />
-        </Col>
-      </Row>
-
-      {/* ---- 趋势图 ---- */}
-      <div style={{ marginTop: 24 }}>
-        <TrendChart data={trends} loading={loading} />
+    <div className="dashboard-container">
+      {/* 顶部：标题 + 时间范围切换器 */}
+      <div className="dashboard-header">
+        <Typography.Title heading={3} style={{ margin: 0 }}>
+          数据洞察
+        </Typography.Title>
+        <TimeRangeSelector
+          value={timeRange}
+          onChange={setTimeRange}
+          onRefresh={handleRefresh}
+          loading={isLoading}
+        />
       </div>
 
-      {/* ---- Top-N 表格 ---- */}
-      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
-        <Col xs={24} lg={12}>
-          <Card title="Top 5 接入点" style={{ backgroundColor: 'var(--semi-color-bg-0)' }}>
-            <Table
-              columns={ACCESS_POINT_COLUMNS}
-              dataSource={topAccessPoints}
-              pagination={false}
-              size="small"
-              loading={loading}
-              rowKey="short_code"
-            />
-          </Card>
-        </Col>
-        <Col xs={24} lg={12}>
-          <Card title="Top 5 模型" style={{ backgroundColor: 'var(--semi-color-bg-0)' }}>
-            <Table
-              columns={MODEL_COLUMNS}
-              dataSource={topModels}
-              pagination={false}
-              size="small"
-              loading={loading}
-              rowKey="model"
-            />
-          </Card>
-        </Col>
-      </Row>
+      {/* KPI 卡片区：4 列网格，窄屏自动降级为 2 列 / 1 列 */}
+      <div className="dashboard-grid-kpi">
+        <KpiCard
+          title="总请求数"
+          value={kpiQuery.data?.request_count.current ?? 0}
+          format={formatNumber}
+          trend={kpiQuery.data?.request_count.trend ?? 'empty'}
+          changePct={kpiQuery.data?.request_count.change_pct ?? null}
+          sparklineData={sparklineRequests}
+          loading={kpiQuery.loading}
+        />
+        <KpiCard
+          title="Token 总量"
+          value={kpiQuery.data?.total_tokens.current ?? 0}
+          format={formatTokenCompact}
+          trend={kpiQuery.data?.total_tokens.trend ?? 'empty'}
+          changePct={kpiQuery.data?.total_tokens.change_pct ?? null}
+          sparklineData={sparklineTokens}
+          loading={kpiQuery.loading}
+        />
+        <KpiCard
+          title="活跃成员数"
+          value={kpiQuery.data?.active_user_count.current ?? 0}
+          format={formatNumber}
+          trend={kpiQuery.data?.active_user_count.trend ?? 'empty'}
+          changePct={kpiQuery.data?.active_user_count.change_pct ?? null}
+          sparklineData={sparklineUsers}
+          loading={kpiQuery.loading}
+        />
+        <CacheHitCard
+          rate={kpiQuery.data?.cache_hit_rate.rate ?? null}
+          trend={kpiQuery.data?.cache_hit_rate.trend ?? 'empty'}
+          changePct={kpiQuery.data?.cache_hit_rate.change_pct ?? null}
+          loading={kpiQuery.loading}
+        />
+      </div>
+
+      {/* 排行区：双列布局，窄屏降级为单列 */}
+      <div className="dashboard-grid-rank">
+        <TopUsersRanking items={topUsersQuery.data?.items ?? []} loading={topUsersQuery.loading} />
+        <TopAccountsRanking
+          items={topAccountsQuery.data?.items ?? []}
+          loading={topAccountsQuery.loading}
+        />
+      </div>
     </div>
   );
 }

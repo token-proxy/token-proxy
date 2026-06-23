@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 pub mod access_point;
 pub mod auth;
+pub mod dashboard;
 pub mod log;
 pub mod provider;
 pub mod proxy;
@@ -25,6 +26,7 @@ use crate::infrastructure::http_client::ProxyClient;
 
 use access_point::AccessPointService;
 use auth::AuthService;
+use dashboard::DashboardService;
 use log::LogService;
 use provider::AccountService;
 use provider::ProviderService;
@@ -46,6 +48,7 @@ pub struct AppState {
     pub auth_service: Arc<AuthService>,
     pub proxy_pipeline: Arc<ProxyPipeline>,
     pub log_service: Arc<LogService>,
+    pub dashboard_service: Arc<DashboardService>,
     pub settings_service: Arc<SettingsService>,
     pub jwt_service: Arc<JwtService>,
     pub proxy_client: Arc<ProxyClient>,

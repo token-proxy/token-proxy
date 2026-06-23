@@ -4,12 +4,12 @@
 //! - 基础 CRUD（metadata、content、token usage）
 //! - 分页查询（含 SQL 动态拼接和全文检索）
 //! - 会话聚合查询
-//! - 统计方法
+//! - Dashboard 聚合查询（KPI / sparkline / Top N 排行）
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
+use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, Statement,
@@ -18,10 +18,11 @@ use uuid::Uuid;
 
 use crate::domain::log::content::{ActiveModel as ContentActiveModel, Entity as ContentEntity};
 use crate::domain::log::metadata::{ActiveModel, Column, Entity};
-use crate::domain::log::{LogContent, LogMetadata, LogTokenUsage};
 use crate::domain::log::{
-    LogMetadataWithTokenSummary, LogQuery, LogRepository, SessionQuery, SessionSummaryData,
+    DashboardWindow, KpiAggregate, LogMetadataWithTokenSummary, LogQuery, LogRepository,
+    SessionQuery, SessionSummaryData, SparklineBucket, TopAccountRow, TopUserRow,
 };
+use crate::domain::log::{LogContent, LogMetadata, LogTokenUsage};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
@@ -686,117 +687,250 @@ impl LogRepository for SeaOrmLogRepository {
         }
     }
 
-    // ─── 统计方法 ───
+    // ─── Dashboard 聚合查询 ───
 
-    async fn count_total(&self) -> Result<u64, AppError> {
-        let db = &*self.db;
-        let count = Entity::find().count(db).await?;
-        Ok(count)
-    }
-
-    async fn count_by_date_range(
-        &self,
-        start: DateTime<Utc>,
-        end: DateTime<Utc>,
-    ) -> Result<Vec<(NaiveDate, u64)>, AppError> {
+    /// KPI 聚合：单次 SQL 返回请求数 / token 总量 / 活跃成员数 / 缓存读 token / 缓存读 + 输入 token 总和。
+    ///
+    /// `log_metadata` 按月分区，`timestamp >= $1 AND timestamp < $2` 由 PostgreSQL 自动剪枝匹配的子分区。
+    /// `log_token_usage` 与 `log_metadata` 通过 `log_id` 一对一关联；LEFT JOIN 保证没有 token 记录的请求仍计入 `request_count`。
+    #[tracing::instrument(
+        skip(self),
+        fields(window.start = %window.start, window.end = %window.end)
+    )]
+    async fn aggregate_kpi(&self, window: &DashboardWindow) -> Result<KpiAggregate, AppError> {
         let db = &*self.db;
         let sql = r#"
-            SELECT DATE(timestamp)::TEXT AS day, COUNT(*)::BIGINT AS cnt
-            FROM log_metadata
-            WHERE timestamp >= $1::timestamptz AND timestamp < $2::timestamptz
-            GROUP BY day
-            ORDER BY day
+            SELECT
+                COUNT(*)::BIGINT AS request_count,
+                COALESCE(SUM(ltu.total_tokens), 0)::BIGINT AS total_tokens,
+                COUNT(DISTINCT lm.user_id)::BIGINT AS active_user_count,
+                COALESCE(SUM(ltu.cache_read_input_tokens), 0)::BIGINT AS cache_read_tokens,
+                COALESCE(SUM(ltu.input_tokens + ltu.cache_read_input_tokens), 0)::BIGINT AS input_plus_cache_read_tokens
+            FROM log_metadata lm
+            LEFT JOIN log_token_usage ltu ON ltu.log_id = lm.id
+            WHERE lm.timestamp >= $1::timestamptz AND lm.timestamp < $2::timestamptz
         "#;
 
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
-            [start.to_rfc3339().into(), end.to_rfc3339().into()],
+            [window.start.into(), window.end.into()],
+        );
+
+        let row = db
+            .query_one_raw(stmt)
+            .await?
+            .ok_or_else(|| AppError::Internal("KPI 聚合查询无结果".to_string()))?;
+
+        Ok(KpiAggregate {
+            request_count: row.try_get_by_index::<i64>(0)?,
+            total_tokens: row.try_get_by_index::<i64>(1)?,
+            active_user_count: row.try_get_by_index::<i64>(2)?,
+            cache_read_tokens: row.try_get_by_index::<i64>(3)?,
+            input_plus_cache_read_tokens: row.try_get_by_index::<i64>(4)?,
+        })
+    }
+
+    /// Sparkline 聚合：按 hour 或 day 分桶，用 `generate_series` 补齐空桶。
+    ///
+    /// `bucket_count == 24` 时按小时聚合（用于"今日"视图），否则按天聚合。
+    /// 桶区间为 `[date_trunc($1), date_trunc($2 - 1 epoch))`，与 `window` 的闭右开语义一致。
+    #[tracing::instrument(
+        skip(self),
+        fields(window.start = %window.start, window.end = %window.end, bucket_count = bucket_count)
+    )]
+    async fn aggregate_sparkline(
+        &self,
+        window: &DashboardWindow,
+        bucket_count: u32,
+    ) -> Result<Vec<SparklineBucket>, AppError> {
+        let db = &*self.db;
+
+        // 桶粒度由 bucket_count 决定：24 → 小时桶，其余 → 日桶
+        let unit = if bucket_count == 24 { "hour" } else { "day" };
+
+        let sql = format!(
+            r#"
+            WITH series AS (
+                SELECT generate_series(
+                    date_trunc('{unit}', $1::timestamptz),
+                    date_trunc('{unit}', $2::timestamptz - interval '1 second'),
+                    interval '1 {unit}'
+                ) AS bucket_start
+            ), data AS (
+                SELECT
+                    date_trunc('{unit}', lm.timestamp) AS bucket_start,
+                    COUNT(*)::BIGINT AS request_count,
+                    COALESCE(SUM(ltu.total_tokens), 0)::BIGINT AS total_tokens,
+                    COUNT(DISTINCT lm.user_id)::BIGINT AS active_user_count
+                FROM log_metadata lm
+                LEFT JOIN log_token_usage ltu ON ltu.log_id = lm.id
+                WHERE lm.timestamp >= $1::timestamptz AND lm.timestamp < $2::timestamptz
+                GROUP BY 1
+            )
+            SELECT
+                s.bucket_start,
+                COALESCE(d.request_count, 0)::BIGINT,
+                COALESCE(d.total_tokens, 0)::BIGINT,
+                COALESCE(d.active_user_count, 0)::BIGINT
+            FROM series s
+            LEFT JOIN data d USING (bucket_start)
+            ORDER BY s.bucket_start
+            "#
+        );
+
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            &sql,
+            [window.start.into(), window.end.into()],
         );
 
         let results = db.query_all_raw(stmt).await?;
 
-        let mut data = Vec::new();
-        for row in &results {
-            let day_str: String = row.try_get_by_index(0)?;
-            let day = NaiveDate::parse_from_str(&day_str, "%Y-%m-%d")
-                .map_err(|e| AppError::Internal(format!("日期解析失败: {}", e)))?;
-            let count: i64 = row.try_get_by_index(1)?;
-            data.push((day, count as u64));
-        }
+        let buckets = results
+            .iter()
+            .map(|row| {
+                let bucket_start: DateTime<FixedOffset> = row.try_get_by_index(0)?;
+                Ok(SparklineBucket {
+                    bucket_start: bucket_start.with_timezone(&Utc),
+                    request_count: row.try_get_by_index::<i64>(1)?,
+                    total_tokens: row.try_get_by_index::<i64>(2)?,
+                    active_user_count: row.try_get_by_index::<i64>(3)?,
+                })
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
 
-        Ok(data)
+        Ok(buckets)
     }
 
-    async fn top_access_points(&self, limit: u64) -> Result<Vec<(Uuid, u64)>, AppError> {
+    /// 成员请求量排行 Top N。
+    ///
+    /// LEFT JOIN users 容忍已删除成员：`username` / `display_name` 此时为 NULL。
+    /// 过滤 `lm.user_id IS NOT NULL`，避免匿名请求（如未认证场景）混入排行榜。
+    #[tracing::instrument(
+        skip(self),
+        fields(window.start = %window.start, window.end = %window.end, limit = limit)
+    )]
+    async fn top_users(
+        &self,
+        window: &DashboardWindow,
+        limit: u32,
+    ) -> Result<Vec<TopUserRow>, AppError> {
         let db = &*self.db;
         let sql = r#"
-            SELECT access_point_id, COUNT(*)::BIGINT AS cnt
-            FROM log_metadata
-            WHERE access_point_id IS NOT NULL
-            GROUP BY access_point_id
-            ORDER BY cnt DESC
-            LIMIT $1
+            SELECT
+                lm.user_id,
+                u.username,
+                u.display_name,
+                COUNT(*)::BIGINT AS request_count,
+                COALESCE(SUM(ltu.total_tokens), 0)::BIGINT AS total_tokens
+            FROM log_metadata lm
+            LEFT JOIN log_token_usage ltu ON ltu.log_id = lm.id
+            LEFT JOIN users u ON u.id = lm.user_id
+            WHERE lm.timestamp >= $1::timestamptz AND lm.timestamp < $2::timestamptz
+              AND lm.user_id IS NOT NULL
+            GROUP BY lm.user_id, u.username, u.display_name
+            ORDER BY request_count DESC
+            LIMIT $3
         "#;
 
-        let stmt =
-            Statement::from_sql_and_values(DbBackend::Postgres, sql, [(limit as i64).into()]);
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            [
+                window.start.into(),
+                window.end.into(),
+                (limit as i64).into(),
+            ],
+        );
 
         let results = db.query_all_raw(stmt).await?;
 
-        let mut data = Vec::new();
-        for row in &results {
-            let id: Uuid = row.try_get_by_index(0)?;
-            let count: i64 = row.try_get_by_index(1)?;
-            data.push((id, count as u64));
-        }
+        let rows = results
+            .iter()
+            .map(|row| {
+                Ok(TopUserRow {
+                    user_id: row.try_get_by_index::<Uuid>(0)?,
+                    username: row.try_get_by_index::<Option<String>>(1)?,
+                    display_name: row.try_get_by_index::<Option<String>>(2)?,
+                    request_count: row.try_get_by_index::<i64>(3)?,
+                    total_tokens: row.try_get_by_index::<i64>(4)?,
+                })
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
 
-        Ok(data)
+        Ok(rows)
     }
 
-    async fn top_models(&self, limit: u64) -> Result<Vec<(String, u64)>, AppError> {
+    /// 账号 Token 消耗排行 Top N。
+    ///
+    /// 从 `log_token_usage` 聚合（账号维度的 token 消耗以此表为准），再 LEFT JOIN 容忍已删除：
+    /// - `accounts` 若被 provider CASCADE 删除，则 `account_name` / `provider_id` / `disabled_reason` 均为 NULL；
+    /// - `providers` 若已删除（accounts 实际不会孤立，此处仅为防御性 LEFT JOIN），`provider_name` 为 NULL。
+    ///
+    /// `disabled_reason` 为 `VARCHAR(50)` 字段，直接读取为 `Option<String>`，无需类型强转。
+    #[tracing::instrument(
+        skip(self),
+        fields(window.start = %window.start, window.end = %window.end, limit = limit)
+    )]
+    async fn top_accounts(
+        &self,
+        window: &DashboardWindow,
+        limit: u32,
+    ) -> Result<Vec<TopAccountRow>, AppError> {
         let db = &*self.db;
         let sql = r#"
-            SELECT model_original, COUNT(*)::BIGINT AS cnt
-            FROM log_metadata
-            WHERE model_original IS NOT NULL
-            GROUP BY model_original
-            ORDER BY cnt DESC
-            LIMIT $1
+            SELECT
+                ltu.account_id,
+                a.name AS account_name,
+                a.provider_id,
+                p.name AS provider_name,
+                a.disabled_reason,
+                COALESCE(SUM(ltu.input_tokens), 0)::BIGINT AS input_tokens,
+                COALESCE(SUM(ltu.output_tokens), 0)::BIGINT AS output_tokens,
+                COALESCE(SUM(ltu.cache_read_input_tokens), 0)::BIGINT AS cache_read_tokens,
+                COALESCE(SUM(ltu.cache_creation_input_tokens), 0)::BIGINT AS cache_creation_tokens,
+                COALESCE(SUM(ltu.total_tokens), 0)::BIGINT AS total_tokens
+            FROM log_token_usage ltu
+            LEFT JOIN accounts a ON a.id = ltu.account_id
+            LEFT JOIN providers p ON p.id = a.provider_id
+            WHERE ltu.timestamp >= $1::timestamptz AND ltu.timestamp < $2::timestamptz
+              AND ltu.account_id IS NOT NULL
+            GROUP BY ltu.account_id, a.name, a.provider_id, p.name, a.disabled_reason
+            ORDER BY total_tokens DESC
+            LIMIT $3
         "#;
 
-        let stmt =
-            Statement::from_sql_and_values(DbBackend::Postgres, sql, [(limit as i64).into()]);
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            [
+                window.start.into(),
+                window.end.into(),
+                (limit as i64).into(),
+            ],
+        );
 
         let results = db.query_all_raw(stmt).await?;
 
-        let mut data = Vec::new();
-        for row in &results {
-            let model: String = row.try_get_by_index(0)?;
-            let count: i64 = row.try_get_by_index(1)?;
-            data.push((model, count as u64));
-        }
+        let rows = results
+            .iter()
+            .map(|row| {
+                Ok(TopAccountRow {
+                    account_id: row.try_get_by_index::<Uuid>(0)?,
+                    account_name: row.try_get_by_index::<Option<String>>(1)?,
+                    provider_id: row.try_get_by_index::<Option<Uuid>>(2)?,
+                    provider_name: row.try_get_by_index::<Option<String>>(3)?,
+                    disabled_reason: row.try_get_by_index::<Option<String>>(4)?,
+                    input_tokens: row.try_get_by_index::<i64>(5)?,
+                    output_tokens: row.try_get_by_index::<i64>(6)?,
+                    cache_read_tokens: row.try_get_by_index::<i64>(7)?,
+                    cache_creation_tokens: row.try_get_by_index::<i64>(8)?,
+                    total_tokens: row.try_get_by_index::<i64>(9)?,
+                })
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
 
-        Ok(data)
-    }
-
-    async fn count_active_access_points(&self) -> Result<u64, AppError> {
-        let db = &*self.db;
-        let sql = r#"
-            SELECT COUNT(DISTINCT access_point_id)::BIGINT AS cnt
-            FROM log_metadata
-            WHERE access_point_id IS NOT NULL
-        "#;
-
-        let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, []);
-
-        let results = db.query_all_raw(stmt).await?;
-
-        let count: i64 = results
-            .first()
-            .ok_or_else(|| AppError::Internal("查询结果为空".to_string()))?
-            .try_get_by_index(0)?;
-
-        Ok(count as u64)
+        Ok(rows)
     }
 }

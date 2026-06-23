@@ -1,5 +1,6 @@
 pub mod audit_log;
 pub mod content;
+pub mod dashboard_query;
 pub mod metadata;
 pub mod repository_audit_log;
 pub mod repository_log;
@@ -8,6 +9,9 @@ pub mod token_usage;
 
 pub use audit_log::Model as AuditLog;
 pub use content::Model as LogContent;
+pub use dashboard_query::{
+    DashboardWindow, KpiAggregate, SparklineBucket, TopAccountRow, TopUserRow,
+};
 pub use metadata::Model as LogMetadata;
 pub use repository_audit_log::AuditLogRepository;
 pub use repository_log::LogRepository;

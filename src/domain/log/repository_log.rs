@@ -3,10 +3,13 @@
 //! 定义 `LogRepository` trait 及其关联的查询/摘要 DTO，
 //! 提供日志元数据、内容、token 用量的持久化契约。
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::domain::log::{LogContent, LogMetadata, LogTokenUsage};
+use crate::domain::log::{
+    DashboardWindow, KpiAggregate, LogContent, LogMetadata, LogTokenUsage, SparklineBucket,
+    TopAccountRow, TopUserRow,
+};
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 use async_trait::async_trait;
@@ -118,24 +121,39 @@ pub trait LogRepository: Send + Sync {
         id: Uuid,
     ) -> Result<Option<(LogMetadata, LogContent, Option<LogTokenUsage>)>, AppError>;
 
-    // ─── 统计方法 ───
+    // ─── Dashboard 聚合查询 ───
 
-    /// 统计日志总条数
-    async fn count_total(&self) -> Result<u64, AppError>;
+    /// 聚合 KPI 标量值（单次 SQL，5 个聚合列）
+    ///
+    /// 用于 Dashboard 顶部 4 张 KPI 卡。缓存命中率 = `cache_read_tokens / input_plus_cache_read_tokens`，
+    /// 分母为 0 时由调用方判定为 None。
+    async fn aggregate_kpi(&self, window: &DashboardWindow) -> Result<KpiAggregate, AppError>;
 
-    /// 按日期范围统计请求量（返回每天的日期和请求数）
-    async fn count_by_date_range(
+    /// 聚合 sparkline 时间序列（按 hour 或 day 分桶）
+    ///
+    /// 自动用 `generate_series` 补齐空桶，确保返回 `bucket_count` 个桶。
+    /// `bucket_count = 24` 时按小时分桶（用于"今日"），否则按天分桶。
+    async fn aggregate_sparkline(
         &self,
-        start: DateTime<Utc>,
-        end: DateTime<Utc>,
-    ) -> Result<Vec<(NaiveDate, u64)>, AppError>;
+        window: &DashboardWindow,
+        bucket_count: u32,
+    ) -> Result<Vec<SparklineBucket>, AppError>;
 
-    /// Top N 接入点排名
-    async fn top_access_points(&self, limit: u64) -> Result<Vec<(Uuid, u64)>, AppError>;
+    /// 成员请求量排行 Top N
+    ///
+    /// LEFT JOIN users 表容忍删除：被删除成员的 `username` / `display_name` 返回 None。
+    async fn top_users(
+        &self,
+        window: &DashboardWindow,
+        limit: u32,
+    ) -> Result<Vec<TopUserRow>, AppError>;
 
-    /// Top N 模型排名
-    async fn top_models(&self, limit: u64) -> Result<Vec<(String, u64)>, AppError>;
-
-    /// 统计有日志记录的活跃接入点数量
-    async fn count_active_access_points(&self) -> Result<u64, AppError>;
+    /// 账号 Token 消耗排行 Top N
+    ///
+    /// LEFT JOIN accounts + providers 表容忍删除：被删除账号 / 服务商的对应字段返回 None。
+    async fn top_accounts(
+        &self,
+        window: &DashboardWindow,
+        limit: u32,
+    ) -> Result<Vec<TopAccountRow>, AppError>;
 }

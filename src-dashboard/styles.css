@@ -17,6 +17,15 @@ body {
     monospace;
 }
 
+/* Dashboard 排行榜中已删除实体的降级样式（灰色 + 等宽字体 + 略小字号） */
+.dashboard-deleted {
+  color: var(--semi-color-tertiary);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  font-size: 0.875em;
+}
+
 .nowrap-text {
   white-space: nowrap;
 }

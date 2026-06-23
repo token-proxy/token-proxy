@@ -504,30 +504,6 @@ impl LogService {
         let usages = self.token_usage_repo.find_by_session_id(session_id).await?;
         Ok(usages.iter().map(Self::to_token_usage_response).collect())
     }
-
-    /// 获取全局概览统计（总请求数、活跃接入点数）
-    pub async fn get_overview_stats(&self) -> Result<(u64, u64), AppError> {
-        let total = self.log_repo.count_total().await?;
-        let active = self.log_repo.count_active_access_points().await?;
-        Ok((total, active))
-    }
-
-    /// 获取最近 N 天的每日请求趋势
-    pub async fn get_trends(&self, days: u64) -> Result<Vec<(chrono::NaiveDate, u64)>, AppError> {
-        let end = chrono::Utc::now();
-        let start = end - chrono::Duration::days(days as i64);
-        self.log_repo.count_by_date_range(start, end).await
-    }
-
-    /// 获取请求量最高的接入点排名
-    pub async fn get_top_access_points(&self, limit: u64) -> Result<Vec<(Uuid, u64)>, AppError> {
-        self.log_repo.top_access_points(limit).await
-    }
-
-    /// 获取请求量最高的模型排名
-    pub async fn get_top_models(&self, limit: u64) -> Result<Vec<(String, u64)>, AppError> {
-        self.log_repo.top_models(limit).await
-    }
 }
 
 // ─── 请求头脱敏（敏感字段替换为 [REDACTED]） ───────────────────────────────────

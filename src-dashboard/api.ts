@@ -5,6 +5,13 @@
  * 并发去重、认证失败重定向等功能。
  */
 
+import type {
+  KpiResponse,
+  TopUsersResponse,
+  TopAccountsResponse,
+  TimeRangeQuery,
+} from './types/dashboard';
+
 // access_token 距离过期不足该阈值时, 请求前主动刷新（秒）
 const REFRESH_THRESHOLD_SEC = 300;
 
@@ -169,3 +176,43 @@ const api = {
 };
 
 export default api;
+
+// ─── Dashboard 数据洞察 API ───
+
+/**
+ * 将 `TimeRangeQuery` 序列化为 URL query string。
+ *
+ * - `range` 总是包含
+ * - 仅 `custom` 模式包含 `start` / `end`（按需附加）
+ */
+function buildDashboardQuery(q: TimeRangeQuery): string {
+  const params = new URLSearchParams({ range: q.range });
+  if (q.range === 'custom') {
+    if (q.start) params.set('start', q.start);
+    if (q.end) params.set('end', q.end);
+  }
+  return params.toString();
+}
+
+/**
+ * Dashboard 数据洞察 API 集合。
+ *
+ * 所有方法接受统一的 `TimeRangeQuery`，对应后端 3 个聚合端点：
+ * - `/api/dashboard/kpi` — 4 张 KPI 卡（含内嵌 sparkline）
+ * - `/api/dashboard/top-users` — 成员请求量排行 Top 10
+ * - `/api/dashboard/top-accounts` — 上游账号 Token 消耗排行 Top 10
+ */
+export const dashboardApi = {
+  /** 获取 4 张 KPI 卡数据 + 内嵌 sparkline 时间序列 */
+  getKpi(q: TimeRangeQuery): Promise<KpiResponse> {
+    return api.get<KpiResponse>(`/api/dashboard/kpi?${buildDashboardQuery(q)}`);
+  },
+  /** 获取成员请求量排行 Top 10（按 request_count 降序） */
+  getTopUsers(q: TimeRangeQuery): Promise<TopUsersResponse> {
+    return api.get<TopUsersResponse>(`/api/dashboard/top-users?${buildDashboardQuery(q)}`);
+  },
+  /** 获取上游账号 Token 消耗排行 Top 10（按 total_tokens 降序） */
+  getTopAccounts(q: TimeRangeQuery): Promise<TopAccountsResponse> {
+    return api.get<TopAccountsResponse>(`/api/dashboard/top-accounts?${buildDashboardQuery(q)}`);
+  },
+};

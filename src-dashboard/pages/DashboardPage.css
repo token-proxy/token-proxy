@@ -1,0 +1,53 @@
+/**
+ * Dashboard 主页面布局样式。
+ *
+ * 三段式纵向布局：header（标题 + 时间切换器）→ KPI 网格 → 排行网格。
+ * 响应式断点：1280px 以下 KPI 降为 2 列，768px 以下 KPI 与排行均降为单列。
+ */
+
+.dashboard-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+/* 顶部 header：左侧标题 + 右侧时间切换器，窄屏自动换行 */
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* KPI 卡片网格：4 列 / 2 列 / 1 列 三段响应式 */
+.dashboard-grid-kpi {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 1279px) {
+  .dashboard-grid-kpi {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 767px) {
+  .dashboard-grid-kpi {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 排行双列：2 列 / 1 列 两段响应式 */
+.dashboard-grid-rank {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, 1fr);
+}
+@media (max-width: 767px) {
+  .dashboard-grid-rank {
+    grid-template-columns: 1fr;
+  }
+}

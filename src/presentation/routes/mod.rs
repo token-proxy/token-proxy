@@ -12,13 +12,12 @@ use crate::presentation::middleware::{jwt_auth, user_api_key_auth};
 pub mod access_point_routes;
 pub mod account_routes;
 pub mod auth_routes;
+pub mod dashboard_routes;
 pub mod log_routes;
 pub mod me_routes;
 pub mod provider_routes;
 pub mod proxy_routes;
 pub mod settings_routes;
-pub mod stats;
-pub mod stats_routes;
 pub mod user_routes;
 
 /// 构建应用所有路由并注入共享状态
@@ -46,7 +45,7 @@ pub fn build(state: AppState) -> Router {
         .merge(me_routes::routes())
         .merge(access_point_routes::routes())
         .merge(log_routes::routes())
-        .merge(stats_routes::routes())
+        .merge(dashboard_routes::routes())
         .merge(settings_routes::routes())
         .layer(middleware::from_fn_with_state(
             state.clone(),
