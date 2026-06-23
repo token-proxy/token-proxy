@@ -44,10 +44,13 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 - **代理 Header 构造**: 入站 `authorization` 仅用于用户 API key 认证；上游请求独立构建（API key 注入由 `AccessPointType::inject_api_key` 协议方法负责）；仅透传 `x-*`、`accept`、`content-type` 等业务头
 - **响应头透明化**: 仅过滤 hop-by-hop 头（`transfer-encoding`、`connection`、`keep-alive`），其余透传
 - **流式判断**: 由 `AccessPointType::is_sse_response(&resp_headers)` 判定，依据上游响应 `content-type` 是否包含 `text/event-stream`，非基于请求特征预设
-- **协议适配点**: `AccessPointType` 枚举挂载 5 个协议方法（`parse_inbound` / `extract_session_id` / `inject_api_key` / `replace_model_in_body` / `is_sse_response`），具体实现位于 `domain/shared/protocols/<name>.rs`；加新协议（如 OpenAI）只需补 enum variant + 新建协议文件，编译器会自动指出所有需要补 match 的位置
+- **协议适配点**: `AccessPointType` 枚举挂载 5 个协议方法（`parse_inbound` / `extract_session_id` / `inject_api_key` / `replace_model_in_body` / `is_sse_response`），具体实现位于 `domain/shared/protocols/<name>.rs`；加新协议只需补 enum variant + 新建协议文件，编译器会自动指出所有需要补 match 的位置
+- **OpenAI 协议**: `OpenAi` variant 对应 `domain/shared/protocols/openai.rs`，内部按请求路径（`/chat/completions` vs `/responses`）通过 `remainder` 参数分发 `parse_inbound`；认证使用 `Authorization: Bearer <key>` 格式；Chat Completions 验证 `messages` 数组、Responses API 验证 `input` 字段；`is_sse_response` 依据 `Content-Type: text/event-stream` 判定（与 Anthropic 相同）
 - **响应分类**: `UpstreamOutcome` enum 显式建模四种结果（`Success` / `ClientError` / `Fault` / `ServerError`），由 `UpstreamOutcome::classify` 调用 `FaultService::detect` 后归类；嵌套 if 树和重复的故障检测调用已被消除
 - **重试决策**: `RetryDecision` enum (`Return(Response)` / `Continue(AppError)`) 由类型系统强制重试时必须携带错误原因，取代易遗漏的 `last_error + continue` 配对
 - **响应体格式检测**: `detectResponseFormat(responseHeaders)` 通过 `Content-Type` 判定 `'sse'` / `'json'`；`isJsonFormat(body)` 通过 JSON.parse 试探兜底；前端各解析函数（`parseStructuredBlocks`、`detectHasThinking`、`buildConversationEvents` 等）接受可选 `format` 参数避免重复检测
+- **客户端类型识别**: `ClientType` 枚举（ClaudeCode / Codex / Other / Unknown）与 `AccessPointType` 正交——同一 OpenAI 接入点可被 Claude Code 和 Codex 同时访问；`ClientType::from_request` 按品牌 header 优先 → UA 关键词 → 可识别特征 → Unknown 四级降级识别；`extract_session_id` 改为 `ClientType` 驱动（ClaudeCode → `x-claude-code-session-id`，Codex → `thread-id`），而非 `AccessPointType`
+- **OpenAI Token 用量归一化**: `ParsedTokenUsage::from_response` 支持 Chat Completions（`usage.prompt_tokens` / `usage.completion_tokens` / `usage.total_tokens`）和 Responses API（`usage.input_tokens` / `usage.output_tokens` / `usage.total_tokens`），统一映射到现有 `log_token_usage` 列（`prompt_tokens` / `completion_tokens` / `total_tokens`）
 - **账户池路由**: `RoutingStrategy` — Priority（同优先级排序，失败降级）或 Weighted（权重随机）；失败自动重试下一账号（由 `AccountSelector` 迭代候选 + `RetryDecision::Continue` 串联）
 - **会话粘滞**: `session_affinity` 表（`access_point_id`, `session_id`），ProxyPipeline 首次创建、后续复用；写入通过 `TrackedSpawner` fire-and-forget
 - **优雅关闭短路**: `ProxyPipeline::execute` 第 0 步检查 `shutting_down`，关闭期间新请求立即返回 `AppError::Upstream("服务正在关闭，请稍后重试")`
@@ -56,7 +59,7 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 - **日志记录三阶段**: 元数据 → 内容 → token 用量；元数据失败立即 return，后续失败仅 warn/error 不阻断
 - **日志记录器位置**: `ProxyCallRecord` 位于 `application/proxy/`（而非基础设施层），因为它直接接受领域聚合根（`InboundRequest` / `UpstreamRequest` / `AccessPointEx`）；API 反映业务时序：`start → attach_response → append_body/set_body → finish`，`Drop` 兜底 SSE 中断
 - **日志默认不依赖 `log_contents`**: 列表优先用 `log_metadata`；原始内容按需加载（`/api/logs/{id}/raw`）
-- **Dashboard 数据分析**: 3 个独立 GET 端点（`/api/dashboard/kpi` / `/api/dashboard/top-users` / `/api/dashboard/top-accounts`）共享 `?range=today|last7|last30|custom` 时间窗口；KPI 端点内嵌 sparkline（避免重复 SQL）；对比窗口为等长前期；所有 LEFT JOIN 容忍 `users` / `accounts` / `providers` 删除（`Option<String>` + 前端降级为 `已删除成员/账号 · <uuid 前 8 位>`）；`DashboardService` 仅依赖 `LogRepository`，所有聚合在 SQL 层（无 N+1）；缓存命中率分母为 `input + cache_read`（不含 cache_creation）；趋势对比覆盖 5 种边界（up/down/flat/new/empty）
+- **Dashboard 数据分析**: 4 个独立 GET 端点（`/api/dashboard/kpi` / `/api/dashboard/top-users` / `/api/dashboard/top-accounts` / `/api/dashboard/top-clients`）共享 `?range=today|last7|last30|custom` 时间窗口；KPI 端点内嵌 sparkline（避免重复 SQL）；对比窗口为等长前期；所有 LEFT JOIN 容忍 `users` / `accounts` / `providers` 删除（`Option<String>` + 前端降级为 `已删除成员/账号 · <uuid 前 8 位>`）；`DashboardService` 仅依赖 `LogRepository`，所有聚合在 SQL 层（无 N+1）；缓存命中率分母为 `input + cache_read`（不含 cache_creation）；趋势对比覆盖 5 种边界（up/down/flat/new/empty）
 
 ## Makefile 任务
 
@@ -132,7 +135,7 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 
 管理侧边栏: Dashboard, 服务商管理, 接入点管理, 会话日志, 请求日志, 用户管理, 系统设置
 
-- **DashboardPage**: Linear Insights / Vercel Analytics 极简风格数据分析页，含 KPI 卡片、缓存命中率卡、Top Users / Top Accounts 排行；顶层组件管理 `timeRange` + `refreshKey`，调度 3 个独立 `useFetch`；响应式 Grid 布局（断点 1280 / 768），暗色优先双主题适配；零 Mock 数据，所有同比箭头基于真实查询
+- **DashboardPage**: Linear Insights / Vercel Analytics 极简风格数据分析页，含 KPI 卡片、缓存命中率卡、Top Users / Top Accounts / Top Clients 排行；顶层组件管理 `timeRange` + `refreshKey`，调度 4 个独立 `useFetch`；响应式 Grid 布局（断点 1280 / 768），暗色优先双主题适配；零 Mock 数据，所有同比箭头基于真实查询
 
 ## 编码规范
 
@@ -169,13 +172,13 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 - 复杂解析算法（如 `parseStructuredBlocks`）需要文件级 JSDoc + 步骤编号注释
 
 **项目中的注释标杆（参考）：**
-`src/domain/shared/protocols/anthropic.rs`、`src/domain/log/metadata.rs`、`src/application/log/dto/proxy_log_input.rs`、`src/application/proxy/proxy_pipeline.rs`、`src/application/proxy/proxy_call_record.rs`、`src/main.rs`、`src-dashboard/utils/parseLogs.ts`、`src-dashboard/components/session/TurnCard.tsx`
+`src/domain/shared/protocols/anthropic.rs`、`src/domain/shared/protocols/openai.rs`、`src/domain/log/metadata.rs`、`src/application/log/dto/proxy_log_input.rs`、`src/application/proxy/proxy_pipeline.rs`、`src/application/proxy/proxy_call_record.rs`、`src/main.rs`、`src-dashboard/utils/parseLogs.ts`、`src-dashboard/components/session/TurnCard.tsx`
 
 ### 通用编码约束
 
 - `AppError` 9 种变体: Validation(400) / NotFound(404) / Conflict(409) / Unauthorized(401) / Forbidden(403) / Encryption(500) / Database(500) / Upstream(502) / Internal(500)
 - `log_metadata` 分区表 PRIMARY KEY 必须包含 `timestamp`
-- `api_type` 新增类型需同步修改: Rust 枚举 + 数据库列约束 + 前端 Select
+- `api_type` 新增类型需同步修改: Rust 枚举 + 数据库列约束 + 前端 Select（目前已有 anthropic、openai）
 - `DisabledReason` 新增原因需同步修改: Rust 枚举 + 数据库列约束 + 前端展示
 - `.rs` 空文件留作占位用，不应删除
 - 前端路径别名 `@components` → `src-dashboard/components/`，引用不带 `.tsx` 后缀
@@ -332,12 +335,14 @@ aggr.resolve(x, y)
 | `src/domain/shared/inbound_request.rs`                       | 入站请求纯数据结构 (InboundRequest struct，无方法)                                                                              |
 | `src/domain/shared/upstream_request.rs`                      | 上游请求纯数据结构 (UpstreamRequest struct，无方法)                                                                             |
 | `src/domain/shared/protocols/anthropic.rs`                   | Anthropic 协议适配实现 (parse_inbound/extract_session_id/inject_api_key 等)                                                     |
+| `src/domain/shared/protocols/openai.rs`                      | OpenAI 协议适配实现 (Chat Completions + Responses API 双端点，5 个协议方法)                                                     |
+| `src/domain/shared/client_type.rs`                           | 客户端类型枚举 (ClaudeCode/Codex/Other/Unknown) + from_request 识别 + extract_session_id                                        |
 | `src/application/log/log_service.rs`                         | 日志写入/查询 (三阶段)                                                                                                          |
 | `src/application/log/dto/proxy_log_input.rs`                 | 代理日志写入入参 DTO (一次性构造，无占位值)                                                                                     |
-| `src/application/dashboard/dashboard_service.rs`             | Dashboard 聚合服务 (get_kpi + get_top_users + get_top_accounts + compute_trend)                                                 |
+| `src/application/dashboard/dashboard_service.rs`             | Dashboard 聚合服务 (get_kpi + get_top_users + get_top_accounts + get_top_clients + compute_trend)                               |
 | `src/application/dashboard/time_window.rs`                   | 时间窗口解析 (resolve_windows 纯函数，含等长前期对比)                                                                           |
 | `src/domain/log/dashboard_query.rs`                          | Dashboard 领域查询类型 (DashboardWindow + KpiAggregate + SparklineBucket + Top\*Row)                                            |
-| `src/presentation/routes/dashboard_routes.rs`                | Dashboard 路由 (/api/dashboard/{kpi,top-users,top-accounts})                                                                    |
+| `src/presentation/routes/dashboard_routes.rs`                | Dashboard 路由 (/api/dashboard/{kpi,top-users,top-accounts,top-clients})                                                        |
 | `src/application/user/api_key_service.rs`                    | 用户 API key 管理                                                                                                               |
 | `src/presentation/middleware/jwt_auth.rs`                    | JWT 认证中间件 + CurrentUser                                                                                                    |
 | `src/presentation/middleware/user_api_key_auth.rs`           | 用户 API key 认证                                                                                                               |
@@ -348,9 +353,10 @@ aggr.resolve(x, y)
 | `src-dashboard/components/session/TurnCard.tsx`              | 轮次卡片组件 (递归渲染内容块, 最大深度 5 层)                                                                                    |
 | `src-dashboard/components/session/TurnNavigator.tsx`         | Sticky 轮次导航条                                                                                                               |
 | `src-dashboard/hooks/useFetch.ts`                            | 通用数据获取 Hook (fetch-on-mount, {data, loading, error, refetch})                                                             |
-| `src-dashboard/pages/DashboardPage.tsx`                      | Dashboard 顶层 (timeRange + refreshKey + 3 个 useFetch 调度)                                                                    |
+| `src-dashboard/pages/DashboardPage.tsx`                      | Dashboard 顶层 (timeRange + refreshKey + 4 个 useFetch 调度)                                                                    |
 | `src-dashboard/components/dashboard/`                        | Dashboard 组件 (KpiCard/CacheHitCard/Sparkline/ComparisonArrow/StackedBar/Top\*Ranking)                                         |
 | `src-dashboard/utils/parseLogs.ts`                           | 日志/会话解析工具 (SSE + JSON 双格式, buildConversationEvents + buildConversationTurns)                                         |
+| `src-dashboard/utils/parseOpenAI.ts`                         | OpenAI 响应/请求体解析工具 (Chat Completions + Responses API 双格式，SSE + 非流式)                                              |
 | `cliff.toml`                                                 | CHANGELOG 自动生成配置 (git-cliff, feat→Added / fix→Fixed / perf→Changed)                                                       |
 | `rust-toolchain.toml`                                        | Rust 工具链版本固定 (channel = "1.96")                                                                                          |
 | `.prettierrc` / `.prettierignore`                            | Prettier 格式化配置与排除规则                                                                                                   |
@@ -371,13 +377,17 @@ aggr.resolve(x, y)
 - `ProxyCallRecord` 的 `Drop` 兜底是 SSE 客户端中断时唯一可靠的落库机制，不要去除
 - 所有 fire-and-forget 后台写入（代理日志 + 会话粘滞）必须通过 `TrackedSpawner::spawn(operation, future)` 入队，禁止裸 `tokio::spawn`（会绕过 `in_flight_writes` 计数和 `try_current` 守卫）
 - 协议适配方法（`parse_inbound` / `extract_session_id` / `inject_api_key` / `replace_model_in_body` / `is_sse_response`）挂在 `AccessPointType` 枚举上，每协议实现位于 `domain/shared/protocols/<name>.rs`；新增协议时编译器会自动指出所有需要补 match 的位置
+- `ClientType` 与 `AccessPointType` 正交：同一 OpenAI 接入点可被 Claude Code 和 Codex 同时访问；`ClientType::from_request` 在 ProxyPipeline 中调用，结果存入 `InboundRequest.client_type` 字段并沿日志链路传递（ProxyLogInput → log_metadata.client_type → log_token_usage.client_type）
+- `session_id` 解析由 `ClientType::extract_session_id` 驱动（ClaudeCode → `x-claude-code-session-id`，Codex → `thread-id`），而非 `AccessPointType`；`AccessPointType::extract_session_id` 仅作为协议层兜底（如 OpenAi → `thread-id`），ProxyPipeline 中优先调用 `ClientType::extract_session_id`
+- OpenAI Token 用量解析在 `ParsedTokenUsage::from_response` 中按 `api_type` 分发：Chat Completions 读 `usage.prompt_tokens`/`completion_tokens`/`total_tokens`，Responses API 读 `usage.input_tokens`/`output_tokens`/`total_tokens`，统一归一化到现有 `log_token_usage` 列
+- 前端按 `api_type` 顶层分发渲染：Anthropic 走 `parseLogs.ts`（`parseStructuredBlocks` 等），OpenAI 走 `parseOpenAI.ts`（`parseOpenAIChatResponse` / `parseOpenAIResponsesResponse` 等）；`ResponseContentCard` 和 `RequestContentCard` 根据日志的 api_type 选择对应解析器
 - `session_id` 在请求路径上是 `Option<String>` 类型（`None` 表示请求未携带会话标识），禁止再使用字符串 `"unknown"` 作为 sentinel；只有写入 `log_metadata.session_id`（NOT NULL 列）时才回落为 `"unknown"` 字符串
 - `UpstreamOutcome::classify` 是响应分类的唯一入口；SSE 错误路径传 `resp_body=None`，body-based 故障规则会被静默忽略（doc 注释已明确）
 - `RetryDecision::Continue(AppError)` 强制重试时必须携带错误原因，类型系统替代了过去 `last_error = Some(...); continue;` 的配对约束
 - `log_metadata` 的 `account_id` 字段记录实际使用的账号
 - 会话详情页轮次判定：通过 `request_body.messages` 数组判定（非 tool_result 的用户消息 = 新轮次起点），`buildConversationTurns()` 在 `parseLogs.ts` 中实现；所有改进纯前端实施，不修改后端 API；不要使用 `buildConversationEvents()` 渲染详情页
 - 响应体格式检测（`detectResponseFormat`）优先通过 `response_headers` 的 `Content-Type` 判定；若无响应头或未匹配，`isJsonFormat` 通过 JSON.parse 试探兜底；`ResponseContentCard` 将检测结果通过 `format` 参数传递给各解析函数
-- Dashboard 聚合查询全部走 `LogRepository` 的 `aggregate_kpi` / `aggregate_sparkline` / `top_users` / `top_accounts` 四个方法，禁止在 `LogService` 中重新实现统计逻辑（已删除旧的 `get_overview_stats` / `get_trends` / `top_access_points` / `top_models`）；新增 Dashboard 指标时优先扩展现有四个聚合方法
+- Dashboard 聚合查询全部走 `LogRepository` 的 `aggregate_kpi` / `aggregate_sparkline` / `top_users` / `top_accounts` / `top_clients` 五个方法，禁止在 `LogService` 中重新实现统计逻辑（已删除旧的 `get_overview_stats` / `get_trends` / `top_access_points` / `top_models`）；新增 Dashboard 指标时优先扩展现有五个聚合方法
 - Dashboard sparkline 空桶补齐由 SQL 端 `generate_series` 完成，应用层无需再补；新增时间粒度（如小时级）需同步扩展 `DashboardWindow` 与 SQL 系列生成步长
 - 前端 Dashboard 已删除成员/账号统一用全局 `.dashboard-deleted` CSS class（灰色 + monospace）展示，不要单独写 `style={{ color: ... }}`
 - 性能优化遗留：`log_token_usage.timestamp` 无前导索引，`top_accounts` 查询可能 Seq Scan；建议在数据量增长后追加 BRIN 索引（未在本次实施）
