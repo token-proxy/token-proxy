@@ -61,6 +61,7 @@ args = ["run", "--", "migrate", "${@}"]
 # ─── 工具 ────────────────────────────────────────────
 
 [tasks.check]
+clear = true
 description = "检查代码 (cargo check + TypeScript 类型检查)"
 run_task = { name = ["check-backend", "check-frontend"], parallel = true }
 
