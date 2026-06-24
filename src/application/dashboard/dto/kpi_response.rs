@@ -18,7 +18,7 @@ pub enum TrendBadge {
     Empty,
 }
 
-/// KPI 趋势项（适用于请求数 / Token 量 / 活跃成员数）
+/// KPI 趋势项（适用于请求数 / 词元量 / 活跃成员数）
 #[derive(Debug, Clone, Serialize)]
 pub struct KpiTrendItem {
     /// 当前窗口值
@@ -53,7 +53,7 @@ pub struct SparklineBucketDto {
     pub bucket_start: DateTime<Utc>,
     /// 该桶内请求总数
     pub request_count: i64,
-    /// 该桶内 token 总消耗
+    /// 该桶内词元总消耗
     pub total_tokens: i64,
     /// 该桶内去重活跃成员数
     pub active_user_count: i64,
@@ -71,7 +71,7 @@ pub struct SparklineSeries {
 pub struct KpiResponse {
     /// 请求数 KPI
     pub request_count: KpiTrendItem,
-    /// Token 总量 KPI
+    /// 词元总量 KPI
     pub total_tokens: KpiTrendItem,
     /// 活跃成员数 KPI
     pub active_user_count: KpiTrendItem,

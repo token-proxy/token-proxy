@@ -1,7 +1,7 @@
-//! Token 用量实体 — domain/log/
+//! 词元用量实体 — domain/log/
 //!
 //! 定义 `LogTokenUsage`（SeaORM 实体映射 `log_token_usage` 表），
-//! 记录每次请求的 token 消费详情（输入/输出/缓存/思考 tokens）。
+//! 记录每次请求的词元消费详情（输入/输出/缓存/思考词元）。
 //! 永久保留不分区，通过 `log_id` 关联 `log_metadata`。
 
 use chrono::{DateTime, Utc};

@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 /// 会话摘要响应（列表场景）
 ///
-/// 包含会话的基本信息和累计 token 用量。
+/// 包含会话的基本信息和累计词元用量。
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionSummaryResponse {
     pub session_id: String,
@@ -14,7 +14,7 @@ pub struct SessionSummaryResponse {
     pub start_time: DateTime<Utc>,
     /// 会话中的请求总数
     pub request_count: u64,
-    /// 累计 token 用量
+    /// 累计词元用量
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
     pub total_cache_creation_input_tokens: i64,

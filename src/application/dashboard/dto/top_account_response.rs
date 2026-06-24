@@ -1,4 +1,4 @@
-//! 上游账号 Token 消耗排行 DTO。
+//! 上游账号词元消耗排行 DTO。
 
 use serde::Serialize;
 use uuid::Uuid;
@@ -19,15 +19,15 @@ pub struct TopAccountItem {
     pub provider_name: Option<String>,
     /// 当前禁用原因（字符串化的 DisabledReason），None = 正常可用
     pub disabled_reason: Option<String>,
-    /// 输入 token 数
+    /// 输入词元数
     pub input_tokens: i64,
-    /// 输出 token 数
+    /// 输出词元数
     pub output_tokens: i64,
-    /// 缓存读取 token 数
+    /// 缓存读取词元数
     pub cache_read_tokens: i64,
-    /// 缓存写入 token 数
+    /// 缓存写入词元数
     pub cache_creation_tokens: i64,
-    /// 总 token 数（用于排序）
+    /// 总词元数（用于排序）
     pub total_tokens: i64,
 }
 

@@ -12,7 +12,7 @@ interface TokenCellProps {
   total_tokens?: number | null;
 }
 
-/** Token 分类显示配置，按 label 排序展示在 Tooltip 中 */
+/** 词元分类显示配置，按 label 排序展示在 Tooltip 中 */
 const CATEGORIES = [
   { label: '总计', value: (_v: Values) => _v.total },
   { label: '新输入', value: (_v: Values) => _v.input },
@@ -32,7 +32,7 @@ interface Values {
 }
 
 /**
- * TokenCell - Token 用量表格单元格组件
+ * TokenCell - 词元用量表格单元格组件
  *
  * 精简显示 ↑输入 / ↓输出，Tooltip 悬浮展示各分类详细数量。
  */

@@ -58,7 +58,7 @@ src/
 │   └── mod.rs              # AppState 全局共享状态
 ├── infrastructure/         # 基础设施层
 │   ├── persistence/        # Repository 实现 (12 个) + 分区管理
-│   ├── parsers/            # Claude Code 请求头、SSE、消息摘要和 token usage 解析
+│   ├── parsers/            # Claude Code 请求头、SSE、消息摘要和 词元用量解析
 │   ├── encryption/         # AES-256-GCM 加密服务
 │   ├── auth/               # JWT 认证 + argon2 密码哈希
 │   └── http_client/        # reqwest 代理转发客户端 (含账号重试支持)
@@ -182,7 +182,7 @@ application/
 │   └── dto/                # 14 个 DTO: TimeRangeQuery / KpiResponse / KpiTrendItem / TrendBadge / CacheHitRate / SparklineSeries / TopUserItem / TopAccountItem / TopClientItem 等
 ├── log/                    # Log 聚合用例
 │   ├── mod.rs
-│   ├── log_service.rs      # 日志写入/查询用例 (metadata、content、events、token usage); 集成 broadcast::Sender 广播新日志事件
+│   ├── log_service.rs      # 日志写入/查询用例 (metadata、content、events、词元用量); 集成 broadcast::Sender 广播新日志事件
 │   └── dto/                # 日志 DTO (含 proxy_log_input —— LogService::record_proxy_log 的一次性入参契约; NewLogEvent —— SSE 广播事件)
 ├── provider/               # Provider 聚合用例
 │   ├── mod.rs
@@ -267,7 +267,7 @@ infrastructure/
 ├── parsers/                # 响应体解析器
 │   ├── claude_code_context.rs # Claude Code 请求头解析 (session_id/agent_id)
 │   ├── client_info.rs      # User-Agent 客户端信息解析
-│   ├── parsed_token_usage.rs # Token 用量提取 (支持 Anthropic SSE + OpenAI Chat/Responses token 格式)
+│   ├── parsed_token_usage.rs # 词元用量提取 (支持 Anthropic SSE + OpenAI Chat/Responses 词元格式)
 │   └── mod.rs
 └── http_client/            # HTTP 客户端
     ├── proxy_client.rs     # ProxyClient (reqwest 连接池 + rustls TLS, 纯 HTTP 执行器)
@@ -386,11 +386,11 @@ shared/
 │   │   │   ├── LogFilterBar.tsx         # 日志过滤栏
 │   │   │   ├── RequestLogTable.tsx      # 请求日志表格 (列定义 + Table 渲染)
 │   │   │   ├── RawResponseView.tsx      # 原始响应查看组件
-│   │   │   ├── TokenCell.tsx            # Token 列渲染 (6 类 Token 字段)
+│   │   │   ├── TokenCell.tsx            # 词元列渲染 (6 类词元字段)
 │   │   │   └── log-detail/              # 日志详情卡片组 (强内聚子组, 含 request-content/ 和 response-content/ 子目录)
 │   │   │       ├── BasicInfoCard.tsx        # 基础信息卡片
-│   │   │       ├── TokenUsageCard.tsx       # Token 用量卡片
-│   │   │       ├── tokenUsage.ts            # Token 用量计算工具函数 (从 TokenUsageCard.tsx 分离)
+│   │   │       ├── TokenUsageCard.tsx       # 词元用量卡片
+│   │   │       ├── tokenUsage.ts            # 词元用量计算工具函数 (从 TokenUsageCard.tsx 分离)
 │   │   │       ├── HeadersCard.tsx          # 请求头卡片
 │   │   │       ├── RequestContentCard.tsx   # 请求内容卡片 (委托 request-content/ 子组件)
 │   │   │       ├── ResponseContentCard.tsx  # 响应内容卡片 (委托 response-content/ 子组件)
@@ -492,7 +492,7 @@ shared/
 当前已应用此模式的组件：
 
 - `ModelMappingEditor.tsx` → `modelMappingUtils.ts`（工具函数、类型和常量）
-- `TokenUsageCard.tsx` → `tokenUsage.ts`（Token 用量计算纯函数）
+- `TokenUsageCard.tsx` → `tokenUsage.ts`（词元用量计算纯函数）
 
 ### 派生状态模式
 
@@ -530,7 +530,7 @@ src/migrations/
 | refresh_tokens        | JWT 刷新令牌                    | user_id (FK), token_hash, expires_at, revoked; 过期记录由 tokio 后台任务每小时物理清理                         |
 | log_metadata          | 代理日志元数据 (按月分区)       | session_id, model_original, model_mapped, status_code, duration_ms, client_type                                |
 | log_contents          | 代理日志内容 (按月分区)         | log_id, timestamp, request_headers, request_body, response_body                                                |
-| log_token_usage       | Token 用量详情 (永久保留)       | log_id, timestamp, input_tokens, output_tokens, cache_creation, cache_read, usage_type, client_type            |
+| log_token_usage       | 词元用量详情 (永久保留)         | log_id, timestamp, input_tokens, output_tokens, cache_creation, cache_read, usage_type, client_type            |
 | audit_logs            | 操作审计日志                    | operator_id, operator_type, action, entity_type, entity_id, details                                            |
 | user_api_keys         | 用户 API key (SHA-256 哈希存储) | user_id (FK), key_hash (唯一), key_prefix, description, last_used_at, status, created_at                       |
 | system_settings       | 系统设置                        | key, value                                                                                                     |
@@ -715,7 +715,7 @@ LLM API 协议的差异点（请求头格式、session 标识 header 名、API k
 10. **账户池故障转移**: 代理转发采用重试循环模式，按 priority 排序遍历账号列表，跳过不可用 Account，对可重试状态码（429/402/502/503）自动切换到下一个账号，所有账号均不可用时返回错误
 11. **二维模型路由**: 模型匹配从原来的线性列表升级为二维路由网格（source_model x provider_id），每个接入点可针对不同的 Provider 定义差异化的目标模型映射，支持精确匹配、前缀匹配和 **unmatched** 兜底
 12. **Account 自动故障检测**: Account 实体支持 disabled_reason 枚举（manual/rate_limited/balance_exhausted/fault）和 available_at 自动恢复时间戳，is_available() 方法统一检查 status 和禁用原因
-13. **Dashboard 只读视图**: Dashboard 是事实表 (log_metadata / log_token_usage) 的只读聚合视图，所有聚合 SQL 收敛到 `LogRepository`，DashboardService 仅依赖 `Arc<dyn LogRepository>`，避免 N+1 查询和跨聚合 Repository 依赖。users/accounts/providers 关联字段统一用 `Option<String>` LEFT JOIN 容忍删除，前端降级展示 `已删除 · <uuid 前 8 位>`。聚合 SQL 统一用 `Statement::from_sql_and_values`，借助 `generate_series` 在 SQL 层补齐空桶；KPI 端点内嵌 sparkline 避免重复扫描；趋势同比通过 `compute_trend` 纯函数覆盖 5 种 TrendBadge 边界（empty / new / down=-100 / up / flat / down），零 Mock。Top Clients 按客户端类型（ClaudeCode / Codex / Other / Unknown）分组聚合请求数和 token 用量，独立端点 `GET /api/dashboard/top-clients`
+13. **Dashboard 只读视图**: Dashboard 是事实表 (log_metadata / log_token_usage) 的只读聚合视图，所有聚合 SQL 收敛到 `LogRepository`，DashboardService 仅依赖 `Arc<dyn LogRepository>`，避免 N+1 查询和跨聚合 Repository 依赖。users/accounts/providers 关联字段统一用 `Option<String>` LEFT JOIN 容忍删除，前端降级展示 `已删除 · <uuid 前 8 位>`。聚合 SQL 统一用 `Statement::from_sql_and_values`，借助 `generate_series` 在 SQL 层补齐空桶；KPI 端点内嵌 sparkline 避免重复扫描；趋势同比通过 `compute_trend` 纯函数覆盖 5 种 TrendBadge 边界（empty / new / down=-100 / up / flat / down），零 Mock。Top Clients 按客户端类型（ClaudeCode / Codex / Other / Unknown）分组聚合请求数和词元用量，独立端点 `GET /api/dashboard/top-clients`
 
 ## 安全设计
 
@@ -877,7 +877,7 @@ Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-06-23       | 审计日志标准化: 新增 `AuditAction` 枚举（20 variants, domain/log/audit_action.rs）和 `AuditEntityType` 枚举（8 variants, domain/log/audit_entity_type.rs），通过 Display trait 序列化为 snake_case 字符串写入 VARCHAR 列。7 个 Service 的 26 个写操作全部覆盖审计日志（UserService 5 / UserApiKeyService 4 / ProviderService 4 / AccountService 6 / AccessPointService 3 / SettingsService 1 / AuthService 3），各 Service 内聚私有 `write_audit_log()` 辅助方法，统一 fire-and-forget + tracing::error! 模式。领域层、数据库 schema 无变更（audit_logs 表结构保持 7 字段不变）。审计日志永久保留、不分区、仅后端写入、不暴露 API 和前端页面。operator_id 管理员操作传入 CurrentUser，系统自动操作传 None。details 不记录 API key 明文、密码哈希、JWT token 等敏感信息                                                                                                                                                                                                                                                                                                                                                                                                 |
 | 2026-06-23       | 前端日志实时刷新（SSE 推送）: 新增 `NewLogEvent` DTO（`application/log/dto/new_log_event.rs`），LogService 集成 `broadcast::Sender` 在日志写入后广播事件；展示层新增 `GET /api/logs/events` SSE 端点（JWT 保护，`text/event-stream`，响应 `shutdown_rx` 优雅关闭信号）；AppState 新增 `log_event_tx` 和 `shutdown_rx` 字段；main.rs 创建 `broadcast::channel::<NewLogEvent>(256)`。选择 SSE 而非 WebSocket（仅需单向推送，axum 原生支持，EventSource 自动重连）；broadcast 容量 256 满时丢弃最旧事件，前端全量刷新兜底；JWT 通过 URL query 参数传递（EventSource API 不支持自定义 header）。前端：新增 `useLogEvents.ts` hook（EventSource 连接管理）、`ConnectionIndicator.tsx`（SSE 连接状态绿/黄/红三色圆点指示器）；`useFetch.ts` 改造 refetch 时 `setLoading(true)`；`RequestLogPage.tsx`、`SessionLogPage.tsx` 集成 SSE 自动刷新；`SessionDetailView.tsx` 新增 `beforeRefresh` prop。领域层和基础设施层无变更，数据库 schema 无变更                                                                                                                                                                                                                              |
-| 2026-06-23       | OpenAI 协议支持: `AccessPointType` 新增 `OpenAi` 变体 + 新建 `domain/shared/protocols/openai.rs` 实现 Chat Completions + Responses API 双端点协议适配；新增 `ClientType` 枚举（`domain/shared/client_type.rs`，ClaudeCode / Codex / Other / Unknown）与 `AccessPointType` 正交——前者描述调用客户端，后者描述上游协议。`InboundRequest` 新增 `client_type` 字段，`ProxyPipeline` 协议解析阶段从 User-Agent 和请求路径识别 ClientType；`log_metadata` 和 `log_token_usage` 新增 `client_type` 列（迁移 `m20260623_000003_client_type`）；`LogRepository` 新增 `top_clients` 聚合方法；`DashboardService` 新增 `get_top_clients`；`GET /api/dashboard/top-clients` 端点。前端：`parseOpenAI.ts` OpenAI 响应/请求解析器；`AccessPointDrawer` 启用 OpenAI 选项 + MODEL_FAMILIES 按 api_type 动态切换；`RequestContentCard` / `ResponseContentCard` 支持 OpenAI 协议渲染；`buildConversationTurns` 按 api_type 分发；`TopClientsRanking` 排行卡片；`DashboardPage` 集成第 4 个 `useFetch`。基础设施：`parsed_token_usage.rs` 扩展支持 OpenAI Chat/Responses token 格式；`Provider::base_url_for` 补 `OpenAi` 分支                                                            |
+| 2026-06-23       | OpenAI 协议支持: `AccessPointType` 新增 `OpenAi` 变体 + 新建 `domain/shared/protocols/openai.rs` 实现 Chat Completions + Responses API 双端点协议适配；新增 `ClientType` 枚举（`domain/shared/client_type.rs`，ClaudeCode / Codex / Other / Unknown）与 `AccessPointType` 正交——前者描述调用客户端，后者描述上游协议。`InboundRequest` 新增 `client_type` 字段，`ProxyPipeline` 协议解析阶段从 User-Agent 和请求路径识别 ClientType；`log_metadata` 和 `log_token_usage` 新增 `client_type` 列（迁移 `m20260623_000003_client_type`）；`LogRepository` 新增 `top_clients` 聚合方法；`DashboardService` 新增 `get_top_clients`；`GET /api/dashboard/top-clients` 端点。前端：`parseOpenAI.ts` OpenAI 响应/请求解析器；`AccessPointDrawer` 启用 OpenAI 选项 + MODEL_FAMILIES 按 api_type 动态切换；`RequestContentCard` / `ResponseContentCard` 支持 OpenAI 协议渲染；`buildConversationTurns` 按 api_type 分发；`TopClientsRanking` 排行卡片；`DashboardPage` 集成第 4 个 `useFetch`。基础设施：`parsed_token_usage.rs` 扩展支持 OpenAI Chat/Responses 词元格式；`Provider::base_url_for` 补 `OpenAi` 分支                                                              |
 | 2026-06-23       | Dashboard 数据分析重做: 新增 `application/dashboard/` 模块（`dashboard_service.rs` + `time_window.rs` + 12 个 DTO），仅依赖 `LogRepository`；`LogRepository` trait 扩展 4 个聚合方法（`aggregate_kpi` / `aggregate_sparkline` / `top_users` / `top_accounts`），SQL 统一用 `Statement::from_sql_and_values` 配合 `generate_series` 在 SQL 层补齐空桶；新增 `domain/log/dashboard_query.rs` 领域读模型（DashboardWindow / KpiAggregate / SparklineBucket / TopUserRow / TopAccountRow，LEFT JOIN 容忍删除）。新增 3 个 JWT 保护端点：`GET /api/dashboard/kpi` (KPI + 内嵌 sparkline) / `top-users` / `top-accounts`。删除旧 `stats_routes.rs` + `stats/dto/` 目录、`LogService` 4 个统计方法、`LogRepository` 5 个旧方法。前端 `components/dashboard/` 重写为 8 个组件（Sparkline / ComparisonArrow / StackedBar / KpiCard / CacheHitCard / TimeRangeSelector / TopUsersRanking / TopAccountsRanking），删除旧 `StatCard` / `TrendChart`；`DashboardPage.tsx` 完全重写为 CSS Grid 布局（1280/768 响应式断点）+ 3 个并行 `useFetch`；新增 `recharts@^3.8.1` 依赖、`formatTokenCompact` 工具函数、`.dashboard-deleted` 全局 CSS 类。新增架构原则 13「Dashboard 只读视图」 |
 | 2026-06-22       | 前端 TypeScript/ESLint 错误修复 (共 20 个): 新增通用数据获取 hook `useFetch.ts`（替代 11 个文件中的手动 `useState + useCallback + useEffect` 模式）；组件工具函数分离模式（`ModelMappingEditor.tsx` → `modelMappingUtils.ts`、`TokenUsageCard.tsx` → `tokenUsage.ts`）；派生状态模式（`AdminLayout` 和 `AccessPointDrawer` 中的 `useState + useEffect` 改为 `useMemo`）；tsconfig 移除 `baseUrl`（TypeScript 7.0 废弃）、paths 改为 `./` 相对路径。前端源文件数从 64 更新为 67                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 2026-06-22       | 前端路由调整: ProfilePage 路由从 /settings/profile 移为 /profile，与系统设置路由平整分离。修改 App.tsx 路由定义和 AdminLayout Header Dropdown 导航路径，侧边栏无需新增导航项                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |

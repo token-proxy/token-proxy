@@ -63,7 +63,7 @@ async fn query_logs(
 
 /// GET /api/logs/{id}
 ///
-/// 获取日志完整详情（含客户端信息和 token 用量）
+/// 获取日志完整详情（含客户端信息和词元用量）
 async fn get_log_detail_full(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -115,7 +115,7 @@ async fn get_session_contents(
 
 /// GET /api/logs/{id}/token-usage
 ///
-/// 获取指定日志的 token 用量
+/// 获取指定日志的词元用量
 async fn get_log_token_usage(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -124,13 +124,13 @@ async fn get_log_token_usage(
         .log_service
         .get_log_token_usage(id)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("日志 {} 的 token 用量未找到", id)))?;
+        .ok_or_else(|| AppError::NotFound(format!("日志 {} 的词元用量未找到", id)))?;
     Ok(Json(usage))
 }
 
 /// GET /api/logs/sessions/{id}/token-usage
 ///
-/// 获取会话内所有日志的 token 用量汇总
+/// 获取会话内所有日志的词元用量汇总
 async fn get_session_token_usage(
     State(state): State<AppState>,
     Path(session_id): Path<String>,

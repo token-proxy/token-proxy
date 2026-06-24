@@ -200,7 +200,7 @@ function buildDashboardQuery(q: TimeRangeQuery): string {
  * 所有方法接受统一的 `TimeRangeQuery`，对应后端 4 个聚合端点：
  * - `/api/dashboard/kpi` — 4 张 KPI 卡（含内嵌 sparkline）
  * - `/api/dashboard/top-users` — 成员请求量排行 Top 10
- * - `/api/dashboard/top-accounts` — 上游账号 Token 消耗排行 Top 10
+ * - `/api/dashboard/top-accounts` — 上游账号词元消耗排行 Top 10
  */
 export const dashboardApi = {
   /** 获取 4 张 KPI 卡数据 + 内嵌 sparkline 时间序列 */
@@ -211,7 +211,7 @@ export const dashboardApi = {
   getTopUsers(q: TimeRangeQuery): Promise<TopUsersResponse> {
     return api.get<TopUsersResponse>(`/api/dashboard/top-users?${buildDashboardQuery(q)}`);
   },
-  /** 获取上游账号 Token 消耗排行 Top 10（按 total_tokens 降序） */
+  /** 获取上游账号词元消耗排行 Top 10（按 total_tokens 降序） */
   getTopAccounts(q: TimeRangeQuery): Promise<TopAccountsResponse> {
     return api.get<TopAccountsResponse>(`/api/dashboard/top-accounts?${buildDashboardQuery(q)}`);
   },

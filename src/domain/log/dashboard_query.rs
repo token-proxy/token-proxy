@@ -27,11 +27,11 @@ pub struct DashboardWindow {
 pub struct KpiAggregate {
     /// 总请求数
     pub request_count: i64,
-    /// 总 token 数（来自 log_token_usage）
+    /// 总词元数（来自 log_token_usage）
     pub total_tokens: i64,
     /// 去重活跃成员数（DISTINCT user_id）
     pub active_user_count: i64,
-    /// 缓存命中 token 数（cache_read_input_tokens 之和）
+    /// 缓存命中词元数（cache_read_input_tokens 之和）
     pub cache_read_tokens: i64,
     /// 缓存命中率分母（input_tokens + cache_read_input_tokens 之和）
     pub input_plus_cache_read_tokens: i64,
@@ -39,14 +39,14 @@ pub struct KpiAggregate {
 
 /// Sparkline 时间序列桶
 ///
-/// 三条序列（请求 / Token / 成员数）共享同一桶时间，便于前端共用 X 轴。
+/// 三条序列（请求 / 词元 / 成员数）共享同一桶时间，便于前端共用 X 轴。
 #[derive(Debug, Clone)]
 pub struct SparklineBucket {
     /// 桶起始时间（已按 date_trunc 截断到 hour 或 day）
     pub bucket_start: DateTime<Utc>,
     /// 该桶内请求数
     pub request_count: i64,
-    /// 该桶内 token 总和
+    /// 该桶内词元总和
     pub total_tokens: i64,
     /// 该桶内活跃成员数（去重）
     pub active_user_count: i64,
@@ -63,7 +63,7 @@ pub struct TopUserRow {
     pub display_name: Option<String>,
     /// 窗口内请求数
     pub request_count: i64,
-    /// 窗口内 token 总消耗
+    /// 窗口内词元总消耗
     pub total_tokens: i64,
 }
 
@@ -80,14 +80,14 @@ pub struct TopAccountRow {
     pub provider_name: Option<String>,
     /// 当前禁用原因（字符串化，None = 可用）
     pub disabled_reason: Option<String>,
-    /// 输入 token 数
+    /// 输入词元数
     pub input_tokens: i64,
-    /// 输出 token 数
+    /// 输出词元数
     pub output_tokens: i64,
-    /// 缓存读取 token 数
+    /// 缓存读取词元数
     pub cache_read_tokens: i64,
-    /// 缓存写入 token 数
+    /// 缓存写入词元数
     pub cache_creation_tokens: i64,
-    /// 总 token 数（用于排序）
+    /// 总词元数（用于排序）
     pub total_tokens: i64,
 }

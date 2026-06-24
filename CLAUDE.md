@@ -51,13 +51,13 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 - **重试决策**: `RetryDecision` enum (`Return(Response)` / `Continue(AppError)`) 由类型系统强制重试时必须携带错误原因，取代易遗漏的 `last_error + continue` 配对
 - **响应体格式检测**: `detectResponseFormat(responseHeaders)` 通过 `Content-Type` 判定 `'sse'` / `'json'`；`isJsonFormat(body)` 通过 JSON.parse 试探兜底；前端各解析函数（`parseStructuredBlocks`、`detectHasThinking`、`buildConversationEvents` 等）接受可选 `format` 参数避免重复检测
 - **客户端类型识别**: `ClientType` 枚举（ClaudeCode / Codex / Other / Unknown）与 `AccessPointType` 正交——同一 OpenAI 接入点可被 Claude Code 和 Codex 同时访问；`ClientType::from_request` 按品牌 header 优先 → UA 关键词 → 可识别特征 → Unknown 四级降级识别；`extract_session_id` 改为 `ClientType` 驱动（ClaudeCode → `x-claude-code-session-id`，Codex → `thread-id`），而非 `AccessPointType`
-- **OpenAI Token 用量归一化**: `ParsedTokenUsage::from_response` 支持 Chat Completions（`usage.prompt_tokens` / `usage.completion_tokens` / `usage.total_tokens`）和 Responses API（`usage.input_tokens` / `usage.output_tokens` / `usage.total_tokens`），统一映射到现有 `log_token_usage` 列（`prompt_tokens` / `completion_tokens` / `total_tokens`）
+- **OpenAI 词元用量归一化**: `ParsedTokenUsage::from_response` 支持 Chat Completions（`usage.prompt_tokens` / `usage.completion_tokens` / `usage.total_tokens`）和 Responses API（`usage.input_tokens` / `usage.output_tokens` / `usage.total_tokens`），统一映射到现有 `log_token_usage` 列（`prompt_tokens` / `completion_tokens` / `total_tokens`）
 - **账户池路由**: `RoutingStrategy` — Priority（同优先级排序，失败降级）或 Weighted（权重随机）；失败自动重试下一账号（由 `AccountSelector` 迭代候选 + `RetryDecision::Continue` 串联）
 - **会话粘滞**: `session_affinity` 表（`access_point_id`, `session_id`），ProxyPipeline 首次创建、后续复用；写入通过 `TrackedSpawner` fire-and-forget
 - **优雅关闭短路**: `ProxyPipeline::execute` 第 0 步检查 `shutting_down`，关闭期间新请求立即返回 `AppError::Upstream("服务正在关闭，请稍后重试")`
 - **模型路由网格**: 二维表格（source_model × provider_id），匹配优先级：精确匹配 > 前缀匹配 > `__unmatched__` 兜底 > 原始模型值
 - **账号自动禁用**: `DisabledReason`（Manual/RateLimited/BalanceExhausted/Fault）+ `available_at`；`recover()` 清除；禁用账号自动跳过
-- **日志记录三阶段**: 元数据 → 内容 → token 用量；元数据失败立即 return，后续失败仅 warn/error 不阻断
+- **日志记录三阶段**: 元数据 → 内容 → 词元用量；元数据失败立即 return，后续失败仅 warn/error 不阻断
 - **审计日志制度化**: 所有管理端写操作（CRUD + 登录/登出/刷新 + 模型发现）必须写入 `audit_logs` 表；operator_id 由各路由 handler 从 `CurrentUser` 提取后传入 Service；`AuditAction` 和 `AuditEntityType` 枚举强制类型安全（禁止使用裸字符串）；`log_audit` 辅助方法统一使用 fire-and-forget + error 日志，绝不阻塞主业务（旧的 `?` 传播错误模式已全部清理）；entity_id 无意义时传 `None`（如全局设置修改），不构造伪 UUID
 - **日志记录器位置**: `ProxyCallRecord` 位于 `application/proxy/`（而非基础设施层），因为它直接接受领域聚合根（`InboundRequest` / `UpstreamRequest` / `AccessPointEx`）；API 反映业务时序：`start → attach_response → append_body/set_body → finish`，`Drop` 兜底 SSE 中断
 - **日志默认不依赖 `log_contents`**: 列表优先用 `log_metadata`；原始内容按需加载（`/api/logs/{id}/raw`）
@@ -202,13 +202,13 @@ DDD 四层：`domain/` → `application/` → `infrastructure/` → `presentatio
 
 **级别使用规则：**
 
-| 级别     | 使用场景                                                                                     |
-| -------- | -------------------------------------------------------------------------------------------- |
-| `error!` | 不可恢复的错误，需要人工介入（数据库连接失败、加密失败、分区维护失败）                       |
-| `warn!`  | 可恢复的异常，自动降级或重试成功（账号禁用、会话保存失败、token 解析失败、审计日志写入失败） |
-| `info!`  | 关键业务事件和生命周期（启动/关闭、请求到达/完成、账号池选择、分区创建/清理、模型发现结果）  |
-| `debug!` | 诊断细节，生产环境默认关闭（具体账号选择过程、URL 构造、请求变换前后对比）                   |
-| `trace!` | 极细粒度调试（逐 chunk SSE 转发、JSON 解析中间态）                                           |
+| 级别     | 使用场景                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------- |
+| `error!` | 不可恢复的错误，需要人工介入（数据库连接失败、加密失败、分区维护失败）                      |
+| `warn!`  | 可恢复的异常，自动降级或重试成功（账号禁用、会话保存失败、词元解析失败、审计日志写入失败）  |
+| `info!`  | 关键业务事件和生命周期（启动/关闭、请求到达/完成、账号池选择、分区创建/清理、模型发现结果） |
+| `debug!` | 诊断细节，生产环境默认关闭（具体账号选择过程、URL 构造、请求变换前后对比）                  |
+| `trace!` | 极细粒度调试（逐 chunk SSE 转发、JSON 解析中间态）                                          |
 
 **结构化字段（强制）：**
 
@@ -355,7 +355,7 @@ aggr.resolve(x, y)
 | `src/infrastructure/persistence/partition_manager.rs`        | 分区管理                                                                                                                        |
 | `src-dashboard/api.ts`                                       | 前端 API 封装 (JWT 自动刷新)                                                                                                    |
 | `src-dashboard/components/access-point/modelMappingUtils.ts` | 模型映射工具 (ANTHROPIC_FAMILIES, MappingMatchType, matchTypeForSource)                                                         |
-| `src-dashboard/components/log/log-detail/tokenUsage.ts`      | Token 用量工具函数 (hasTokenData)                                                                                               |
+| `src-dashboard/components/log/log-detail/tokenUsage.ts`      | 词元用量工具函数 (hasTokenData)                                                                                                 |
 | `src-dashboard/components/session/TurnCard.tsx`              | 轮次卡片组件 (递归渲染内容块, 最大深度 5 层)                                                                                    |
 | `src-dashboard/components/session/TurnNavigator.tsx`         | Sticky 轮次导航条                                                                                                               |
 | `src-dashboard/hooks/useFetch.ts`                            | 通用数据获取 Hook (fetch-on-mount, {data, loading, error, refetch})                                                             |
@@ -389,7 +389,7 @@ aggr.resolve(x, y)
 - 协议适配方法（`parse_inbound` / `extract_session_id` / `inject_api_key` / `replace_model_in_body` / `is_sse_response`）挂在 `AccessPointType` 枚举上，每协议实现位于 `domain/shared/protocols/<name>.rs`；新增协议时编译器会自动指出所有需要补 match 的位置
 - `ClientType` 与 `AccessPointType` 正交：同一 OpenAI 接入点可被 Claude Code 和 Codex 同时访问；`ClientType::from_request` 在 ProxyPipeline 中调用，结果存入 `InboundRequest.client_type` 字段并沿日志链路传递（ProxyLogInput → log_metadata.client_type → log_token_usage.client_type）
 - `session_id` 解析由 `ClientType::extract_session_id` 驱动（ClaudeCode → `x-claude-code-session-id`，Codex → `thread-id`），而非 `AccessPointType`；`AccessPointType::extract_session_id` 仅作为协议层兜底（如 OpenAi → `thread-id`），ProxyPipeline 中优先调用 `ClientType::extract_session_id`
-- OpenAI Token 用量解析在 `ParsedTokenUsage::from_response` 中按 `api_type` 分发：Chat Completions 读 `usage.prompt_tokens`/`completion_tokens`/`total_tokens`，Responses API 读 `usage.input_tokens`/`output_tokens`/`total_tokens`，统一归一化到现有 `log_token_usage` 列
+- OpenAI 词元用量解析在 `ParsedTokenUsage::from_response` 中按 `api_type` 分发：Chat Completions 读 `usage.prompt_tokens`/`completion_tokens`/`total_tokens`，Responses API 读 `usage.input_tokens`/`output_tokens`/`total_tokens`，统一归一化到现有 `log_token_usage` 列
 - 前端按 `api_type` 顶层分发渲染：Anthropic 走 `parseLogs.ts`（`parseStructuredBlocks` 等），OpenAI 走 `parseOpenAI.ts`（`parseOpenAIChatResponse` / `parseOpenAIResponsesResponse` 等）；`ResponseContentCard` 和 `RequestContentCard` 根据日志的 api_type 选择对应解析器
 - `session_id` 在请求路径上是 `Option<String>` 类型（`None` 表示请求未携带会话标识），禁止再使用字符串 `"unknown"` 作为 sentinel；只有写入 `log_metadata.session_id`（NOT NULL 列）时才回落为 `"unknown"` 字符串
 - `UpstreamOutcome::classify` 是响应分类的唯一入口；SSE 错误路径传 `resp_body=None`，body-based 故障规则会被静默忽略（doc 注释已明确）

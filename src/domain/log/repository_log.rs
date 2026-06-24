@@ -1,7 +1,7 @@
 //! 日志仓储接口 — domain/log/
 //!
 //! 定义 `LogRepository` trait 及其关联的查询/摘要 DTO，
-//! 提供日志元数据、内容、token 用量的持久化契约。
+//! 提供日志元数据、内容、词元用量的持久化契约。
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -29,7 +29,7 @@ pub struct LogQuery {
     pub is_interrupted: Option<bool>,
 }
 
-/// 日志条目带 token 用量摘要
+/// 日志条目带词元用量摘要
 #[derive(Debug, Clone)]
 pub struct LogMetadataWithTokenSummary {
     pub entry: LogMetadata,
@@ -41,7 +41,7 @@ pub struct LogMetadataWithTokenSummary {
     pub total_tokens: Option<i32>,
 }
 
-/// 会话摘要数据（统计请求数、各类型 token 总量）
+/// 会话摘要数据（统计请求数、各类型词元总量）
 #[derive(Debug, Clone)]
 pub struct SessionSummaryData {
     pub session_id: String,
@@ -99,7 +99,7 @@ pub trait LogRepository: Send + Sync {
 
     // ─── 联表查询 ───
 
-    /// 分页查询日志条目（含 token 用量摘要），使用 LEFT JOIN log_token_usage 联表查询
+    /// 分页查询日志条目（含词元用量摘要），使用 LEFT JOIN log_token_usage 联表查询
     async fn find_all_paginated_with_token_summary(
         &self,
         page: u64,
@@ -107,7 +107,7 @@ pub trait LogRepository: Send + Sync {
         filter: &LogQuery,
     ) -> Result<PaginatedResult<LogMetadataWithTokenSummary>, AppError>;
 
-    /// 分页查询会话摘要列表，使用聚合查询统计各会话的 token 用量
+    /// 分页查询会话摘要列表，使用聚合查询统计各会话的词元用量
     async fn find_sessions_paginated(
         &self,
         page: u64,
@@ -148,7 +148,7 @@ pub trait LogRepository: Send + Sync {
         limit: u32,
     ) -> Result<Vec<TopUserRow>, AppError>;
 
-    /// 账号 Token 消耗排行 Top N
+    /// 账号词元消耗排行 Top N
     ///
     /// LEFT JOIN accounts + providers 表容忍删除：被删除账号 / 服务商的对应字段返回 None。
     async fn top_accounts(

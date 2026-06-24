@@ -3,7 +3,7 @@
 //! 端点：
 //! - `GET /api/dashboard/kpi` —— 4 张 KPI 卡 + sparkline 序列
 //! - `GET /api/dashboard/top-users` —— 成员请求量排行 Top 10
-//! - `GET /api/dashboard/top-accounts` —— 上游账号 Token 消耗排行 Top 10
+//! - `GET /api/dashboard/top-accounts` —— 上游账号词元消耗排行 Top 10
 //!
 //! 所有端点支持统一 query 参数：`?range=today|last7|last30|custom[&start=ISO][&end=ISO]`
 //!
@@ -36,7 +36,7 @@ pub fn routes() -> Router<AppState> {
 
 /// GET /api/dashboard/kpi
 ///
-/// 返回 4 张 KPI 卡（请求数 / Token 量 / 活跃成员数 / 缓存命中率）+ 内嵌 sparkline 序列。
+/// 返回 4 张 KPI 卡（请求数 / 词元量 / 活跃成员数 / 缓存命中率）+ 内嵌 sparkline 序列。
 /// 委托给 [`DashboardService::get_kpi`](crate::application::dashboard::DashboardService::get_kpi)。
 #[tracing::instrument(skip_all, fields(range = ?query.range))]
 async fn get_kpi(
@@ -62,7 +62,7 @@ async fn get_top_users(
 
 /// GET /api/dashboard/top-accounts
 ///
-/// 返回上游账号 Token 消耗排行 Top 10。
+/// 返回上游账号词元消耗排行 Top 10。
 /// 委托给 [`DashboardService::get_top_accounts`](crate::application::dashboard::DashboardService::get_top_accounts)。
 #[tracing::instrument(skip_all, fields(range = ?query.range))]
 async fn get_top_accounts(

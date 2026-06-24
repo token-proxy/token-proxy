@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
 
-/// 日志完整详情响应（含客户端信息、token 用量等）
+/// 日志完整详情响应（含客户端信息、词元用量等）
 #[derive(Debug, Clone, Serialize)]
 pub struct LogDetailFullResponse {
     pub id: Uuid,

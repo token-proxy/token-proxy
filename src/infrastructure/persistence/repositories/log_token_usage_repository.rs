@@ -1,4 +1,4 @@
-//! Token 用量日志 Repository 实现（基础设施层）
+//! 词元用量日志 Repository 实现（基础设施层）
 //!
 //! `log_token_usage` 表不分区，永久保留。
 

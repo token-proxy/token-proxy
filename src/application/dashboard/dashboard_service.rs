@@ -101,7 +101,7 @@ impl DashboardService {
         Ok(TopUsersResponse { items })
     }
 
-    /// 获取上游账号 Token 消耗排行 Top N
+    /// 获取上游账号词元消耗排行 Top N
     #[tracing::instrument(skip_all, fields(range = ?q.range))]
     pub async fn get_top_accounts(
         &self,

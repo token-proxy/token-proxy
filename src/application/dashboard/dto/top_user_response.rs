@@ -17,7 +17,7 @@ pub struct TopUserItem {
     pub display_name: Option<String>,
     /// 窗口内请求数
     pub request_count: i64,
-    /// 窗口内 token 总消耗
+    /// 窗口内词元总消耗
     pub total_tokens: i64,
 }
 

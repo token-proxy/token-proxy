@@ -11,9 +11,9 @@ interface TokenUsageCardProps {
 }
 
 /**
- * TokenUsageCard - Token 用量展示卡片
+ * TokenUsageCard - 词元用量展示卡片
  *
- * 无 Token 数据时不渲染，有数据时展示总计及各类详细用量。
+ * 无词元数据时不渲染，有数据时展示总计及各类详细用量。
  */
 export default function TokenUsageCard({ data: d, style }: TokenUsageCardProps): ReactNode {
   if (!hasTokenData(d)) return null;
@@ -26,7 +26,7 @@ export default function TokenUsageCard({ data: d, style }: TokenUsageCardProps):
   const thinking = d.token_thinking_tokens ?? 0;
 
   return (
-    <Card title="Token 用量" style={style} bodyStyle={{ padding: '20px 24px' }}>
+    <Card title="词元用量" style={style} bodyStyle={{ padding: '20px 24px' }}>
       <Descriptions row size="small">
         <Descriptions.Item itemKey={<strong>总计</strong>}>{formatNumber(total)}</Descriptions.Item>
         <Descriptions.Item itemKey="新输入">{formatNumber(input)}</Descriptions.Item>

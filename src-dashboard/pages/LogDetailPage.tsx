@@ -13,7 +13,7 @@ import ResponseContentCard from '@components/log/log-detail/ResponseContentCard'
 /**
  * LogDetailPage - 日志详情页面
  *
- * 展示单条日志的完整详情：基础信息、Token 用量、请求头、请求内容解析、
+ * 展示单条日志的完整详情：基础信息、词元用量、请求头、请求内容解析、
  * 响应头、响应内容解析。支持加载中、错误、空数据三种状态展示。
  */
 export default function LogDetailPage(): ReactNode {
@@ -90,7 +90,7 @@ export default function LogDetailPage(): ReactNode {
       {/* 1. 基础信息 */}
       <BasicInfoCard data={data} style={{ marginBottom: 16 }} />
 
-      {/* 2. Token 用量 */}
+      {/* 2. 词元用量 */}
       <TokenUsageCard data={data} style={{ marginBottom: 16 }} />
 
       {/* 3. 请求头 */}

@@ -1192,7 +1192,7 @@ function buildEventsFromSse(
  * 构建会话的对话轮次列表
  *
  * 从所有 SessionContentItem 中提取对话内容，
- * 按轮次分组事件块，提取 tool_result，聚合 Token 用量。
+ * 按轮次分组事件块，提取 tool_result，聚合 词元用量。
  * 子代理调用通过 agent_call 的 children 字段递归嵌套。
  *
  * @param contents - 会话的所有原始日志内容（按 timestamp 排序）
@@ -1388,7 +1388,7 @@ function buildTurn(
     }
   }
 
-  // 2. 聚合 Token 用量
+  // 2. 聚合 词元用量
   const tokenSummary = aggregateTokens(logIds, tokenUsageMap);
 
   // 3. 构建时间范围
@@ -1460,7 +1460,7 @@ function buildAgentCallBlock(
 }
 
 /**
- * 聚合多个 log_id 的 Token 用量
+ * 聚合多个 log_id 的 词元用量
  */
 function aggregateTokens(
   logIds: string[],

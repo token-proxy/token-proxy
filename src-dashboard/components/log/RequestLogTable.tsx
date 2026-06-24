@@ -22,7 +22,7 @@ interface RequestLogTableProps {
 /**
  * RequestLogTable - 请求日志表格组件
  *
- * 展示日志列表，包含 ID、时间、来源、会话、用户、模型、状态码、Token 耗时等列。
+ * 展示日志列表，包含 ID、时间、来源、会话、用户、模型、状态码、词元、耗时等列。
  */
 export default function RequestLogTable({
   logs,
@@ -152,7 +152,7 @@ export default function RequestLogTable({
       ),
     },
     {
-      title: 'Token',
+      title: '词元',
       key: 'token',
       width: 150,
       render: (_: unknown, record: LogSummary) => (

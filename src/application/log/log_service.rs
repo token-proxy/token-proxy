@@ -1,6 +1,6 @@
 //! 日志应用服务 — application/log/
 //!
-//! 编排代理日志的三阶段写入（元数据 → 内容 → token 用量），
+//! 编排代理日志的三阶段写入（元数据 → 内容 → 词元用量），
 //! 以及日志查询、会话摘要、日志详情等功能。
 
 use std::sync::Arc;
@@ -24,7 +24,7 @@ use crate::shared::types::PaginatedResult;
 /// 日志应用服务
 ///
 /// 编排日志的写入（三阶段）和查询操作。
-/// 写入流程：元数据 → 内容 → token 用量，前序失败不阻塞后续。
+/// 写入流程：元数据 → 内容 → 词元用量，前序失败不阻塞后续。
 pub struct LogService {
     log_repo: Arc<dyn LogRepository>,
     token_usage_repo: Arc<dyn LogTokenUsageRepository>,
@@ -86,7 +86,7 @@ impl LogService {
     /// - 从入参构造 LogMetadata
     /// - HTTP 头解析（claude_code、user_agent）
     /// - 请求头脱敏 + JSON 序列化
-    /// - Token 用量提取（从 SSE message_delta）
+    /// - 词元用量提取（从 SSE message_delta）
     /// - 原始内容存储（request_body、response_body）
     pub async fn record_proxy_log(&self, data: ProxyLogInput) -> Result<Uuid, AppError> {
         // 解析 HTTP 头（会话 ID、Agent ID、conversation_source 等）
@@ -173,7 +173,7 @@ impl LogService {
             );
         }
 
-        // ── 阶段 3：提取 token 用量（独立步骤，失败不影响日志完整性）──
+        // ── 阶段 3：提取词元用量（独立步骤，失败不影响日志完整性）──
         match parsed_token_usage::parse_usage_from_response(&data.response_body) {
             Some(usage_data) => {
                 let token_entry = LogTokenUsage {
@@ -203,14 +203,14 @@ impl LogService {
                     created_at: chrono::Utc::now().fixed_offset(),
                 };
                 if let Err(e) = self.token_usage_repo.save(&token_entry).await {
-                    tracing::error!(error = %e, "Token 用量写入失败");
+                    tracing::error!(error = %e, "词元用量写入失败");
                 }
             }
             None => {
                 tracing::warn!(
                     status_code = ?entry.status_code,
                     body_len = data.response_body.len(),
-                    "未从响应体中解析到 token 用量"
+                    "未从响应体中解析到词元用量"
                 );
             }
         }
@@ -229,12 +229,12 @@ impl LogService {
         Ok(saved.id)
     }
 
-    /// 保存 token 用量记录
+    /// 保存词元用量记录
     pub async fn save_token_usage(&self, usage: &LogTokenUsage) -> Result<(), AppError> {
         self.token_usage_repo.save(usage).await
     }
 
-    /// 查询某个会话的所有 token 用量记录
+    /// 查询某个会话的所有词元用量记录
     pub async fn get_session_token_usage(
         &self,
         session_id: &str,
@@ -242,7 +242,7 @@ impl LogService {
         self.token_usage_repo.find_by_session_id(session_id).await
     }
 
-    /// 分页查询日志摘要（含 token 用量摘要）
+    /// 分页查询日志摘要（含词元用量摘要）
     pub async fn query_logs(
         &self,
         filters: LogFilterParams,
@@ -406,7 +406,7 @@ impl LogService {
         }
     }
 
-    /// 获取某个会话的所有原始日志内容（含 token 用量）
+    /// 获取某个会话的所有原始日志内容（含词元用量）
     pub async fn get_session_contents(
         &self,
         session_id: &str,
@@ -446,7 +446,7 @@ impl LogService {
         Ok(items)
     }
 
-    /// 获取会话摘要列表（含 token 用量汇总）
+    /// 获取会话摘要列表（含词元用量汇总）
     pub async fn get_sessions(
         &self,
         filters: LogFilterParams,
@@ -494,7 +494,7 @@ impl LogService {
         })
     }
 
-    /// 查询单条日志的 token 用量
+    /// 查询单条日志的词元用量
     pub async fn get_log_token_usage(
         &self,
         log_id: Uuid,
@@ -507,7 +507,7 @@ impl LogService {
             .map(Self::to_token_usage_response))
     }
 
-    /// 查询某个会话的 token 用量（以响应 DTO 格式返回）
+    /// 查询某个会话的词元用量（以响应 DTO 格式返回）
     pub async fn get_session_token_usage_response(
         &self,
         session_id: &str,

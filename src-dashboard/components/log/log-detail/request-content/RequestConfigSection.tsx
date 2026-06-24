@@ -9,7 +9,7 @@ interface RequestConfigSectionProps {
 /**
  * RequestConfigSection - 请求配置展示区块
  *
- * 展示请求中的模型、最大 Token、流式、思考模式、输出配置等参数。
+ * 展示请求中的模型、最大词元数、流式、思考模式、输出配置等参数。
  */
 export default function RequestConfigSection({
   requestBody,
@@ -20,7 +20,7 @@ export default function RequestConfigSection({
     items.push({ key: '模型', value: requestBody.model });
   }
   if (typeof requestBody.max_tokens === 'number') {
-    items.push({ key: '最大 Token 数', value: String(requestBody.max_tokens) });
+    items.push({ key: '最大词元数', value: String(requestBody.max_tokens) });
   }
   if (requestBody.stream !== undefined) {
     items.push({ key: '流式', value: requestBody.stream ? '是' : '否' });

@@ -48,7 +48,7 @@ export function formatDate(dateStr: string): string {
 }
 
 /**
- * 紧凑 token 数字格式化（用于 Dashboard 大数字展示）。
+ * 紧凑词元数字格式化（用于 Dashboard 大数字展示）。
  *
  * - 值 >= 1_000_000 → "X.YM"
  * - 值 >= 1_000 → "X.YK"

@@ -16,7 +16,7 @@ interface TopUsersRankingProps {
 /**
  * 成员请求量排行 Top 10 卡片。
  *
- * 每行展示：排名 + 用户名（已删除时降级展示）+ 请求数横向条形占比 + token 总量。
+ * 每行展示：排名 + 用户名（已删除时降级展示）+ 请求数横向条形占比 + 词元总量。
  * 条形宽度按当前列表内最大 request_count 归一化，方便观察相对差距。
  *
  * @example
@@ -101,7 +101,7 @@ function UserRow({ item, rank, maxCount }: { item: TopUserItem; rank: number; ma
               flexShrink: 0,
             }}
           >
-            {formatTokenCompact(item.total_tokens)} tokens
+            {formatTokenCompact(item.total_tokens)} 词元
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

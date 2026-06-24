@@ -15,9 +15,9 @@ interface TurnCardProps {
   defaultExpanded?: boolean;
 }
 
-// --- Token 展示 ---
+// --- 词元展示 ---
 
-/** 渲染 Token 小计标签，hover 时展示六维详情 */
+/** 渲染词元小计标签，hover 时展示六维详情 */
 function renderTokenCompact(summary: TurnTokenSummary): ReactNode {
   const tooltipContent = (
     <div style={{ whiteSpace: 'nowrap', lineHeight: 2 }}>
@@ -191,7 +191,7 @@ function renderAgentCallBlock(
             </Text>
           </div>
 
-          {/* 摘要信息：子事件数量 + Token 小计 */}
+          {/* 摘要信息：子事件数量 + 词元小计 */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
             <Tag size="small">{block.children.length} 个事件</Tag>
             {renderTokenCompact(block.tokenSummary)}
@@ -245,7 +245,7 @@ function renderTurnBlock(block: TurnBlock, defaultExpanded?: boolean): ReactNode
  * TurnCard - 对话轮次卡片组件
  *
  * 渲染单个对话轮次的所有内容，包括用户消息、思考过程、工具调用、
- * 工具结果、助手回复和子代理调用，以及 Token 用量摘要。
+ * 工具结果、助手回复和子代理调用，以及 词元用量摘要。
  * 支持折叠/展开和查看原始内容。
  */
 export default function TurnCard({

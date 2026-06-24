@@ -1,7 +1,7 @@
 /**
  * KpiCard - 含内嵌 Sparkline 的 KPI 卡片。
  *
- * 用于总请求数 / Token 量 / 活跃成员数三张主 KPI 卡，统一视觉与交互。
+ * 用于总请求数 / 词元量 / 活跃成员数三张主 KPI 卡，统一视觉与交互。
  * 单一类型卡片，无 sparkline 的比率类指标请使用 CacheHitCard。
  */
 

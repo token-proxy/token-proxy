@@ -1,6 +1,6 @@
-//! Token 用量解析器（基础设施层）
+//! 词元用量解析器（基础设施层）
 //!
-//! 从上游响应中解析 token 用量信息。
+//! 从上游响应中解析词元用量信息。
 //! 支持以下格式：
 //! - Anthropic SSE（`message_delta` 事件中的 `usage` 字段）
 //! - Anthropic 非流式（顶层 `usage` 对象，字段名为 `input_tokens` / `output_tokens` 等）
@@ -11,7 +11,7 @@
 
 use serde_json::Value;
 
-/// 从响应中解析 token 用量
+/// 从响应中解析词元用量
 ///
 /// 按优先级依次尝试：
 /// 1. Anthropic SSE（`event:` / `data:` 行 + `message_delta` 事件）
@@ -137,7 +137,7 @@ fn extract_usage_fields(raw_usage: &Value) -> ParsedTokenUsage {
 
 // ─── OpenAI Chat Completions 格式解析 ───
 
-/// 尝试从 OpenAI Chat Completions 格式的响应体中提取 token 用量
+/// 尝试从 OpenAI Chat Completions 格式的响应体中提取词元用量
 ///
 /// 支持流式（SSE `data:` 行中最后一个含 `usage` 的 chunk）和非流式（顶层 `usage` 对象）。
 fn extract_openai_chat_usage(body: &str) -> Option<ParsedTokenUsage> {
@@ -206,7 +206,7 @@ fn parse_openai_usage_fields(usage: &Value) -> Option<ParsedTokenUsage> {
 
 // ─── OpenAI Responses API 格式解析 ───
 
-/// 尝试从 OpenAI Responses API 格式的响应体中提取 token 用量
+/// 尝试从 OpenAI Responses API 格式的响应体中提取词元用量
 ///
 /// 支持非流式（顶层 `usage` 对象）和流式（`response.completed` 事件中的 `response.usage`）。
 fn extract_openai_responses_usage(body: &str) -> Option<ParsedTokenUsage> {
@@ -279,20 +279,20 @@ fn int_field(value: &Value, key: &str) -> i32 {
 
 // ─── 类型定义 ───
 
-/// 解析后的 token 用量
+/// 解析后的词元用量
 #[derive(Debug, Clone, Default)]
 pub struct ParsedTokenUsage {
-    /// 输入 token 数
+    /// 输入词元数
     pub input_tokens: i32,
-    /// 输出 token 数
+    /// 输出词元数
     pub output_tokens: i32,
-    /// 缓存创建输入 token 数
+    /// 缓存创建输入词元数
     pub cache_creation_input_tokens: i32,
-    /// 缓存读取输入 token 数
+    /// 缓存读取输入词元数
     pub cache_read_input_tokens: i32,
-    /// 思考 token 数
+    /// 思考词元数
     pub thinking_tokens: i32,
-    /// 总计 token 数（各字段之和）
+    /// 总计词元数（各字段之和）
     pub total_tokens: i32,
     /// 原始 usage 数据（JSON）
     pub raw_usage: Value,

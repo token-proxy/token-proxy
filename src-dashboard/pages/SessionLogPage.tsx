@@ -32,7 +32,7 @@ const { Title } = Typography;
  *
  * 支持列表/详情两种模式：
  * - 无 sessionId 参数时展示会话列表，支持筛选查询
- * - 有 sessionId 参数时展示会话详情，包含对话时间线、Token 用量、事件摘要
+ * - 有 sessionId 参数时展示会话详情，包含对话时间线、词元用量、事件摘要
  */
 export default function SessionLogPage(): ReactNode {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -118,19 +118,19 @@ export default function SessionLogPage(): ReactNode {
     refetch: loadSessionDetail,
   } = useFetch(async () => {
     if (!sessionId) return [] as ConversationTurn[];
-    // 1. 并行加载会话内容和 Token 用量
+    // 1. 并行加载会话内容和 词元用量
     const [contents, usage] = await Promise.all([
       api.get<SessionContentItem[]>(`/api/logs/sessions/${encodeURIComponent(sessionId)}/contents`),
       api.get<TokenUsage[]>(`/api/logs/sessions/${encodeURIComponent(sessionId)}/token-usage`),
     ]);
 
-    // 2. 构建 Token 用量映射
+    // 2. 构建 词元用量映射
     const usageMap: Record<string, TokenUsage> = {};
     usage.forEach((tu) => {
       usageMap[tu.log_id] = tu;
     });
 
-    // 3. 使用 buildConversationTurns 构建轮次数据（Token 聚合在内部完成）
+    // 3. 使用 buildConversationTurns 构建轮次数据（词元聚合在内部完成）
     return buildConversationTurns(contents, usageMap);
   }, [sessionId]);
   const sessionTurns = sessionTurnsData ?? [];

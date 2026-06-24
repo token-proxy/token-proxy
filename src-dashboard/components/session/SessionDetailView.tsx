@@ -45,7 +45,7 @@ interface SessionDetailViewProps {
  * SessionDetailView - 会话详情视图组件
  *
  * 以轮次导航条 + 轮次卡片列表展示单个会话的完整对话内容。
- * 支持轮次滚动导航、会话级 Token 汇总、展开收起等交互。
+ * 支持轮次滚动导航、会话级词元汇总、展开收起等交互。
  */
 export default function SessionDetailView({
   sessionId,
@@ -104,7 +104,7 @@ export default function SessionDetailView({
     }
   }, []);
 
-  // --- 会话级 Token 汇总 ---
+  // --- 会话级词元汇总 ---
 
   const tokenTotals = turns.reduce(
     (acc, turn) => ({
@@ -167,7 +167,7 @@ export default function SessionDetailView({
                 <strong>时间范围:</strong> {formatDateTime(turns[0].startTime)} ~{' '}
                 {formatDateTime(turns[turns.length - 1].endTime)}
               </Text>
-              {/* 会话级 Token 汇总 */}
+              {/* 会话级词元汇总 */}
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
                 <Tag color="light-blue">总输入 &uarr;{formatNumber(tokenTotals.inputTokens)}</Tag>
                 <Tag color="light-blue">总输出 &darr;{formatNumber(tokenTotals.outputTokens)}</Tag>

@@ -20,7 +20,7 @@ export interface SessionSummary {
   access_point_id?: string | null;
   start_time: string;
   request_count: number;
-  // Token 汇总
+  // 词元汇总
   total_input_tokens: number;
   total_output_tokens: number;
   total_cache_creation_input_tokens: number;
@@ -49,7 +49,7 @@ export interface LogSummary {
   conversation_source: string;
   agent_id?: string | null;
   raw_content_available: boolean;
-  // Token 摘要
+  // 词元摘要
   token_input_tokens?: number | null;
   token_output_tokens?: number | null;
   token_cache_creation_input_tokens?: number | null;
@@ -103,7 +103,7 @@ export interface ConversationEvent {
   tool_result_content?: string;
 }
 
-/** Token 用量记录 */
+/** 词元用量记录 */
 export interface TokenUsage {
   id: string;
   log_id: string;
@@ -149,7 +149,7 @@ export interface LogDetailFull {
   response_headers: Record<string, unknown> | null;
   request_body: Record<string, unknown> | null;
   response_body: string;
-  // Token 用量
+  // 词元用量
   token_input_tokens?: number | null;
   token_output_tokens?: number | null;
   token_cache_creation_input_tokens?: number | null;
@@ -203,7 +203,7 @@ export interface LogFilters {
   isInterrupted?: string;
 }
 
-/** 轮次级 Token 用量汇总 */
+/** 轮次级词元用量汇总 */
 export interface TurnTokenSummary {
   inputTokens: number;
   outputTokens: number;
@@ -266,7 +266,7 @@ export interface ConversationTurn {
   userMessage: string;
   /** 该轮次内的所有事件块（按时间排序） */
   blocks: TurnBlock[];
-  /** 该轮次的 Token 汇总 */
+  /** 该轮次的词元汇总 */
   tokenSummary: TurnTokenSummary;
   /** 该轮次涉及的所有 log_id */
   logIds: string[];

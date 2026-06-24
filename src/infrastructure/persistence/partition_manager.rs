@@ -25,7 +25,7 @@ const PARTITIONED_TABLES: &[&str] = &["log_metadata", "log_contents"];
 /// - 自动清理过期分区
 /// - 通过 advisory lock 保证多副本部署安全
 ///
-/// `log_token_usage` 不在此管理范围——token 用量数据需永久保留。
+/// `log_token_usage` 不在此管理范围——词元用量数据需永久保留。
 pub struct PartitionManager {
     db: Arc<DatabaseConnection>,
     premake_months: u32,

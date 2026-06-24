@@ -15,10 +15,10 @@ interface TopAccountsRankingProps {
 }
 
 /**
- * 上游账号 Token 消耗排行 Top 10 卡片。
+ * 上游账号词元消耗排行 Top 10 卡片。
  *
  * 每行展示：排名 + 账号显示名（"服务商 · 账号名" 或已删除降级）+ 输入/输出/缓存读取/缓存写入
- * 四段堆叠条 + 总 token 紧凑数 + 禁用原因 Tag（若有）。堆叠条宽度按当前列表内最大 total_tokens
+ * 四段堆叠条 + 总词元紧凑数 + 禁用原因 Tag（若有）。堆叠条宽度按当前列表内最大 total_tokens
  * 归一化（传入 StackedBar 的 maxTotal），保证多行横向对比时刻度一致。
  *
  * @example
@@ -27,7 +27,7 @@ interface TopAccountsRankingProps {
 export function TopAccountsRanking({ items, loading = false }: TopAccountsRankingProps) {
   return (
     <Card
-      title="账号 Token 消耗排行"
+      title="账号词元消耗排行"
       bordered={false}
       style={{
         backgroundColor: 'var(--semi-color-bg-2)',
@@ -58,7 +58,7 @@ function RankingList({ items }: { items: TopAccountItem[] }) {
   );
 }
 
-/** 单行账号排行（排名 + 名字 + 禁用 Tag + 堆叠条 + 总 token） */
+/** 单行账号排行（排名 + 名字 + 禁用 Tag + 堆叠条 + 总词元） */
 function AccountRow({
   item,
   rank,
@@ -151,7 +151,7 @@ function AccountRow({
               flexShrink: 0,
             }}
           >
-            {formatTokenCompact(item.total_tokens)} tokens
+            {formatTokenCompact(item.total_tokens)} 词元
           </span>
         </div>
         <StackedBar segments={segments} maxTotal={maxTotal} height={8} />

@@ -1,7 +1,7 @@
 //! 日志 Repository 实现（基础设施层）
 //!
 //! 实现了 `LogRepository` trait 的所有方法，包括：
-//! - 基础 CRUD（metadata、content、token usage）
+//! - 基础 CRUD（metadata、content、词元用量）
 //! - 分页查询（含 SQL 动态拼接和全文检索）
 //! - 会话聚合查询
 //! - Dashboard 聚合查询（KPI / sparkline / Top N 排行）
@@ -635,7 +635,7 @@ impl LogRepository for SeaOrmLogRepository {
                     response_headers: row.try_get_by_index::<Option<serde_json::Value>>(24)?,
                 };
 
-                // 检查是否有 token 用量（ltu.id 不为 NULL）
+                // 检查是否有词元用量（ltu.id 不为 NULL）
                 let usage_id: Option<Uuid> = row.try_get_by_index::<Option<Uuid>>(25)?;
 
                 let usage = if let Some(uid) = usage_id {
@@ -687,10 +687,10 @@ impl LogRepository for SeaOrmLogRepository {
 
     // ─── Dashboard 聚合查询 ───
 
-    /// KPI 聚合：单次 SQL 返回请求数 / token 总量 / 活跃成员数 / 缓存读 token / 缓存读 + 输入 token 总和。
+    /// KPI 聚合：单次 SQL 返回请求数 / 词元总量 / 活跃成员数 / 缓存读词元 / 缓存读 + 输入词元总和。
     ///
     /// `log_metadata` 按月分区，`timestamp >= $1 AND timestamp < $2` 由 PostgreSQL 自动剪枝匹配的子分区。
-    /// `log_token_usage` 与 `log_metadata` 通过 `log_id` 一对一关联；LEFT JOIN 保证没有 token 记录的请求仍计入 `request_count`。
+    /// `log_token_usage` 与 `log_metadata` 通过 `log_id` 一对一关联；LEFT JOIN 保证没有词元记录的请求仍计入 `request_count`。
     #[tracing::instrument(
         skip(self),
         fields(window.start = %window.start, window.end = %window.end)
@@ -862,8 +862,8 @@ impl LogRepository for SeaOrmLogRepository {
 
     /// 客户端类型请求量排行 Top N。
     ///
-    /// 从 `log_token_usage` 按 `client_type` 分组聚合请求数和 token 总量。
-    /// 无需联表，直接基于 token 用量表统计。
+    /// 从 `log_token_usage` 按 `client_type` 分组聚合请求数和词元总量。
+    /// 无需联表，直接基于词元用量表统计。
     #[tracing::instrument(
         skip(self),
         fields(window.start = %window.start, window.end = %window.end, limit = limit)

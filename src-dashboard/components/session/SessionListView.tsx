@@ -132,7 +132,7 @@ export default function SessionListView({
             ),
           },
           {
-            title: 'Token',
+            title: '词元',
             key: 'token',
             width: 150,
             render: (_: unknown, record: SessionSummary) => {

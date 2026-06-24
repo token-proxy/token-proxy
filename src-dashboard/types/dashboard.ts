@@ -43,7 +43,7 @@ export interface TimeRangeQuery {
 export type TrendBadge = 'up' | 'down' | 'flat' | 'new' | 'empty';
 
 /**
- * KPI 趋势项（适用于请求数 / Token 量 / 活跃成员数）。
+ * KPI 趋势项（适用于请求数 / 词元量 / 活跃成员数）。
  */
 export interface KpiTrendItem {
   /** 当前窗口值 */
@@ -75,14 +75,14 @@ export interface CacheHitRate {
 /**
  * Sparkline 时间序列桶。
  *
- * 三条序列（请求 / Token / 成员数）共享同一 bucket_start。
+ * 三条序列（请求 / 词元 / 成员数）共享同一 bucket_start。
  */
 export interface SparklineBucket {
   /** 桶起始时间（ISO 8601） */
   bucket_start: string;
   /** 该桶请求数 */
   request_count: number;
-  /** 该桶 token 总量 */
+  /** 该桶词元总量 */
   total_tokens: number;
   /** 该桶活跃成员数（去重） */
   active_user_count: number;
@@ -96,7 +96,7 @@ export interface SparklineBucket {
 export interface KpiResponse {
   /** 请求数 KPI */
   request_count: KpiTrendItem;
-  /** Token 总量 KPI */
+  /** 词元总量 KPI */
   total_tokens: KpiTrendItem;
   /** 活跃成员数 KPI */
   active_user_count: KpiTrendItem;
@@ -123,7 +123,7 @@ export interface TopUserItem {
   display_name: string | null;
   /** 窗口内请求数 */
   request_count: number;
-  /** 窗口内 token 总消耗 */
+  /** 窗口内词元总消耗 */
   total_tokens: number;
 }
 
@@ -144,15 +144,15 @@ export interface TopAccountItem {
   provider_name: string | null;
   /** 当前禁用原因（字符串化的 DisabledReason）；null = 正常可用 */
   disabled_reason: string | null;
-  /** 输入 token 数 */
+  /** 输入词元数 */
   input_tokens: number;
-  /** 输出 token 数 */
+  /** 输出词元数 */
   output_tokens: number;
-  /** 缓存读取 token 数 */
+  /** 缓存读取词元数 */
   cache_read_tokens: number;
-  /** 缓存写入 token 数 */
+  /** 缓存写入词元数 */
   cache_creation_tokens: number;
-  /** 总 token 数（用于排序） */
+  /** 总词元数（用于排序） */
   total_tokens: number;
 }
 

@@ -3,8 +3,8 @@
  *
  * 面向技术主管的数据洞察视图，组合 F3 ~ F9 交付的所有 dashboard 组件：
  * - 顶部时间范围切换器（全局过滤器 + 刷新按钮）
- * - 4 张 KPI 卡（总请求数 / Token 总量 / 活跃成员数 / 缓存命中率）
- * - 双列排行（成员请求量 Top 10 / 账号 Token 消耗 Top 10）
+ * - 4 张 KPI 卡（总请求数 / 词元总量 / 活跃成员数 / 缓存命中率）
+ * - 双列排行（成员请求量 Top 10 / 账号词元消耗 Top 10）
  *
  * 设计风格参照 Linear Insights / Vercel Analytics 的极简数据洞察布局。
  */
@@ -105,7 +105,7 @@ export default function DashboardPage(): ReactNode {
           loading={kpiQuery.loading}
         />
         <KpiCard
-          title="Token 总量"
+          title="词元总量"
           value={kpiQuery.data?.total_tokens.current ?? 0}
           format={formatTokenCompact}
           trend={kpiQuery.data?.total_tokens.trend ?? 'empty'}

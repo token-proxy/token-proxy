@@ -34,7 +34,7 @@ interface StackedBarProps {
  * 横向堆叠条（纯 CSS Flex 实现，不依赖图表库）。
  *
  * 用于账号排行卡片展示 input / output / cache_read / cache_creation
- * 4 段 token 占比可视化。每段悬浮显示 Semi Tooltip（段名 + 数值 + 占比百分比）。
+ * 4 段词元占比可视化。每段悬浮显示 Semi Tooltip（段名 + 数值 + 占比百分比）。
  *
  * 设计要点：
  * - 圆角通过外层 `overflow: hidden` 一次性裁剪，无需逐段处理

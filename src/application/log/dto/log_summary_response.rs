@@ -29,7 +29,7 @@ pub struct LogSummaryResponse {
     /// 客户端版本号（从 User-Agent 解析的版本号段）
     pub client_version: Option<String>,
     pub api_type: String,
-    /// Token 用量汇总
+    /// 词元用量汇总
     pub token_input_tokens: Option<i32>,
     pub token_output_tokens: Option<i32>,
     pub token_cache_creation_input_tokens: Option<i32>,

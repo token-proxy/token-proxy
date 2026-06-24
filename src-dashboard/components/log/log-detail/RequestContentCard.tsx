@@ -145,8 +145,8 @@ export default function RequestContentCard({
 const CHAT_PARAM_LABELS: Record<string, string> = {
   model: '模型',
   temperature: '温度',
-  max_tokens: '最大 Token 数',
-  max_completion_tokens: '最大完成 Token 数',
+  max_tokens: '最大词元数',
+  max_completion_tokens: '最大完成词元数',
   top_p: 'Top P',
   frequency_penalty: '频率惩罚',
   presence_penalty: '存在惩罚',
