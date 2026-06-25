@@ -16,6 +16,7 @@ import type {
 } from './types/dashboard';
 import type { AuditLogItem, AuditLogFilters } from './types/auditLog';
 import type { PaginatedResult } from './types/log';
+import type { LogStatsResponse, Settings, UpdateSettingsRequest } from './types/settings';
 
 // access_token 距离过期不足该阈值时, 请求前主动刷新（秒）
 const REFRESH_THRESHOLD_SEC = 300;
@@ -289,5 +290,39 @@ export const auditLogApi = {
       operator_type: filters.operatorType,
     });
     return api.get<PaginatedResult<AuditLogItem>>(`/api/audit-logs?${qs}`);
+  },
+};
+
+// ─── 系统设置 API ───
+
+/**
+ * 系统设置 API 集合。
+ *
+ * 提供日志分区统计查看和系统设置读写功能，对应后端
+ * - `GET /api/settings/log-stats` — 日志分区统计信息
+ * - `GET /api/settings` — 获取系统设置
+ * - `PUT /api/settings` — 更新系统设置
+ */
+export const settingsApi = {
+  /** 获取日志分区统计信息 */
+  getLogStats(): Promise<LogStatsResponse> {
+    return api.get<LogStatsResponse>('/api/settings/log-stats');
+  },
+
+  /** 获取系统设置 */
+  getSettings(): Promise<Settings> {
+    return api.get<Settings>('/api/settings');
+  },
+
+  /** 更新系统设置 */
+  updateSettings(values: UpdateSettingsRequest): Promise<Settings> {
+    return api.put<Settings>('/api/settings', values);
+  },
+
+  /** 删除指定月份的日志分区（如 2026-01） */
+  deleteMonthLogs(yearMonth: string): Promise<{ deleted: string[]; message: string }> {
+    return request<{ deleted: string[]; message: string }>(`/api/settings/logs/${yearMonth}`, {
+      method: 'DELETE',
+    });
   },
 };

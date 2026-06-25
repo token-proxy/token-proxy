@@ -119,6 +119,8 @@ DDD 四层：领域层（`domain/`）→ 应用层（`application/`）→ 基础
 
 - **分区策略**: `log_metadata` / `log_contents` 按月 RANGE 分区（`PartitionManager` 自动管理，advisory lock 防冲突）；
   `log_token_usage` 永久保留不分
+- **分区统计**: `PartitionManager::get_partition_stats()` 通过 `pg_inherits` + `pg_class` 查询各分区磁盘占用与估算行数，
+  返回 `PartitionInfo` 列表，由 `SettingsService::get_log_stats()` 按月聚合为 `MonthlySummary`
 - **迁移文件**: `src/migrations/` 下，使用 `sea-orm-migration`
 - **`log_metadata` 分区表 PRIMARY KEY 必须包含 `timestamp`**
 
@@ -289,46 +291,51 @@ token/key/密码到控制台；提取 `X-Request-ID` 在 Toast 中展示。
 
 ## 核心文件速查
 
-| 文件                                                 | 说明                                                                                    |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `src/main.rs`                                        | 启动入口（依赖组装 + 路由 + 分区 + 后台任务）                                           |
-| `src/application/proxy/proxy_pipeline.rs`            | 代理管道（60 行调度骨架 + try_one_account）                                             |
-| `src/application/proxy/proxy_call_record.rs`         | 代理调用记录器（start → attach → append/set → finish；Drop 兜底）                       |
-| `src/application/proxy/tracked_spawner.rs`           | 后台写入调度器（统一 spawn 模板）                                                       |
-| `src/application/proxy/account_selector.rs`          | 候选账号迭代器（加载 → 跳过 → 解密四步）                                                |
-| `src/application/proxy/upstream_dispatcher.rs`       | 上游转发执行器（forward + 120s 超时）                                                   |
-| `src/application/proxy/response_builder.rs`          | 响应构造（streaming / buffered + 逐跳头过滤）                                           |
-| `src/domain/access_point/access_point.rs`            | AccessPointEx 聚合根（sort_accounts + apply_session_affinity + build_upstream_request） |
-| `src/domain/access_point/routing_strategy.rs`        | 路由策略值对象                                                                          |
-| `src/domain/access_point/model_routing_grid.rs`      | 模型路由网格值对象（二维匹配）                                                          |
-| `src/domain/shared/api_type.rs`                      | AccessPointType 枚举 + 5 个协议方法                                                     |
-| `src/domain/shared/client_type.rs`                   | ClientType 枚举（from_request + extract_session_id）                                    |
-| `src/domain/shared/protocols/anthropic.rs`           | Anthropic 协议适配                                                                      |
-| `src/domain/shared/protocols/openai.rs`              | OpenAI 协议适配（Chat Completions + Responses API）                                     |
-| `src/domain/proxy/upstream_outcome.rs`               | UpstreamOutcome（Success/ClientError/Fault/ServerError）+ classify                      |
-| `src/domain/proxy/retry_decision.rs`                 | RetryDecision（Return/Continue）                                                        |
-| `src/domain/provider/fault_service.rs`               | 故障检测领域服务                                                                        |
-| `src/domain/log/audit_action.rs`                     | 审计操作类型枚举（18 variant）                                                          |
-| `src/domain/log/audit_entity_type.rs`                | 审计实体类型枚举（8 variant）                                                           |
-| `src/domain/log/repository_audit_log.rs`             | AuditLogQuery 筛选条件 + AuditLogWithUsername 读模型 + AuditLogRepository trait         |
-| `src/domain/log/dashboard_query.rs`                  | Dashboard 领域查询类型                                                                  |
-| `src/application/log/log_service.rs`                 | 日志写入/查询（三阶段 + SSE 广播 + 审计日志查询）                                       |
-| `src/application/log/dto/audit_log_filter_params.rs` | 审计日志筛选参数 DTO                                                                    |
-| `src/application/log/dto/audit_log_response.rs`      | 审计日志列表响应项 DTO                                                                  |
-| `src/application/dashboard/dashboard_service.rs`     | Dashboard 聚合服务（5 个个人视角方法）                                                  |
-| `src/application/dashboard/timezone.rs`              | IANA 时区白名单校验                                                                     |
-| `src/presentation/middleware/jwt_auth.rs`            | JWT 认证中间件 + CurrentUser extractor                                                  |
-| `src/presentation/middleware/user_api_key_auth.rs`   | 用户 API key 认证中间件                                                                 |
-| `src/presentation/routes/log_routes.rs`              | log 路由（含 `/api/audit-logs` 审计日志查询端点）                                       |
-| `src-dashboard/api.ts`                               | 前端 API 封装（JWT 自动刷新 + auditLogApi）                                             |
-| `src-dashboard/hooks/useFetch.ts`                    | 通用数据获取 Hook                                                                       |
-| `src-dashboard/hooks/useLogEvents.ts`                | SSE 实时事件消费 Hook                                                                   |
-| `src-dashboard/pages/GettingStartedPage.tsx`         | 「我的用量报告」顶层                                                                    |
-| `src-dashboard/pages/AuditLogPage.tsx`               | 审计日志查看页（筛选 + 分页 + JSON 详情展开）                                           |
-| `src-dashboard/types/auditLog.ts`                    | AuditLogItem、AuditLogFilters 接口                                                      |
-| `src-dashboard/utils/parseLogs.ts`                   | 日志/会话解析（buildConversationEvents + buildConversationTurns）                       |
-| `src-dashboard/utils/parseOpenAI.ts`                 | OpenAI 响应/请求体解析                                                                  |
-| `src-dashboard/utils/auditLog.ts`                    | 审计日志中文映射（ACTION_LABELS、ENTITY_TYPE_LABELS 等）                                |
+| 文件                                                  | 说明                                                                                    |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `src/main.rs`                                         | 启动入口（依赖组装 + 路由 + 分区 + 后台任务）                                           |
+| `src/application/proxy/proxy_pipeline.rs`             | 代理管道（60 行调度骨架 + try_one_account）                                             |
+| `src/application/proxy/proxy_call_record.rs`          | 代理调用记录器（start → attach → append/set → finish；Drop 兜底）                       |
+| `src/application/proxy/tracked_spawner.rs`            | 后台写入调度器（统一 spawn 模板）                                                       |
+| `src/application/proxy/account_selector.rs`           | 候选账号迭代器（加载 → 跳过 → 解密四步）                                                |
+| `src/application/proxy/upstream_dispatcher.rs`        | 上游转发执行器（forward + 120s 超时）                                                   |
+| `src/application/proxy/response_builder.rs`           | 响应构造（streaming / buffered + 逐跳头过滤）                                           |
+| `src/domain/access_point/access_point.rs`             | AccessPointEx 聚合根（sort_accounts + apply_session_affinity + build_upstream_request） |
+| `src/domain/access_point/routing_strategy.rs`         | 路由策略值对象                                                                          |
+| `src/domain/access_point/model_routing_grid.rs`       | 模型路由网格值对象（二维匹配）                                                          |
+| `src/domain/shared/api_type.rs`                       | AccessPointType 枚举 + 5 个协议方法                                                     |
+| `src/domain/shared/client_type.rs`                    | ClientType 枚举（from_request + extract_session_id）                                    |
+| `src/domain/shared/protocols/anthropic.rs`            | Anthropic 协议适配                                                                      |
+| `src/domain/shared/protocols/openai.rs`               | OpenAI 协议适配（Chat Completions + Responses API）                                     |
+| `src/domain/proxy/upstream_outcome.rs`                | UpstreamOutcome（Success/ClientError/Fault/ServerError）+ classify                      |
+| `src/domain/proxy/retry_decision.rs`                  | RetryDecision（Return/Continue）                                                        |
+| `src/domain/provider/fault_service.rs`                | 故障检测领域服务                                                                        |
+| `src/domain/log/audit_action.rs`                      | 审计操作类型枚举（18 variant）                                                          |
+| `src/domain/log/audit_entity_type.rs`                 | 审计实体类型枚举（8 variant）                                                           |
+| `src/domain/log/repository_audit_log.rs`              | AuditLogQuery 筛选条件 + AuditLogWithUsername 读模型 + AuditLogRepository trait         |
+| `src/domain/log/dashboard_query.rs`                   | Dashboard 领域查询类型                                                                  |
+| `src/infrastructure/persistence/partition_manager.rs` | 分区自动管理器（创建/清理/统计 + advisory lock）                                        |
+| `src/application/system/settings_service.rs`          | 系统设置服务（日志分区统计 + 系统配置）                                                 |
+| `src/application/system/dto/log_stats_dto.rs`         | 日志分区统计 DTO（PartitionInfo + MonthlySummary + LogStatsResponse）                   |
+| `src/presentation/routes/settings_routes.rs`          | settings 路由（`GET /api/settings/log-stats` 日志分区统计）                             |
+| `src/application/mod.rs`                              | AppState 依赖组装（含 `partition_manager: Arc<PartitionManager>`）                      |
+| `src/application/log/dto/audit_log_filter_params.rs`  | 审计日志筛选参数 DTO                                                                    |
+| `src/application/log/dto/audit_log_response.rs`       | 审计日志列表响应项 DTO                                                                  |
+| `src/application/dashboard/dashboard_service.rs`      | Dashboard 聚合服务（5 个个人视角方法）                                                  |
+| `src/application/dashboard/timezone.rs`               | IANA 时区白名单校验                                                                     |
+| `src/presentation/middleware/jwt_auth.rs`             | JWT 认证中间件 + CurrentUser extractor                                                  |
+| `src/presentation/middleware/user_api_key_auth.rs`    | 用户 API key 认证中间件                                                                 |
+| `src/presentation/routes/log_routes.rs`               | log 路由（含 `/api/audit-logs` 审计日志查询端点）                                       |
+| `src-dashboard/api.ts`                                | 前端 API 封装（JWT 自动刷新 + auditLogApi）                                             |
+| `src-dashboard/hooks/useFetch.ts`                     | 通用数据获取 Hook                                                                       |
+| `src-dashboard/hooks/useLogEvents.ts`                 | SSE 实时事件消费 Hook                                                                   |
+| `src-dashboard/pages/SettingsPage.tsx`                | 系统设置页（日志分区统计环形饼图 + 分区表格 + 保留月数配置）                            |
+| `src-dashboard/types/settings.ts`                     | 前端 settings 类型（PartitionInfo + MonthlySummary + LogStatsResponse + Settings）      |
+| `src-dashboard/pages/AuditLogPage.tsx`                | 审计日志查看页（筛选 + 分页 + JSON 详情展开）                                           |
+| `src-dashboard/types/auditLog.ts`                     | AuditLogItem、AuditLogFilters 接口                                                      |
+| `src-dashboard/utils/parseLogs.ts`                    | 日志/会话解析（buildConversationEvents + buildConversationTurns）                       |
+| `src-dashboard/utils/parseOpenAI.ts`                  | OpenAI 响应/请求体解析                                                                  |
+| `src-dashboard/utils/auditLog.ts`                     | 审计日志中文映射（ACTION_LABELS、ENTITY_TYPE_LABELS 等）                                |
 
 ## Makefile 任务
 

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use chrono::{Datelike, Utc};
@@ -13,6 +13,19 @@ pub struct PartitionResult {
     pub created: Vec<String>,
     /// 本次删除的分区名列表
     pub dropped: Vec<String>,
+}
+
+/// 单条分区统计信息（来自 PostgreSQL 系统表查询）
+#[derive(Debug, Clone)]
+pub struct PartitionInfo {
+    /// 分区名称（如 `log_metadata_2026_06`）
+    pub partition_name: String,
+    /// 所属父表（`log_metadata` 或 `log_contents`）
+    pub parent_table: String,
+    /// 磁盘占用（字节），来自 `pg_total_relation_size`，前端按 1024 进制格式化为 GiB
+    pub size_bytes: i64,
+    /// 估算行数，来自 `pg_class.reltuples`（近似值，非精确计数）
+    pub row_count_estimate: i64,
 }
 
 /// 受分区管理的表名列表
@@ -48,7 +61,7 @@ impl PartitionManager {
     ///
     /// 通过 `pg_inherits` 系统表查询指定表的所有直接继承分区。
     /// `parent` 参数为表名（如 `log_metadata`）。
-    async fn existing_partitions(&self, parent: &str) -> Result<Vec<String>, AppError> {
+    pub async fn existing_partitions(&self, parent: &str) -> Result<Vec<String>, AppError> {
         let db = &*self.db;
         let sql = format!(
             "SELECT inhrelid::regclass::text AS partition_name \
@@ -190,6 +203,148 @@ impl PartitionManager {
             })
         }
     }
+    /// 获取所有日志分区的磁盘占用和估算行数
+    ///
+    /// 通过 `pg_inherits` 和 `pg_class` 系统表查询 `log_metadata` 和 `log_contents` 的所有分区信息。
+    /// `row_count_estimate` 来自 `pg_class.reltuples`，为 PostgreSQL 估算值，非精确计数。
+    pub async fn get_partition_stats(&self) -> Result<Vec<PartitionInfo>, AppError> {
+        let db = &*self.db;
+        let sql = "SELECT inhrelid::regclass::text AS partition_name, \
+                   inhparent::regclass::text AS parent_table, \
+                   pg_total_relation_size(inhrelid) AS size_bytes, \
+                   c.reltuples::bigint AS row_count_estimate \
+                   FROM pg_inherits \
+                   JOIN pg_class c ON c.oid = inhrelid \
+                   WHERE inhparent IN ('log_metadata'::regclass, 'log_contents'::regclass) \
+                   ORDER BY parent_table, partition_name";
+        let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, []);
+        let rows = db
+            .query_all_raw(stmt)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let mut partitions = Vec::new();
+        for row in &rows {
+            let partition: PartitionInfo = PartitionInfo {
+                partition_name: row
+                    .try_get_by_index(0)
+                    .map_err(|e| AppError::Database(e.to_string()))?,
+                parent_table: row
+                    .try_get_by_index(1)
+                    .map_err(|e| AppError::Database(e.to_string()))?,
+                size_bytes: row
+                    .try_get_by_index(2)
+                    .map_err(|e| AppError::Database(e.to_string()))?,
+                row_count_estimate: row
+                    .try_get_by_index(3)
+                    .map_err(|e| AppError::Database(e.to_string()))?,
+            };
+            partitions.push(partition);
+        }
+        Ok(partitions)
+    }
+
+    /// 删除指定父表的指定月份分区
+    ///
+    /// `year_month` 格式为 `YYYY-MM`，如 `2026-01`。
+    /// 分区名格式为 `{parent_table}_{YYYY}_{MM}`。
+    /// 返回被删除的分区名。
+    pub async fn drop_partition(
+        &self,
+        parent_table: &str,
+        year_month: &str,
+    ) -> Result<String, AppError> {
+        let db = &*self.db;
+        // 将 YYYY-MM 转换为 YYYY_MM
+        let ym = year_month.replace('-', "_");
+        let partition_name = format!("{parent_table}_{ym}");
+        let sql = format!("DROP TABLE IF EXISTS {partition_name}");
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            &sql,
+            [],
+        ))
+        .await
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(partition_name)
+    }
+
+    /// 基于占用上限清理过期日志分区
+    ///
+    /// 获取所有日志分区，按月份聚合大小。若总占用超过 `cap_gb`，
+    /// 从最早月份开始逐月删除分区（跳过当前月份），直到占用低于上限。
+    /// 每月同时删除 `log_metadata` 和 `log_contents` 两个分区。
+    ///
+    /// 返回被删除的分区名列表。
+    pub async fn run_storage_cap_cleanup(&self, cap_gb: u32) -> Result<Vec<String>, AppError> {
+        let cap_bytes = (cap_gb as i64) * 1_073_741_824; // GB → bytes
+        let stats = self.get_partition_stats().await?;
+
+        // 按月份聚合所有分区的大小
+        let mut monthly_sizes: BTreeMap<String, i64> = BTreeMap::new();
+        for p in &stats {
+            // 从分区名提取月份键
+            if let Some(key) = extract_year_month(&p.partition_name) {
+                *monthly_sizes.entry(key).or_insert(0) += p.size_bytes;
+            }
+        }
+
+        // 计算总大小
+        let total_size: i64 = monthly_sizes.values().sum();
+        if total_size <= cap_bytes {
+            return Ok(Vec::new());
+        }
+
+        // 从最老月份开始删除
+        let now = Utc::now().naive_utc().date();
+        let current_ym = format!("{:04}-{:02}", now.year(), now.month());
+
+        let mut removed = Vec::new();
+        let mut remaining = total_size;
+
+        for (month, size) in &monthly_sizes {
+            if remaining <= cap_bytes {
+                break;
+            }
+            // 跳过当前月份
+            if month == &current_ym {
+                continue;
+            }
+            // 删除该月的两个分区
+            match self.drop_partition("log_metadata", month).await {
+                Ok(name) => removed.push(name),
+                Err(e) => tracing::warn!(error = %e, month = %month, "删除 log_metadata 分区失败"),
+            }
+            match self.drop_partition("log_contents", month).await {
+                Ok(name) => removed.push(name),
+                Err(e) => tracing::warn!(error = %e, month = %month, "删除 log_contents 分区失败"),
+            }
+            remaining -= size;
+        }
+
+        Ok(removed)
+    }
+}
+
+/// 从分区名中提取 YYYY-MM 格式的月份标识
+///
+/// 分区名格式为 `{table}_{YYYY}_{MM}`，如 `log_metadata_2026_06`。
+/// 无法解析时返回 None。
+fn extract_year_month(partition_name: &str) -> Option<String> {
+    // 从右侧找最后两个下划线分隔的部分
+    let parts: Vec<&str> = partition_name.rsplitn(3, '_').collect();
+    if parts.len() == 3 {
+        let month_str = parts[0];
+        let year_str = parts[1];
+        if year_str.len() == 4 && month_str.len() == 2 {
+            if let (Ok(y), Ok(m)) = (year_str.parse::<i32>(), month_str.parse::<u32>()) {
+                if (1..=12).contains(&m) {
+                    return Some(format!("{:04}-{:02}", y, m));
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

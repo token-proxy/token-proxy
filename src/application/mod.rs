@@ -26,6 +26,7 @@ use crate::config::Config;
 use crate::domain::access_point::SessionAffinityRepository;
 use crate::infrastructure::auth::JwtService;
 use crate::infrastructure::http_client::ProxyClient;
+use crate::infrastructure::persistence::PartitionManager;
 
 use access_point::AccessPointService;
 use auth::AuthService;
@@ -42,6 +43,7 @@ use user::UserService;
 #[derive(Clone)]
 pub struct AppState {
     pub config: Config,
+    pub partition_manager: Arc<PartitionManager>,
     pub db: Arc<DatabaseConnection>,
     pub provider_service: Arc<ProviderService>,
     pub account_service: Arc<AccountService>,

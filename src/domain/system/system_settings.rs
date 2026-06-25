@@ -12,6 +12,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: i16,
     pub log_retention_months: i16,
+    pub log_storage_cap_gb: Option<i16>,
     pub updated_at: DateTimeWithTimeZone,
 }
 
@@ -23,13 +24,17 @@ impl ActiveModelBehavior for ActiveModel {}
 /// 系统设置领域实体（从 ORM Model 解包）
 #[derive(Clone, Debug)]
 pub struct SystemSettings {
+    /// 日志保留月数（默认 12，取值范围 1-36）
     pub log_retention_months: u32,
+    /// 日志占用上限（GB），None 表示不限制
+    pub log_storage_cap_gb: Option<u32>,
 }
 
 impl Default for SystemSettings {
     fn default() -> Self {
         SystemSettings {
             log_retention_months: 12,
+            log_storage_cap_gb: None,
         }
     }
 }
@@ -39,6 +44,7 @@ impl SystemSettings {
     pub fn from_model(model: &Model) -> Self {
         SystemSettings {
             log_retention_months: model.log_retention_months as u32,
+            log_storage_cap_gb: model.log_storage_cap_gb.map(|v| v as u32),
         }
     }
 }

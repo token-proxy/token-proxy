@@ -44,6 +44,7 @@ impl SystemSettingsRepository for SeaOrmSystemSettingsRepository {
         let active = system_settings::ActiveModel {
             id: Set(1i16),
             log_retention_months: Set(settings.log_retention_months as i16),
+            log_storage_cap_gb: Set(settings.log_storage_cap_gb.map(|v| v as i16)),
             updated_at: Set(chrono::Utc::now().fixed_offset()),
         };
 

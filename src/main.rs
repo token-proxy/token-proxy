@@ -330,6 +330,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings_service = Arc::new(SettingsService::new(
         system_settings_repo.clone(),
         audit_log_repo.clone(),
+        partition_manager.clone(),
     ));
 
     // 启动后台定时任务：清理过期的 session_affinity
@@ -378,11 +379,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        let retention = ss_repo
+                        let settings = ss_repo
                             .get()
                             .await
-                            .map(|s| s.log_retention_months)
-                            .unwrap_or(12);
+                            .unwrap_or_default();
+                        let retention = settings.log_retention_months;
                         match pm.run_maintenance_with_lock(retention).await {
                             Ok(result) => {
                                 if !result.created.is_empty() {
@@ -394,6 +395,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Err(e) => {
                                 tracing::error!(error = %e, "分区维护失败");
+                            }
+                        }
+
+                        // 占用上限清理（若已配置）
+                        if let Some(cap) = settings.log_storage_cap_gb {
+                            if cap > 0 {
+                                match pm.run_storage_cap_cleanup(cap).await {
+                                    Ok(result) => {
+                                        if !result.is_empty() {
+                                            tracing::info!(
+                                                deleted = ?result,
+                                                cap_gb = %cap,
+                                                "占用上限清理完成"
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(error = %e, cap_gb = %cap, "占用上限清理失败");
+                                    }
+                                }
                             }
                         }
                     }
@@ -468,6 +489,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = AppState {
         config: config.clone(),
+        partition_manager: partition_manager.clone(),
         db: db.clone(),
         provider_service,
         account_service,
