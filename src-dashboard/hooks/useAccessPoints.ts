@@ -238,6 +238,7 @@ export default function useAccessPoints(scope: 'all' | 'mine' = 'all') {
     operatingIds,
     copyingUrl,
     emptyForm: EMPTY_FORM,
+    refetch: loadAccessPoints,
     loadProviderById,
     loadAccountsByProvider,
     clearAccounts,

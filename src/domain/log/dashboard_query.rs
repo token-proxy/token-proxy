@@ -60,6 +60,31 @@ pub struct SparklineBucket {
     pub total_tokens: i64,
 }
 
+/// 用量趋势时间序列桶
+///
+/// 按日展示请求数、会话数与 6 类词元，用于趋势图主数据源。
+#[derive(Debug, Clone)]
+pub struct UsageTrendBucket {
+    /// 桶起始时间（按 UTC day 截断）
+    pub bucket_start: DateTime<Utc>,
+    /// 该桶内请求数
+    pub request_count: i64,
+    /// 该桶内不重复会话数
+    pub session_count: i64,
+    /// 该桶内总词元数
+    pub total_tokens: i64,
+    /// 未命中缓存输入词元数
+    pub input_tokens: i64,
+    /// 输出词元数
+    pub output_tokens: i64,
+    /// 缓存创建输入词元数
+    pub cache_creation_tokens: i64,
+    /// 缓存命中输入词元数
+    pub cache_read_tokens: i64,
+    /// 思考词元数
+    pub thinking_tokens: i64,
+}
+
 /// 日历热力图单元格
 ///
 /// 一天一格，记录该日总词元数与请求数；用于年度活跃度热力图渲染。

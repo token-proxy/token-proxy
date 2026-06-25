@@ -1,0 +1,148 @@
+/**
+ * 用量趋势卡片样式。
+ *
+ * 图表颜色通过 Semi CSS 变量驱动，确保亮色和暗色模式均保持可读。
+ */
+
+.usage-trends-card .semi-card-header {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.usage-trends-card .semi-card-header-extra {
+  flex: 0 1 auto;
+}
+
+.usage-trends-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 16px;
+}
+
+.usage-trends-panel {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 10px;
+  background: var(--semi-color-bg-1);
+}
+
+.usage-trends-panel-title {
+  margin-bottom: 8px;
+  color: var(--semi-color-text-1);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.usage-trends-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-bottom: 8px;
+  color: var(--semi-color-text-1);
+  font-size: 12px;
+}
+
+.usage-trends-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.usage-trends-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.usage-trends-legend-item strong {
+  color: var(--semi-color-text-0);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.usage-trends-state {
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--semi-color-text-2);
+}
+
+.usage-trends-error {
+  color: var(--semi-color-danger);
+}
+
+.usage-trends-tooltip {
+  min-width: 160px;
+  padding: 10px 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  background: var(--semi-color-bg-3);
+  box-shadow: var(--semi-shadow-elevated);
+  color: var(--semi-color-text-0);
+}
+
+.usage-trends-tooltip-title {
+  margin-bottom: 8px;
+  color: var(--semi-color-text-1);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.usage-trends-tooltip-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--semi-color-text-0);
+  font-size: 12px;
+}
+
+.usage-trends-tooltip-summary strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-trends-tooltip-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.usage-trends-tooltip-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.usage-trends-tooltip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.usage-trends-tooltip-label {
+  color: var(--semi-color-text-1);
+}
+
+.usage-trends-tooltip-value {
+  color: var(--semi-color-text-0);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+@media (max-width: 1023px) {
+  .usage-trends-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .usage-trends-card .semi-card-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

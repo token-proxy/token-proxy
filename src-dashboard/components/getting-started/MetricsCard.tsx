@@ -52,12 +52,6 @@ function MetricCell({ label, value, trend, changePct }: MetricCellProps): ReactN
   );
 }
 
-/** MetricsCard 组件 Props */
-export interface MetricsCardProps {
-  refreshKey: number;
-  onRefresh: () => void;
-}
-
 /** 从 KpiTrendItem 提取 MetricCell 所需字段 */
 function kpiToProps(item: KpiTrendItem): Omit<MetricCellProps, 'label' | 'value'> {
   return { trend: item.trend, changePct: item.change_pct };
@@ -77,18 +71,23 @@ function fmtRate(rate: number | null | undefined): string {
 /**
  * 数据指标卡片：两组业务链路 6 项核心指标。
  */
-export function MetricsCard({ refreshKey, onRefresh }: MetricsCardProps): ReactNode {
+export function MetricsCard(): ReactNode {
   const [timeRange, setTimeRange] = useState<TimeRangeQuery>({ range: 'last7' });
 
   const fetchDeps = useMemo(
-    () => [timeRange.range, timeRange.start, timeRange.end, refreshKey],
-    [timeRange.range, timeRange.start, timeRange.end, refreshKey],
+    () => [timeRange.range, timeRange.start, timeRange.end],
+    [timeRange.range, timeRange.start, timeRange.end],
   );
 
   const kpiQuery = useFetch(() => dashboardApi.getKpi(timeRange), fetchDeps);
   const qualityQuery = useFetch(() => dashboardApi.getQuality(timeRange), fetchDeps);
 
   const isLoading = kpiQuery.loading || qualityQuery.loading;
+
+  const handleRefresh = () => {
+    kpiQuery.refetch();
+    qualityQuery.refetch();
+  };
 
   useEffect(() => {
     const firstError = [kpiQuery.error, qualityQuery.error].find(Boolean);
@@ -105,7 +104,7 @@ export function MetricsCard({ refreshKey, onRefresh }: MetricsCardProps): ReactN
         <TimeRangeSelector
           value={timeRange}
           onChange={setTimeRange}
-          onRefresh={onRefresh}
+          onRefresh={handleRefresh}
           loading={isLoading}
         />
       }

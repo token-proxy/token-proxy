@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::domain::log::{
     DashboardWindow, HeatmapCell, KpiAggregate, LogContent, LogMetadata, LogTokenUsage,
-    QualityMetrics, SparklineBucket, TopAccessPointRow, TopModelRow,
+    QualityMetrics, SparklineBucket, TopAccessPointRow, TopModelRow, UsageTrendBucket,
 };
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
@@ -143,6 +143,16 @@ pub trait LogRepository: Send + Sync {
         window: &DashboardWindow,
         bucket_count: u32,
     ) -> Result<Vec<SparklineBucket>, AppError>;
+
+    /// 用户视角用量趋势（日级分桶，自动补齐空桶）
+    ///
+    /// 限定 `user_id` 范围，窗口使用闭右开 `[start, end)` 语义。SQL 应用 `usage_by_log`
+    /// 先按日志聚合词元，避免后续 JOIN 放大请求数与词元数。
+    async fn usage_trends_for_user(
+        &self,
+        user_id: Uuid,
+        window: &DashboardWindow,
+    ) -> Result<Vec<UsageTrendBucket>, AppError>;
 
     /// 用户日级 365 天词元热力图（独立于 DashboardWindow）
     ///

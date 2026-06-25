@@ -1,7 +1,7 @@
 /**
  * Dashboard 相关 TypeScript 类型定义。
  *
- * 与后端 `src/application/getting-started/dto/` 的 Rust DTO 一一对应。
+ * 与后端 `src/application/dashboard/dto/` 的 Rust DTO 一一对应。
  * 字段命名遵循后端 serde 序列化结果（snake_case 字段名 + 枚举 lowercase）。
  */
 
@@ -134,6 +134,42 @@ export interface KpiResponse {
   cache_hit_rate: CacheHitRate;
   /** 内嵌时间序列（供 KPI 的 sparkline 使用） */
   sparkline: { buckets: SparklineBucket[] };
+}
+
+/**
+ * 用量趋势时间序列桶。
+ *
+ * 每个桶包含请求数、会话数和 5 类词元用量，供趋势图一次性绘制面积图与堆叠柱状图。
+ */
+export interface UsageTrendBucket {
+  /** 桶起始时间（ISO 8601） */
+  bucket_start: string;
+  /** 该桶请求数 */
+  request_count: number;
+  /** 该桶不重复会话数 */
+  session_count: number;
+  /** 该桶词元总量 */
+  total_tokens: number;
+  /** 未命中缓存输入词元数 */
+  input_tokens: number;
+  /** 输出词元数 */
+  output_tokens: number;
+  /** 缓存创建输入词元数 */
+  cache_creation_tokens: number;
+  /** 缓存命中输入词元数 */
+  cache_read_tokens: number;
+  /** 思考词元数 */
+  thinking_tokens: number;
+}
+
+/**
+ * 用量趋势响应。
+ *
+ * 后端已按所选时间窗口补齐空桶，前端可直接按顺序渲染。
+ */
+export interface UsageTrendsResponse {
+  /** 趋势桶数组 */
+  buckets: UsageTrendBucket[];
 }
 
 // --- 活跃度热力图 ---

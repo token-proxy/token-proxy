@@ -114,3 +114,21 @@
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
+
+/* ─── API Key 入口链接 ─── */
+
+.gs-api-key-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  color: var(--semi-color-text-1);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: text-decoration 0.15s;
+}
+
+.gs-api-key-link:hover {
+  text-decoration: underline;
+  color: var(--semi-color-text-0);
+}

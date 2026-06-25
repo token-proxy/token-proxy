@@ -55,7 +55,7 @@ src/
 ├── application/            # 应用层 (用例编排, 依赖注入, 按聚合组织)
 │   ├── access_point/       # AccessPoint 聚合用例 (含账户池 + 路由网格 DTO)
 │   ├── auth/               # 跨聚合认证用例
-│   ├── dashboard/          # Dashboard 个人用量报告 (KPI / sparkline / heatmap / top models / top access points / quality, 按 user_id 过滤 + 浏览器时区白名单校验)
+│   ├── dashboard/          # Dashboard 个人用量报告 (KPI / sparkline / heatmap / usage trends / top models / top access points / quality, 按 user_id 过滤 + 浏览器时区白名单校验)
 │   ├── log/                # Log 聚合用例
 │   ├── provider/           # Provider 聚合用例
 │   ├── proxy/              # 跨聚合代理转发用例 (含账号重试循环)
@@ -116,9 +116,9 @@ domain/
 │   ├── audit_log.rs        # AuditLog SeaORM Model (operator_id/operator_type 替代 user_id)
 │   ├── audit_action.rs     # AuditAction 枚举 (20 variants: Create/Update/Delete/Enable/Disable/Recover/AutoRecover/CreateApiKey/RevokeApiKey/UpdateApiKeyDescription/ChangePassword/UpdateProfile/UpdateSettings/Login/LoginFailed/Logout/RefreshRejected/DiscoverModels)
 │   ├── audit_entity_type.rs # AuditEntityType 枚举 (8 variants: AccessPoint/Account/Provider/User/UserApiKey/SystemSettings/AuthSession/RefreshToken)
-│   ├── dashboard_query.rs  # Dashboard 读模型 (DashboardWindow / KpiAggregate / SparklineBucket / HeatmapCell / TopModelRow / TopAccessPointRow / QualityMetrics, 全部按 user_id 过滤; LEFT JOIN 容忍引用对象删除)
+│   ├── dashboard_query.rs  # Dashboard 读模型 (DashboardWindow / KpiAggregate / SparklineBucket / HeatmapCell / UsageTrendBucket / TopModelRow / TopAccessPointRow / QualityMetrics, 全部按 user_id 过滤; LEFT JOIN 容忍引用对象删除)
 │   ├── repository_audit_log.rs # AuditLogRepository trait
-│   ├── repository_log.rs   # LogRepository trait (含个人视角聚合方法: aggregate_kpi / aggregate_sparkline / aggregate_heatmap / top_models / top_access_points / quality_metrics, 首参均为 user_id: Uuid)
+│   ├── repository_log.rs   # LogRepository trait (含个人视角聚合方法: aggregate_kpi / aggregate_sparkline / aggregate_heatmap / usage_trends_for_user / top_models / top_access_points / quality_metrics, 首参均为 user_id: Uuid)
 │   ├── repository_token_usage.rs # LogTokenUsageRepository trait
 │   └── mod.rs
 ├── system/                 # System 聚合 (系统设置)
@@ -188,10 +188,10 @@ application/
 │   └── dto/                # Login/Refresh/TokenPair DTO
 ├── dashboard/              # Dashboard 个人用量报告用例 (仅依赖 LogRepository, 全部 SQL 含 user_id 过滤, 无跨聚合 Repository 依赖)
 │   ├── mod.rs
-│   ├── dashboard_service.rs # 编排服务 (get_kpi + get_heatmap + get_top_models + get_top_access_points + get_quality_metrics; compute_trend 处理 5 种 TrendBadge 边界)
+│   ├── dashboard_service.rs # 编排服务 (get_kpi + get_heatmap + get_usage_trends + get_top_models + get_top_access_points + get_quality_metrics; compute_trend 处理 5 种 TrendBadge 边界)
 │   ├── time_window.rs      # 时间范围解析纯逻辑 (today/last7/last30/custom)
 │   ├── timezone.rs         # 时区白名单校验 (chrono_tz::Tz::from_str), 拦截 PostgreSQL AT TIME ZONE 字面量拼接的 SQL 注入风险
-│   └── dto/                # 11 个 DTO: TimeRangeQuery / TimezoneQuery / KpiResponse (含 5 项词元 input/output/cache_creation/cache_read/thinking) / KpiTrendItem / TrendBadge / SparklineSeries / HeatmapResponse / HeatmapCellDto / TopModelItem / TopAccessPointItem / QualityResponse
+│   └── dto/                # Dashboard DTO: TimeRangeQuery / TimezoneQuery / KpiResponse (含 5 项词元 input/output/cache_creation/cache_read/thinking) / KpiTrendItem / TrendBadge / SparklineSeries / HeatmapResponse / HeatmapCellDto / UsageTrendsResponse / UsageTrendPoint (日桶含 request_count / session_count / token 5 项) / TopModelItem / TopAccessPointItem / QualityResponse
 ├── log/                    # Log 聚合用例
 │   ├── mod.rs
 │   ├── log_service.rs      # 日志写入/查询用例 (metadata、content、events、词元用量); 集成 broadcast::Sender 广播新日志事件
@@ -319,7 +319,7 @@ presentation/
 │   ├── access_point_routes.rs # CRUD /api/access-points (含 accounts/model_routing_grid)
 │   ├── proxy_routes.rs     # POST /ap/{short_code}/v1/messages (强制 API key 认证)
 │   ├── log_routes.rs       # GET /api/logs, /api/logs/events (SSE, JWT 保护), /api/logs/sessions, /api/logs/sessions/:id
-│   ├── dashboard_routes.rs # GET /api/getting-started/{kpi,heatmap,top-models,top-access-points,quality} (JWT 保护, handler 通过 CurrentUser extractor 提取 user_id 注入 Service)
+│   ├── dashboard_routes.rs # GET /api/getting-started/{kpi,heatmap,usage-trends,top-models,top-access-points,quality} (JWT 保护, handler 通过 CurrentUser extractor 提取 user_id 注入 Service)
 │   ├── settings_routes.rs  # GET/PUT /api/settings
 │   └── frontend.rs         # 前端静态资源服务
 └── middleware/             # 中间件
@@ -449,10 +449,11 @@ shared/
 │   │   │   ├── StackedBar.tsx            # 纯 CSS Flex 横向堆叠条
 │   │   │   ├── KpiCard.tsx               # 含 sparkline 的 KPI 卡 (个人总请求数 / 词元 5 项 / 错误率等)
 │   │   │   ├── CacheHitCard.tsx          # 纯比率 KPI 卡
-│   │   │   ├── TimeRangeSelector.tsx     # RadioGroup + Popover DatePicker
+│   │   │   ├── TimeRangeSelector.tsx     # RadioGroup + Popover DatePicker, 支持 allowedPresets 限制预设项
 │   │   │   ├── Heatmap.tsx               # GitHub 风格 53×7 方格矩阵 (固定近 1 年窗口, 分位数色阶, 按浏览器时区分桶)
 │   │   │   ├── TopModelsRanking.tsx      # Top Models 排行卡片 (按模型聚合个人请求数 + 词元)
 │   │   │   ├── TopAccessPointsRanking.tsx # Top Access Points 排行卡片 (按个人使用的接入点聚合)
+│   │   │   ├── UsageTrendsCard.tsx        # 用量趋势卡片 (左侧面积图同时展示请求数和会话数; 右侧每日 token 堆叠柱状图使用明确的非黑色色板; 仅支持 30 天 / 自定义范围)
 │   │   │   └── QualityCard.tsx           # 错误率 / 平均延迟 / 重试比例等质量指标卡
 │   │   └── user/                   # 用户管理组件 (1 个)
 │   │       └── ApiKeyManager.tsx        # API Key 表格 + 创建/编辑/吊销 Modal (从 ProfilePage 提取)
@@ -465,7 +466,7 @@ shared/
 │   │   └── AdminLayout.tsx         # 管理界面布局 (Semi Design Navigation)
 │   ├── pages/
 │   │   ├── LoginPage.tsx           # POST /api/auth/login
-│   │   ├── GettingStartedPage.tsx       # 个人用量报告 (CSS Grid 布局, 5 个 useFetch 并行加载 KPI/Heatmap/Top Models/Top Access Points/Quality; 浏览器时区通过 Intl.DateTimeFormat 获取并作为 query 参数传后端; 热力图 deps 与 timeRange 解耦, 仅依赖 refreshKey; 不再订阅 SSE; 配套 GettingStartedPage.css 响应式断点 1280/768)
+│   │   ├── GettingStartedPage.tsx       # 个人用量报告 (CSS Grid 布局, 6 个 useFetch 并行加载 KPI/Heatmap/Usage Trends/Top Models/Top Access Points/Quality; 浏览器时区通过 Intl.DateTimeFormat 获取并作为 query 参数传后端; 热力图 deps 与 timeRange 解耦, 用量趋势仅允许 30 天 / 自定义范围; 不再订阅 SSE; 配套 GettingStartedPage.css 响应式断点 1280/768)
 │   │   ├── ProviderManagement.tsx  # CRUD /api/providers (表格 default_model 列使用 Tag 渲染; 编辑面板模型列表 TagInput + 下方独立 default_model Select; models 为空时禁用选择; TagInput 移除模型联动清空 default_model; 保存时若 default_model 不在 models 中则自动清空)
 │   │   ├── AccessPointManagement.tsx # CRUD /api/access-points (Provider 切换时, 创建态下若有 default_model 则自动生成 __unmatched__(prefix) → __default_model__ 哨兵映射; 保存委托 useAccessPoints hook 过滤无效映射)
 │   │   ├── UserManagement.tsx      # CRUD /api/users
@@ -476,9 +477,9 @@ shared/
 │   │   └── SettingsPage.tsx        # 设置页面
 │   ├── types/                      # TypeScript 类型定义 (accessPoint.ts, dashboard.ts, log.ts)
 │   │   ├── accessPoint.ts          # 接入点相关类型定义
-│   │   ├── dashboard.ts            # 仪表盘个人用量类型 (镜像后端 DTO: TimeRangeQuery / TimezoneQuery / KpiResponse / KpiTrendItem / TrendBadge / SparklineSeries / HeatmapResponse / HeatmapCell / TopModelItem / TopAccessPointItem / QualityResponse)
+│   │   ├── dashboard.ts            # 仪表盘个人用量类型 (镜像后端 DTO: TimeRangeQuery / TimezoneQuery / KpiResponse / KpiTrendItem / TrendBadge / SparklineSeries / HeatmapResponse / HeatmapCell / UsageTrendsResponse / UsageTrendPoint (含 session_count) / TopModelItem / TopAccessPointItem / QualityResponse)
 │   │   └── log.ts                  # 日志相关类型: TokenUsage / SessionContentItem / ConversationTurn(轮次-块-摘要三级结构: 含 TurnBlock 消息块联合类型、TurnTokenSummary 用量汇总、ConversationTurn 轮次容器)
-│   └── utils/                      # 工具函数 (parseLogs.ts, parseOpenAI.ts, format.ts, query.ts)
+│   └── utils/                      # 工具函数 (parseLogs.ts, parseOpenAI.ts, format.ts, query.ts, usageTrends.ts)
 ├── index.html                      # HTML 入口 (Vite)
 ├── vite.config.ts                  # Vite 构建配置
 ├── tsconfig.json                   # TypeScript 根配置
@@ -527,6 +528,7 @@ UI 渲染，同时提升纯函数的可测试性。
 
 - `ModelMappingEditor.tsx` → `modelMappingUtils.ts`（工具函数、类型和常量）
 - `TokenUsageCard.tsx` → `tokenUsage.ts`（词元用量计算纯函数）
+- `UsageTrendsCard.tsx` → `usageTrends.ts`（用量趋势图表数据归一化、堆叠 token 序列和日期格式化）
 
 ### 派生状态模式
 
@@ -775,8 +777,8 @@ LLM API 协议的差异点（请求头格式、session 标识 header 名、API k
     Provider 定义差异化的目标模型映射，支持精确匹配、前缀匹配和 **unmatched** 兜底
 12. **Account 自动故障检测**: Account 实体支持 disabled_reason 枚举（manual/rate_limited/balance_exhausted/fault）和
     available_at 自动恢复时间戳，is_available() 方法统一检查 status 和禁用原因
-13. **Dashboard 个人用量报告**: Dashboard 自 2026-06-24 起从「全局聚合视角」反转为「个人用量报告」视角——项目没有 role 字段，\* \*所有登录用户（含管理员）只能看到自己的数据\*\*。所有 Dashboard 聚合 SQL 强制 `WHERE user_id = ?` 过滤；`LogRepository` 6
-    个聚合方法（`aggregate_kpi` / `aggregate_sparkline` / `aggregate_heatmap` / `top_models` / `top_access_points` /
+13. **Dashboard 个人用量报告**: Dashboard 自 2026-06-24 起从「全局聚合视角」反转为「个人用量报告」视角——项目没有 role 字段，**所有登录用户（含管理员）只能看到自己的数据**。所有 Dashboard 聚合 SQL 强制 `WHERE user_id = ?` 过滤；`LogRepository` 7
+    个聚合方法（`aggregate_kpi` / `aggregate_sparkline` / `aggregate_heatmap` / `usage_trends_for_user` / `top_models` / `top_access_points` /
     `quality_metrics`）首参均为 `user_id: Uuid`；展示层 handler 通过 `CurrentUser(user_id): CurrentUser` extractor 从 JWT
     提取并下传。`DashboardService` 仅依赖 `Arc<dyn LogRepository>`，引用对象（access_points / providers）一律 LEFT JOIN 并以
     `Option<String>` 容忍删除。趋势同比通过 `compute_trend` 纯函数覆盖 5 种 TrendBadge 边界（empty / new / down=-100 /
@@ -789,7 +791,7 @@ LLM API 协议的差异点（请求头格式、session 标识 header 名、API k
     `&str`，保持 domain 层不依赖时区库
 15. **Dashboard 时间维度解耦**: 热力图视图固定使用「近 1 年」窗口（53×7 = 371 天，与时间范围选择器解耦），由独立的
     `get_heatmap` 端点服务；其余卡片（KPI / Top Models / Top Access Points / Quality）共享
-    `?range=today|last7|last30|custom` 时间窗口。前端在 useFetch 依赖数组上明确区分：热力图仅依赖 `refreshKey`，其他 4 个
+    `?range=today|last7|last30|custom` 时间窗口；用量趋势卡片单独限制为 `last30` 和 `custom`，后端日桶同时返回 `request_count` 与 `session_count`，前端左侧面积图并列展示请求数和会话数，右侧 token 堆叠柱状图使用明确的非黑色色板区分 5 类词元。两个 `TimeRangeSelector`（数据指标与用量趋势）切换到 `custom` 时必须继承当前已选预设范围：`today` 为当天 00:00 到当前时间，`last7` 为最近 7 天，`last30` 为最近 30 天；已有 custom start/end 时保留原自定义范围。前端在 useFetch 依赖数组上明确区分：热力图仅依赖 `refreshKey`，其他 5 个
     fetcher 同时依赖 `timeRange + refreshKey`
 
 ## 安全设计
@@ -951,6 +953,8 @@ Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules
 
 | 日期             | 变更说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-25       | Dashboard 时间选择器自定义范围继承规则: 两个 `TimeRangeSelector`（数据指标与用量趋势）切换到 `custom` 时继承当前已选预设范围，`today` 映射为当天 00:00 到当前时间，`last7` 映射为最近 7 天，`last30` 映射为最近 30 天；已有 custom start/end 时保留原自定义范围。该规则保持时间维度解耦原则不变，补充前端交互契约，避免自定义范围固定回退到最近 7 天                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 2026-06-25       | Dashboard 用量趋势卡片追加契约: `usage-trends` 后端响应日桶新增 `session_count`，与 `request_count` 一起描述请求量和会话量；前端 `UsageTrendsCard` 左侧面积图同时展示请求数和会话数，右侧每日 token 堆叠柱状图使用明确的非黑色色板区分 5 类词元。该变更保持个人视角、`user_id` 过滤和时间维度解耦原则不变，仅扩展 Dashboard 读模型和图表展示契约                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 2026-06-24       | Dashboard 个人用量报告重构: 视角从「全局聚合」反转为「个人用量报告」——项目无 role 字段，所有用户（含管理员）只看自己。`LogRepository` 删除 `top_users` / `top_accounts`，新增 `aggregate_heatmap` / `top_models` / `top_access_points` / `quality_metrics` 共 4 个个人视角聚合方法；`aggregate_kpi` / `aggregate_sparkline` 改造首参为 `user_id: Uuid`；所有聚合 SQL 强制 `WHERE user_id = ?` 过滤。领域读模型扩展：`KpiAggregate` 删除 `active_user_count`、新增 5 项词元（input/output/cache_creation/cache_read/thinking），新增 `HeatmapCell` / `TopModelRow` / `TopAccessPointRow` / `QualityMetrics`，删除 `TopUserRow` / `TopAccountRow`。新增 `application/dashboard/timezone.rs` 用 `chrono_tz::Tz::from_str` 实现 IANA 时区白名单校验，拦截 PostgreSQL `AT TIME ZONE` 字面量拼接的 SQL 注入风险；时区校验置于 application 层，domain trait 接受已校验 `&str`。路由端点变更为 5 个（`/api/getting-started/{kpi,heatmap,top-models,top-access-points,quality}`），handler 注入 `CurrentUser(user_id)` extractor。前端：新增 `Heatmap.tsx`（GitHub 风格 53×7 方格矩阵 + 分位数色阶, 固定近 1 年窗口）/ `TopModelsRanking.tsx` / `TopAccessPointsRanking.tsx` / `QualityCard.tsx`，删除 `TopUsersRanking.tsx` / `TopAccountsRanking.tsx` / `TopClientsRanking.tsx`；GettingStartedPage 改为 5 个 useFetch 并行，热力图 deps 与 timeRange 解耦（仅依赖 refreshKey）；Dashboard 移除 SSE 订阅；浏览器时区通过 `Intl.DateTimeFormat().resolvedOptions().timeZone` 获取并作为 query 参数传后端。新增依赖 `chrono-tz = "0.10"`。新增核心架构原则 13 (个人用量报告) / 14 (时区 SQL 注入防护) / 15 (时间维度解耦)，替换旧的「Dashboard 只读视图」原则 |
 | 2026-06-23       | 审计日志标准化: 新增 `AuditAction` 枚举（20 variants, domain/log/audit_action.rs）和 `AuditEntityType` 枚举（8 variants, domain/log/audit_entity_type.rs），通过 Display trait 序列化为 snake_case 字符串写入 VARCHAR 列。7 个 Service 的 26 个写操作全部覆盖审计日志（UserService 5 / UserApiKeyService 4 / ProviderService 4 / AccountService 6 / AccessPointService 3 / SettingsService 1 / AuthService 3），各 Service 内聚私有 `write_audit_log()` 辅助方法，统一 fire-and-forget + tracing::error! 模式。领域层、数据库 schema 无变更（audit_logs 表结构保持 7 字段不变）。审计日志永久保留、不分区、仅后端写入、不暴露 API 和前端页面。operator_id 管理员操作传入 CurrentUser，系统自动操作传 None。details 不记录 API key 明文、密码哈希、JWT token 等敏感信息                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 2026-06-23       | 前端日志实时刷新（SSE 推送）: 新增 `NewLogEvent` DTO（`application/log/dto/new_log_event.rs`），LogService 集成 `broadcast::Sender` 在日志写入后广播事件；展示层新增 `GET /api/logs/events` SSE 端点（JWT 保护，`text/event-stream`，响应 `shutdown_rx` 优雅关闭信号）；AppState 新增 `log_event_tx` 和 `shutdown_rx` 字段；main.rs 创建 `broadcast::channel::<NewLogEvent>(256)`。选择 SSE 而非 WebSocket（仅需单向推送，axum 原生支持，EventSource 自动重连）；broadcast 容量 256 满时丢弃最旧事件，前端全量刷新兜底；JWT 通过 URL query 参数传递（EventSource API 不支持自定义 header）。前端：新增 `useLogEvents.ts` hook（EventSource 连接管理）、`ConnectionIndicator.tsx`（SSE 连接状态绿/黄/红三色圆点指示器）；`useFetch.ts` 改造 refetch 时 `setLoading(true)`；`RequestLogPage.tsx`、`SessionLogPage.tsx` 集成 SSE 自动刷新；`SessionDetailView.tsx` 新增 `beforeRefresh` prop。领域层和基础设施层无变更，数据库 schema 无变更                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |

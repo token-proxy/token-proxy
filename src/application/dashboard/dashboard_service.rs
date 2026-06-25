@@ -16,13 +16,14 @@
 
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use uuid::Uuid;
 
 use crate::application::dashboard::dto::{
     CacheHitRate, HeatmapCellDto, HeatmapResponse, KpiResponse, KpiTrendItem, QualityResponse,
-    RateTrendItem, SparklineBucketDto, SparklineSeries, TimeRangeQuery, TokenComposition,
-    TopAccessPointItem, TopAccessPointsResponse, TopModelItem, TopModelsResponse, TrendBadge,
+    RateTrendItem, SparklineBucketDto, SparklineSeries, TimeRangePreset, TimeRangeQuery,
+    TokenComposition, TopAccessPointItem, TopAccessPointsResponse, TopModelItem, TopModelsResponse,
+    TrendBadge, UsageTrendBucketDto, UsageTrendsResponse,
 };
 use crate::application::dashboard::time_window::resolve_windows;
 use crate::application::dashboard::timezone::validate_timezone;
@@ -38,6 +39,9 @@ const RANKING_LIMIT_ACCESS_POINTS: u32 = 5;
 
 /// 趋势"持平"判定阈值（绝对百分比 < FLAT_THRESHOLD 视为持平）
 const FLAT_THRESHOLD: f64 = 0.5;
+
+/// 自定义用量趋势最大跨度天数
+const USAGE_TRENDS_CUSTOM_MAX_DAYS: i64 = 366;
 
 /// Dashboard 应用层 Service
 pub struct DashboardService {
@@ -110,6 +114,58 @@ impl DashboardService {
             composition,
             cache_hit_rate,
             sparkline: SparklineSeries { buckets },
+        })
+    }
+
+    /// 获取用量趋势（日级请求数与词元分项）
+    ///
+    /// 仅支持 `last30` 和 `custom`，避免短窗口与 KPI sparkline 语义重叠。
+    /// 自定义范围最大跨度为 366 天，防止趋势查询一次扫描过多分区。
+    #[tracing::instrument(skip_all, fields(user_id = %user_id, range = ?q.range))]
+    pub async fn get_usage_trends(
+        &self,
+        user_id: Uuid,
+        q: TimeRangeQuery,
+    ) -> Result<UsageTrendsResponse, AppError> {
+        match q.range {
+            TimeRangePreset::Last30 | TimeRangePreset::Custom => {}
+            TimeRangePreset::Today | TimeRangePreset::Last7 => {
+                return Err(AppError::Validation(
+                    "用量趋势仅支持 last30 或 custom 时间范围".to_string(),
+                ));
+            }
+        }
+
+        let window = resolve_windows(&q)?.current;
+        if matches!(q.range, TimeRangePreset::Custom)
+            && window.end - window.start > Duration::days(USAGE_TRENDS_CUSTOM_MAX_DAYS)
+        {
+            return Err(AppError::Validation(format!(
+                "用量趋势自定义时间范围不能超过 {} 天",
+                USAGE_TRENDS_CUSTOM_MAX_DAYS
+            )));
+        }
+
+        let buckets = self
+            .log_repository
+            .usage_trends_for_user(user_id, &window)
+            .await?;
+
+        Ok(UsageTrendsResponse {
+            buckets: buckets
+                .into_iter()
+                .map(|b| UsageTrendBucketDto {
+                    bucket_start: b.bucket_start,
+                    request_count: b.request_count,
+                    session_count: b.session_count,
+                    total_tokens: b.total_tokens,
+                    input_tokens: b.input_tokens,
+                    output_tokens: b.output_tokens,
+                    cache_creation_tokens: b.cache_creation_tokens,
+                    cache_read_tokens: b.cache_read_tokens,
+                    thinking_tokens: b.thinking_tokens,
+                })
+                .collect(),
         })
     }
 

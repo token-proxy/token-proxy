@@ -6,6 +6,7 @@
 //! 端点：
 //! - `GET /api/getting-started/heatmap?tz=Asia/Shanghai` 近 1 年用量热力图
 //! - `GET /api/getting-started/kpi?range=...` KPI 卡组（请求数 + 词元总量 + 构成 + 缓存命中率 + sparkline）
+//! - `GET /api/getting-started/usage-trends?range=last30|custom` 用户视角日级用量趋势
 //! - `GET /api/getting-started/top-models?range=...` 用户视角模型排行 Top 8
 //! - `GET /api/getting-started/top-access-points?range=...` 用户视角接入点排行 Top 5
 //! - `GET /api/getting-started/quality?range=...` 调用质量指标
@@ -21,7 +22,7 @@ use axum::{
 
 use crate::application::dashboard::dto::{
     HeatmapQuery, HeatmapResponse, KpiResponse, QualityResponse, TimeRangeQuery,
-    TopAccessPointsResponse, TopModelsResponse,
+    TopAccessPointsResponse, TopModelsResponse, UsageTrendsResponse,
 };
 use crate::application::AppState;
 use crate::presentation::middleware::jwt_auth::CurrentUser;
@@ -32,6 +33,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/getting-started/heatmap", get(get_heatmap))
         .route("/api/getting-started/kpi", get(get_kpi))
+        .route("/api/getting-started/usage-trends", get(get_usage_trends))
         .route("/api/getting-started/top-models", get(get_top_models))
         .route(
             "/api/getting-started/top-access-points",
@@ -55,6 +57,18 @@ async fn get_kpi(
     Query(query): Query<TimeRangeQuery>,
 ) -> Result<Json<KpiResponse>, AppError> {
     let resp = state.dashboard_service.get_kpi(user_id, query).await?;
+    Ok(Json(resp))
+}
+
+async fn get_usage_trends(
+    State(state): State<AppState>,
+    CurrentUser(user_id): CurrentUser,
+    Query(query): Query<TimeRangeQuery>,
+) -> Result<Json<UsageTrendsResponse>, AppError> {
+    let resp = state
+        .dashboard_service
+        .get_usage_trends(user_id, query)
+        .await?;
     Ok(Json(resp))
 }
 

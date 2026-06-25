@@ -31,6 +31,8 @@ export interface TimeRangeSelectorProps {
   onRefresh: () => void;
   /** 数据加载中（控制刷新按钮 spinner），默认 false */
   loading?: boolean;
+  /** 允许展示的预设范围，默认展示全部预设 */
+  allowedPresets?: TimeRangePreset[];
 }
 
 /** 预设范围的中文标签，按显示顺序排列 */
@@ -41,15 +43,37 @@ const PRESET_LABELS: Record<TimeRangePreset, string> = {
   custom: '自定义',
 };
 
-/** 自定义模式默认窗口（7 天）的毫秒数 */
-const DEFAULT_CUSTOM_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/** 根据当前预设推导自定义日期范围，保证切换到自定义时继承用户刚才看到的时间窗。 */
+function buildCustomRangeFromPreset(value: TimeRangeQuery): { start: string; end: string } {
+  if (value.range === 'custom' && value.start && value.end) {
+    return { start: value.start, end: value.end };
+  }
+
+  const end = new Date();
+  const start = new Date(end);
+
+  switch (value.range) {
+    case 'today':
+      start.setHours(0, 0, 0, 0);
+      break;
+    case 'last30':
+      start.setDate(start.getDate() - 30);
+      break;
+    case 'last7':
+    case 'custom':
+      start.setDate(start.getDate() - 7);
+      break;
+  }
+
+  return { start: start.toISOString(), end: end.toISOString() };
+}
 
 /**
  * 时间范围切换器 + 刷新按钮。
  *
  * 交互逻辑：
  * - 切换到 today / last7 / last30 时，onChange 传入 `{ range }` 不带 start/end
- * - 切换到 custom 时，自动初始化为最近 7 天（now - 7d ~ now）并展开 Popover
+ * - 切换到 custom 时，只初始化为当前预设对应的同等时间窗并展开 Popover，不立即触发 onChange
  * - 自定义日期选完两端后，转换为 ISO 8601 字符串通过 onChange 上报
  *
  * @example
@@ -68,22 +92,20 @@ export function TimeRangeSelector({
   onChange,
   onRefresh,
   loading = false,
+  allowedPresets = ['today', 'last7', 'last30', 'custom'],
 }: TimeRangeSelectorProps) {
   // 自定义日期 Popover 显隐控制（仅 custom 模式下使用）
   const [customPopoverVisible, setCustomPopoverVisible] = useState(false);
+  const [customDraftDates, setCustomDraftDates] = useState<[Date, Date] | undefined>();
 
-  /** 处理预设切换：custom 需要初始化默认区间并展开 Popover，其它清空 start/end */
+  /** 处理预设切换：custom 继承当前时间窗但不立即提交，其它清空 start/end */
   const handlePresetChange = (next: TimeRangePreset) => {
     if (next === 'custom') {
-      const now = new Date();
-      const sevenDaysAgo = new Date(now.getTime() - DEFAULT_CUSTOM_WINDOW_MS);
-      onChange({
-        range: 'custom',
-        start: sevenDaysAgo.toISOString(),
-        end: now.toISOString(),
-      });
+      const customRange = buildCustomRangeFromPreset(value);
+      setCustomDraftDates([new Date(customRange.start), new Date(customRange.end)]);
       setCustomPopoverVisible(true);
     } else {
+      setCustomDraftDates(undefined);
       onChange({ range: next });
       setCustomPopoverVisible(false);
     }
@@ -92,10 +114,12 @@ export function TimeRangeSelector({
   /** DatePicker 选择回调：将 [Date, Date] 转换为 ISO 字符串后上报 */
   const handleCustomDateChange: DatePickerProps['onChange'] = (dates) => {
     if (Array.isArray(dates) && dates.length === 2 && dates[0] && dates[1]) {
+      const nextDates: [Date, Date] = [new Date(dates[0]), new Date(dates[1])];
+      setCustomDraftDates(nextDates);
       onChange({
         range: 'custom',
-        start: toIsoString(dates[0]),
-        end: toIsoString(dates[1]),
+        start: toIsoString(nextDates[0]),
+        end: toIsoString(nextDates[1]),
       });
     }
   };
@@ -104,7 +128,7 @@ export function TimeRangeSelector({
   const customDates: [Date, Date] | undefined =
     value.range === 'custom' && value.start && value.end
       ? [new Date(value.start), new Date(value.end)]
-      : undefined;
+      : customDraftDates;
 
   return (
     <div
@@ -116,7 +140,7 @@ export function TimeRangeSelector({
       }}
     >
       <ButtonGroup size="small" aria-label="时间范围">
-        {(Object.keys(PRESET_LABELS) as TimeRangePreset[]).map((preset) => (
+        {allowedPresets.map((preset) => (
           <Button
             key={preset}
             theme={value.range === preset ? 'solid' : 'light'}

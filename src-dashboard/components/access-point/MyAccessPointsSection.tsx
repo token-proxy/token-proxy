@@ -13,8 +13,9 @@ import {
   IconPlus,
   IconChevronDown,
   IconTerminal,
+  IconRefresh,
 } from '@douyinfe/semi-icons';
-import { useState, type ReactNode } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import useAccessPoints from '../../hooks/useAccessPoints';
 import AccessPointDrawer from './AccessPointDrawer';
 import SplitButtonGroup from '@douyinfe/semi-ui/lib/es/button/splitButtonGroup';
@@ -46,7 +47,17 @@ export function MyAccessPointsSection({
     deleteAccessPoint,
     copyAccessUrl,
     copyClaudeCodeCommand,
+    refetch,
   } = useAccessPoints('mine');
+
+  // 按创建时间升序，旧的在前、新的在后
+  const sortedAccessPoints = useMemo(
+    () =>
+      [...accessPoints].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      ),
+    [accessPoints],
+  );
 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [editingAccessPoint, setEditingAccessPoint] = useState<AccessPoint | null>(null);
@@ -104,10 +115,19 @@ export function MyAccessPointsSection({
           <Button size="small" icon={<IconPlus />} onClick={handleCreate}>
             新建接入点
           </Button>
+          <Button
+            icon={<IconRefresh />}
+            loading={loading}
+            onClick={refetch}
+            type="tertiary"
+            size="small"
+          >
+            刷新
+          </Button>
         </div>
       }
     >
-      {!loading && accessPoints.length === 0 && (
+      {!loading && sortedAccessPoints.length === 0 && (
         <Card
           bordered={false}
           style={{
@@ -133,7 +153,7 @@ export function MyAccessPointsSection({
           gap: 16,
         }}
       >
-        {accessPoints.map((ap) => {
+        {sortedAccessPoints.map((ap) => {
           // 统计服务商数、账号总数、可用账号数
           const providerIds = new Set(ap.accounts?.map((a) => a.provider_id).filter(Boolean));
           const accountCount = ap.accounts?.length ?? 0;

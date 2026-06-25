@@ -12,6 +12,7 @@ import type {
   TimeRangeQuery,
   TopAccessPointsResponse,
   TopModelsResponse,
+  UsageTrendsResponse,
 } from './types/dashboard';
 
 // access_token 距离过期不足该阈值时, 请求前主动刷新（秒）
@@ -205,6 +206,7 @@ function buildDashboardQuery(q: TimeRangeQuery): string {
  * - `/api/getting-started/top-models` — 用户视角模型 Top 8
  * - `/api/getting-started/top-access-points` — 用户视角接入点 Top 5
  * - `/api/getting-started/quality` — 用户视角调用质量指标
+ * - `/api/getting-started/usage-trends` — 用户视角用量趋势
  */
 export const dashboardApi = {
   /** 获取 4 张 KPI 卡数据 + 内嵌 sparkline 时间序列 */
@@ -232,5 +234,11 @@ export const dashboardApi = {
   /** 获取用户视角调用质量指标（成功率 / 错误率 / 中断率 / 平均与 P95 耗时） */
   getQuality(q: TimeRangeQuery): Promise<QualityResponse> {
     return api.get<QualityResponse>(`/api/getting-started/quality?${buildDashboardQuery(q)}`);
+  },
+  /** 获取用户视角用量趋势（请求数 + 词元 5 维度时间序列） */
+  getUsageTrends(q: TimeRangeQuery): Promise<UsageTrendsResponse> {
+    return api.get<UsageTrendsResponse>(
+      `/api/getting-started/usage-trends?${buildDashboardQuery(q)}`,
+    );
   },
 };

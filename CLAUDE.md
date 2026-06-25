@@ -150,10 +150,9 @@ DDD 四层：领域层（`domain/`）→ 应用层（`application/`）→ 基础
   `WHERE user_id = ?`
 - **5 个 GET 端点**: `/api/getting-started/{heatmap,kpi,top-models,top-access-points,quality}`
 - **时间窗口**: 除 heatmap 外共享 `?range=today|last7|last30|custom`（默认 `last7`）；heatmap 固定当前自然年，支持请求次数 /
-  词元总量 toggle
+  词元总量 toggle；切换到 custom 时，前端 `TimeRangeSelector` 不立即触发 `onChange`（不发起后端请求），仅根据当前已选范围初始化草稿日期并打开 DatePicker：today 为当天 00:00 到当前时间，last7 为最近 7 天，last30 为最近 30 天，已有 custom start/end 时保留原自定义范围；用户选择完自定义日期后，DatePicker 回调才提交 `onChange`。数据指标和用量趋势两个时间选择器都遵循该规则
 - **时区 SQL 注入防护**: 热力图按浏览器时区分桶，`validate_timezone()` 用 `chrono_tz::Tz::from_str` 白名单校验后
-  `format!` 拼接 `AT TIME ZONE`（PostgreSQL 不接受参数占位符，白名单是唯一防线）；heatmap deps 仅含 `refreshKey`，不受
-  `timeRange` 影响
+  `format!` 拼接 `AT TIME ZONE`（PostgreSQL 不接受参数占位符，白名单是唯一防线）；heatmap 数据获取 deps 为 `[]`（空数组），仅挂载时加载，刷新由 `UsageOverviewCard` 自身的刷新按钮触发 `refetch`，不受 `timeRange` 影响
 - **sparkline 空桶补齐**: SQL 端 `generate_series` 完成，应用层无需再补
 - **趋势对比**: 覆盖 5 种边界（up / down / flat / new / empty）
 

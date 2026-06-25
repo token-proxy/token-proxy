@@ -21,7 +21,7 @@ use crate::domain::log::metadata::{ActiveModel, Column, Entity};
 use crate::domain::log::{
     DashboardWindow, HeatmapCell, KpiAggregate, LogMetadataWithTokenSummary, LogQuery,
     LogRepository, QualityMetrics, SessionQuery, SessionSummaryData, SparklineBucket,
-    TopAccessPointRow, TopModelRow,
+    TopAccessPointRow, TopModelRow, UsageTrendBucket,
 };
 use crate::domain::log::{LogContent, LogMetadata, LogTokenUsage};
 use crate::shared::error::AppError;
@@ -818,6 +818,100 @@ impl LogRepository for SeaOrmLogRepository {
                     bucket_start: bucket_start.with_timezone(&Utc),
                     request_count: row.try_get_by_index::<i64>(1)?,
                     total_tokens: row.try_get_by_index::<i64>(2)?,
+                })
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
+
+        Ok(buckets)
+    }
+
+    /// 用量趋势聚合：按日补齐请求数与词元分项。
+    ///
+    /// 1. `usage_by_log` 先按 `log_id` 聚合词元，避免未来 token 表扩展为多行后 JOIN 放大。
+    /// 2. `data` 仅按当前用户与闭右开窗口过滤，保证个人视角隔离。
+    /// 3. `series` 用日级 `generate_series` 补齐空桶，前端无需再补缺口。
+    #[tracing::instrument(
+        skip(self),
+        fields(user_id = %user_id, window.start = %window.start, window.end = %window.end)
+    )]
+    async fn usage_trends_for_user(
+        &self,
+        user_id: Uuid,
+        window: &DashboardWindow,
+    ) -> Result<Vec<UsageTrendBucket>, AppError> {
+        let db = &*self.db;
+        let sql = r#"
+            WITH series AS (
+                SELECT generate_series(
+                    date_trunc('day', $2::timestamptz),
+                    date_trunc('day', $3::timestamptz - interval '1 second'),
+                    interval '1 day'
+                ) AS bucket_start
+            ), usage_by_log AS (
+                SELECT
+                    log_id,
+                    COALESCE(SUM(total_tokens), 0)::BIGINT AS total_tokens,
+                    COALESCE(SUM(input_tokens), 0)::BIGINT AS input_tokens,
+                    COALESCE(SUM(output_tokens), 0)::BIGINT AS output_tokens,
+                    COALESCE(SUM(cache_creation_input_tokens), 0)::BIGINT AS cache_creation_tokens,
+                    COALESCE(SUM(cache_read_input_tokens), 0)::BIGINT AS cache_read_tokens,
+                    COALESCE(SUM(thinking_tokens), 0)::BIGINT AS thinking_tokens
+                FROM log_token_usage
+                GROUP BY log_id
+            ), data AS (
+                SELECT
+                    date_trunc('day', lm.timestamp) AS bucket_start,
+                    COUNT(*)::BIGINT AS request_count,
+                    COUNT(DISTINCT lm.session_id)::BIGINT AS session_count,
+                    COALESCE(SUM(ubl.total_tokens), 0)::BIGINT AS total_tokens,
+                    COALESCE(SUM(ubl.input_tokens), 0)::BIGINT AS input_tokens,
+                    COALESCE(SUM(ubl.output_tokens), 0)::BIGINT AS output_tokens,
+                    COALESCE(SUM(ubl.cache_creation_tokens), 0)::BIGINT AS cache_creation_tokens,
+                    COALESCE(SUM(ubl.cache_read_tokens), 0)::BIGINT AS cache_read_tokens,
+                    COALESCE(SUM(ubl.thinking_tokens), 0)::BIGINT AS thinking_tokens
+                FROM log_metadata lm
+                LEFT JOIN usage_by_log ubl ON ubl.log_id = lm.id
+                WHERE lm.user_id = $1::uuid
+                  AND lm.timestamp >= $2::timestamptz
+                  AND lm.timestamp < $3::timestamptz
+                GROUP BY 1
+            )
+            SELECT
+                s.bucket_start,
+                COALESCE(d.request_count, 0)::BIGINT AS request_count,
+                COALESCE(d.session_count, 0)::BIGINT AS session_count,
+                COALESCE(d.total_tokens, 0)::BIGINT AS total_tokens,
+                COALESCE(d.input_tokens, 0)::BIGINT AS input_tokens,
+                COALESCE(d.output_tokens, 0)::BIGINT AS output_tokens,
+                COALESCE(d.cache_creation_tokens, 0)::BIGINT AS cache_creation_tokens,
+                COALESCE(d.cache_read_tokens, 0)::BIGINT AS cache_read_tokens,
+                COALESCE(d.thinking_tokens, 0)::BIGINT AS thinking_tokens
+            FROM series s
+            LEFT JOIN data d USING (bucket_start)
+            ORDER BY s.bucket_start
+        "#;
+
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            [user_id.into(), window.start.into(), window.end.into()],
+        );
+
+        let results = db.query_all_raw(stmt).await?;
+        let buckets = results
+            .iter()
+            .map(|row| {
+                let bucket_start: DateTime<FixedOffset> = row.try_get_by_index(0)?;
+                Ok(UsageTrendBucket {
+                    bucket_start: bucket_start.with_timezone(&Utc),
+                    request_count: row.try_get_by_index::<i64>(1)?,
+                    session_count: row.try_get_by_index::<i64>(2)?,
+                    total_tokens: row.try_get_by_index::<i64>(3)?,
+                    input_tokens: row.try_get_by_index::<i64>(4)?,
+                    output_tokens: row.try_get_by_index::<i64>(5)?,
+                    cache_creation_tokens: row.try_get_by_index::<i64>(6)?,
+                    cache_read_tokens: row.try_get_by_index::<i64>(7)?,
+                    thinking_tokens: row.try_get_by_index::<i64>(8)?,
                 })
             })
             .collect::<Result<Vec<_>, AppError>>()?;
