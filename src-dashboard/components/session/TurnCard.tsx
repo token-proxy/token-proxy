@@ -21,10 +21,10 @@ interface TurnCardProps {
 function renderTokenCompact(summary: TurnTokenSummary): ReactNode {
   const tooltipContent = (
     <div style={{ whiteSpace: 'nowrap', lineHeight: 2 }}>
-      <div>输入: {formatNumber(summary.inputTokens)}</div>
+      <div>未命中缓存: {formatNumber(summary.inputTokens)}</div>
       <div>输出: {formatNumber(summary.outputTokens)}</div>
-      <div>缓存创建: {formatNumber(summary.cacheCreationTokens)}</div>
-      <div>缓存读取: {formatNumber(summary.cacheReadTokens)}</div>
+      <div>缓存创建输入: {formatNumber(summary.cacheCreationTokens)}</div>
+      <div>缓存命中输入: {formatNumber(summary.cacheReadTokens)}</div>
       <div>思考: {formatNumber(summary.thinkingTokens)}</div>
       <div>总计: {formatNumber(summary.totalTokens)}</div>
     </div>

@@ -15,9 +15,9 @@ interface TokenCellProps {
 /** 词元分类显示配置，按 label 排序展示在 Tooltip 中 */
 const CATEGORIES = [
   { label: '总计', value: (_v: Values) => _v.total },
-  { label: '新输入', value: (_v: Values) => _v.input },
-  { label: '缓存创建', value: (_v: Values) => _v.cacheCreate },
-  { label: '缓存读取', value: (_v: Values) => _v.cacheRead },
+  { label: '未命中缓存', value: (_v: Values) => _v.input },
+  { label: '缓存创建输入', value: (_v: Values) => _v.cacheCreate },
+  { label: '缓存命中输入', value: (_v: Values) => _v.cacheRead },
   { label: '输出', value: (_v: Values) => _v.output },
   { label: '思考', value: (_v: Values) => _v.thinking },
 ];

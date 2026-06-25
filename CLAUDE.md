@@ -45,28 +45,33 @@ DDD 四层：领域层（`domain/`）→ 应用层（`application/`）→ 基础
 
 ## 术语表
 
-| 中文         | 英文原文                     | 说明                                                                               |
-| ------------ | ---------------------------- | ---------------------------------------------------------------------------------- |
-| 接入点       | Access Point                 | 对外暴露的 API 调用入口，通过短码 URL 提供服务                                     |
-| 服务商       | Provider                     | 上游 LLM API 服务商（如 Anthropic、OpenAI）                                        |
-| 账号         | Account                      | 服务商下的具体 API 账号                                                            |
-| 短码         | Short Code                   | 接入点的 URL 标识，用户指定或自动生成 16 位随机码                                  |
-| 词元         | Token                        | LLM 用量度量单位                                                                   |
-| 路由策略     | Routing Strategy             | 账户池排序策略：Priority（按优先级）/ Weighted（权重随机）                         |
-| 模型路由网格 | Model Routing Grid           | 二维表格（source_model × provider_id），精确匹配 > 前缀匹配 > `__unmatched__` 兜底 |
-| 会话粘滞     | Session Affinity             | 同一会话复用同一账号                                                               |
-| 客户端类型   | Client Type                  | ClaudeCode / Codex / Other / Unknown，与协议类型正交                               |
-| 协议类型     | API Type / Access Point Type | Anthropic / OpenAi，挂载 5 个协议适配方法                                          |
-| 代理管道     | Proxy Pipeline               | 核心转发调度骨架                                                                   |
-| 审计日志     | Audit Log                    | 记录所有管理操作的审计轨迹                                                         |
-| 故障检测     | Fault Detection              | 上游响应自动归类并触发账号禁用                                                     |
-| 重试决策     | Retry Decision               | `Return(Response)` 终止 / `Continue(AppError)` 切换下一候选                        |
-| 优雅关闭     | Graceful Shutdown            | 关闭期间新请求短路，等待在途请求完成                                               |
-| 即发即忘     | Fire-and-Forget              | 异步写入不阻塞主业务，失败仅记录日志                                               |
-| 聚合根       | Aggregate Root               | 聚合的唯一入口（如 `AccessPointEx`）                                               |
-| 值对象       | Value Object                 | 无独立标识的领域概念（如 `RoutingStrategy`、`ShortCode`）                          |
-| 领域服务     | Domain Service               | 跨实体的领域逻辑（如 `FaultService`）                                              |
-| 仓储         | Repository                   | 持久化抽象（trait 在领域层、实现在基础设施层）                                     |
+| 中文           | 英文原文                     | 说明                                                                                                             |
+| -------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 接入点         | Access Point                 | 对外暴露的 API 调用入口，通过短码 URL 提供服务                                                                   |
+| 服务商         | Provider                     | 上游 LLM API 服务商（如 Anthropic、OpenAI）                                                                      |
+| 账号           | Account                      | 服务商下的具体 API 账号                                                                                          |
+| 短码           | Short Code                   | 接入点的 URL 标识，用户指定或自动生成 16 位随机码                                                                |
+| 词元           | Token                        | LLM 用量度量单位                                                                                                 |
+| 未命中缓存输入 | Input Tokens (cache miss)    | 全新提交到模型处理的输入词元，不走缓存（`input_tokens` 列）                                                      |
+| 缓存命中输入   | Cache Read Input Tokens      | 从上下文缓存直接读取的输入词元，可享受计费折扣（`cache_read_input_tokens` 列）                                   |
+| 缓存创建输入   | Cache Creation Input Tokens  | 首次写入上下文缓存的输入词元，全价计费（`cache_creation_input_tokens` 列）                                       |
+| 输出词元       | Output Tokens                | 模型生成的输出词元，不含思考过程词元（`output_tokens` 列）                                                       |
+| 思考词元       | Thinking Tokens              | 模型内部推理过程产生的词元，Anthropic 为 `thinking_tokens`，OpenAI 为 `reasoning_tokens`（`thinking_tokens` 列） |
+| 路由策略       | Routing Strategy             | 账户池排序策略：Priority（按优先级）/ Weighted（权重随机）                                                       |
+| 模型路由网格   | Model Routing Grid           | 二维表格（source_model × provider_id），精确匹配 > 前缀匹配 > `__unmatched__` 兜底                               |
+| 会话粘滞       | Session Affinity             | 同一会话复用同一账号                                                                                             |
+| 客户端类型     | Client Type                  | ClaudeCode / Codex / Other / Unknown，与协议类型正交                                                             |
+| 协议类型       | API Type / Access Point Type | Anthropic / OpenAi，挂载 5 个协议适配方法                                                                        |
+| 代理管道       | Proxy Pipeline               | 核心转发调度骨架                                                                                                 |
+| 审计日志       | Audit Log                    | 记录所有管理操作的审计轨迹                                                                                       |
+| 故障检测       | Fault Detection              | 上游响应自动归类并触发账号禁用                                                                                   |
+| 重试决策       | Retry Decision               | `Return(Response)` 终止 / `Continue(AppError)` 切换下一候选                                                      |
+| 优雅关闭       | Graceful Shutdown            | 关闭期间新请求短路，等待在途请求完成                                                                             |
+| 即发即忘       | Fire-and-Forget              | 异步写入不阻塞主业务，失败仅记录日志                                                                             |
+| 聚合根         | Aggregate Root               | 聚合的唯一入口（如 `AccessPointEx`）                                                                             |
+| 值对象         | Value Object                 | 无独立标识的领域概念（如 `RoutingStrategy`、`ShortCode`）                                                        |
+| 领域服务       | Domain Service               | 跨实体的领域逻辑（如 `FaultService`）                                                                            |
+| 仓储           | Repository                   | 持久化抽象（trait 在领域层、实现在基础设施层）                                                                   |
 
 ## 架构决策与约束
 

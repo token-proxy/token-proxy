@@ -65,13 +65,13 @@ pub struct RateTrendItem {
 /// 词元构成 5 维度（绝对值，前端自行计算百分比）
 #[derive(Debug, Clone, Serialize)]
 pub struct TokenComposition {
-    /// 输入词元数
+    /// 未命中缓存输入词元数
     pub input_tokens: i64,
     /// 输出词元数
     pub output_tokens: i64,
-    /// 缓存创建词元数
+    /// 缓存创建输入词元数
     pub cache_creation_tokens: i64,
-    /// 缓存读取词元数
+    /// 缓存命中输入词元数
     pub cache_read_tokens: i64,
     /// 思考词元数
     pub thinking_tokens: i64,
@@ -106,9 +106,9 @@ pub struct KpiResponse {
     pub request_count: KpiTrendItem,
     /// 词元总量 KPI
     pub total_tokens: KpiTrendItem,
-    /// 输入词元 KPI（input_tokens 之和，不含缓存）
+    /// 输入词元 KPI（input + cache_creation + cache_read 之和，含缓存词元）
     pub input_tokens: KpiTrendItem,
-    /// 输出词元 KPI
+    /// 输出词元 KPI（output + thinking 之和，含思考词元）
     pub output_tokens: KpiTrendItem,
     /// 词元构成（5 维度绝对值）
     pub composition: TokenComposition,
