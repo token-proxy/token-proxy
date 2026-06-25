@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.1] - 2026-06-25
+
+### Fixed
+
+- 跨协议词元归一化与 KPI 统计口径修复
+
+### Miscellaneous
+
+- Bump version to 1.3.1
+
 ## [1.3.0] - 2026-06-25
 
 ### Added
