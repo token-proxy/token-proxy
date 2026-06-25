@@ -44,30 +44,13 @@
   overflow-x: auto;
 }
 
-/* ─── 标题行 ─── */
-
-.heatmap-header-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.heatmap-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  color: var(--semi-color-text-2);
-}
-
 /* ─── 统一网格：54 列 × 8 行 ─── */
 /* col 1 = 周几标签（预留 24px），col 2-54 = 53 周数据 */
 /* row 1 = 月份标头，row 2-8 = 7 天数据 */
 
 .heatmap-grid {
   display: grid;
-  grid-template-columns: 24px repeat(53, 11px);
+  grid-template-columns: 24px repeat(53, 12px);
   gap: 2px;
 }
 
@@ -76,7 +59,7 @@
 .heatmap-month-label {
   font-size: 10px;
   color: var(--semi-color-text-2);
-  line-height: 11px;
+  line-height: 12px;
   white-space: nowrap;
   text-align: center;
 }
@@ -84,14 +67,14 @@
 .heatmap-weekday-label {
   font-size: 10px;
   color: var(--semi-color-text-2);
-  line-height: 11px;
+  line-height: 12px;
 }
 
 /* ─── 格子基础样式 ─── */
 
 .heatmap-cell {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   border-radius: 2px;
   background: var(--heatmap-l0);
   cursor: default;
@@ -152,8 +135,8 @@
 }
 
 .heatmap-legend-cell {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   border-radius: 2px;
   cursor: default;
   transition:

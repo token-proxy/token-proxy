@@ -3,12 +3,13 @@
  *
  * 封装热力图数据获取与渲染，自包含 useFetch、错误通知、Card 包装。
  * 通过 `refreshKey` prop 接收外部刷新信号，独立于其他卡片的数据生命周期。
+ * 指标切换 ButtonGroup 置于 Card 标题行，与右侧 MetricsCard 的 TimeRangeSelector 对称。
  */
 
-import { useEffect, useMemo, type ReactNode } from 'react';
-import { Card, Notification } from '@douyinfe/semi-ui';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Button, ButtonGroup, Card, Notification } from '@douyinfe/semi-ui';
 import { dashboardApi } from '../../api';
-import { browserTimezone } from './heatmapUtils';
+import { browserTimezone, type HeatmapMetric } from './heatmapUtils';
 import { useFetch } from '../../hooks/useFetch';
 import { Heatmap } from './Heatmap';
 
@@ -29,6 +30,7 @@ export interface UsageOverviewCardProps {
 export function UsageOverviewCard({ refreshKey }: UsageOverviewCardProps): ReactNode {
   const tz = useMemo(() => browserTimezone(), []);
   const heatmapDeps = useMemo(() => [refreshKey], [refreshKey]);
+  const [metric, setMetric] = useState<HeatmapMetric>('tokens');
 
   const { data, loading, error } = useFetch(() => dashboardApi.getHeatmap(tz), heatmapDeps);
 
@@ -40,8 +42,31 @@ export function UsageOverviewCard({ refreshKey }: UsageOverviewCardProps): React
   }, [error]);
 
   return (
-    <Card title="用量总览" className="gs-hero-left-card">
-      <Heatmap cells={data?.cells ?? []} loading={loading} />
+    <Card
+      title="用量总览"
+      className="gs-hero-left-card"
+      headerExtraContent={
+        <ButtonGroup size="small" aria-label="热力图单位">
+          <Button
+            theme={metric === 'requests' ? 'solid' : 'light'}
+            type="primary"
+            onClick={() => setMetric('requests')}
+            aria-pressed={metric === 'requests'}
+          >
+            请求次数
+          </Button>
+          <Button
+            theme={metric === 'tokens' ? 'solid' : 'light'}
+            type="primary"
+            onClick={() => setMetric('tokens')}
+            aria-pressed={metric === 'tokens'}
+          >
+            词元总量
+          </Button>
+        </ButtonGroup>
+      }
+    >
+      <Heatmap cells={data?.cells ?? []} loading={loading} metric={metric} />
     </Card>
   );
 }

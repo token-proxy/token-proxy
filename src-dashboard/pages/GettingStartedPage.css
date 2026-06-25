@@ -44,6 +44,14 @@
   flex-direction: column;
 }
 
+/* 左侧卡片 body 也居中，使热力图在卡片内水平、垂直居中 */
+.gs-hero-left-card .semi-card-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* 指标卡 body 填充剩余空间，使内容等高匹配左侧 */
 .gs-hero-right-card .semi-card-body {
   flex: 1;
