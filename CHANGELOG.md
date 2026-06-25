@@ -5,6 +5,22 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.0] - 2026-06-25
+
+### Added
+
+- 重构日志管理模块，支持占用上限与按月删除
+- 新增审计日志查看功能
+- 用量趋势新增模型消费面积图
+- 抽象 AutoColoredTag 组件，统一标签颜色计算逻辑
+- 在开始使用页新增用量趋势卡片
+
+### Miscellaneous
+
+- Bump version to 1.5.0
+- 用量趋势图表支持窄屏自动换行
+- Add CHANGELOG for 1.4.0
+
 ## [1.4.0] - 2026-06-25
 
 ### Added
