@@ -5,6 +5,25 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.0] - 2026-06-25
+
+### Added
+
+- 开始使用页面数据指标增加环比展示
+
+### Documentation
+
+- 统一 LLM 词元语境用语 token → 词元
+
+### Fixed
+
+- 修复 cargo make check 任务无法运行
+
+### Miscellaneous
+
+- Bump version to 1.3.0
+- Add CHANGELOG for 1.2.0
+
 ## [1.2.0] - 2026-06-23
 
 ### Added
