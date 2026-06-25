@@ -48,7 +48,7 @@ export default function GettingStartedPage(): ReactNode {
       {/* 第二行：我的接入点 */}
       <MyAccessPointsSection
         extraHeaderContent={
-          <Button size="small" icon={<IconKey />} onClick={() => navigate('/profile')}>
+          <Button size="small" icon={<IconKey />} onClick={() => navigate('/profile?tab=apikey')}>
             API Key
           </Button>
         }

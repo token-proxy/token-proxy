@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import { useFetch } from '../hooks/useFetch.ts';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Card, Form, TabPane, Tabs, Toast, Typography } from '@douyinfe/semi-ui';
 import api from '../api.ts';
 import ApiKeyManager from '../components/user/ApiKeyManager.tsx';
@@ -25,9 +25,18 @@ interface UserProfile {
  *
  * 包含个人资料编辑、密码修改、API Key 管理三个标签页。
  * 密码修改成功后清除本地令牌并跳转到登录页。
+ * 通过 URL 查询参数 `tab` 控制激活的标签页（profile | password | apikey）。
  */
 export default function ProfilePage(): ReactNode {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // 从 URL 查询参数读取当前标签页，默认为 "profile"
+  const activeTab = searchParams.get('tab') || 'profile';
+
+  const handleTabChange = (key: string) => {
+    setSearchParams({ tab: key });
+  };
 
   /* ---- Profile 状态 ---- */
   const {
@@ -96,7 +105,7 @@ export default function ProfilePage(): ReactNode {
       </Title>
 
       <Card>
-        <Tabs type="line" defaultActiveKey="profile">
+        <Tabs type="line" activeKey={activeTab} onChange={handleTabChange}>
           <TabPane tab="个人资料" itemKey="profile">
             <div style={{ maxWidth: 480, marginTop: 16 }}>
               {profileLoading && !profile ? (
