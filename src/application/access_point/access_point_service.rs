@@ -63,13 +63,17 @@ impl AccessPointService {
         repo: &Arc<dyn AccessPointRepository>,
         access_point_id: Uuid,
     ) -> Result<Vec<AccountDto>, AppError> {
-        let rows = repo.find_accounts_by_access_point(access_point_id).await?;
+        let rows = repo
+            .find_account_details_by_access_point(access_point_id)
+            .await?;
         Ok(rows
             .into_iter()
             .map(|a| AccountDto {
                 account_id: a.account_id,
                 weight: Some(a.weight),
                 priority: Some(a.priority),
+                provider_id: Some(a.provider_id),
+                status: Some(a.status),
             })
             .collect())
     }
@@ -314,15 +318,7 @@ impl AccessPointService {
             .ok_or_else(|| AppError::NotFound(format!("接入点 {} 未找到", short_code)))?;
 
         let ap_inner = &ap.access_point;
-        let accounts: Vec<AccountDto> = ap
-            .accounts
-            .into_iter()
-            .map(|a| AccountDto {
-                account_id: a.account_id,
-                weight: Some(a.weight),
-                priority: Some(a.priority),
-            })
-            .collect();
+        let accounts = Self::load_accounts(&self.access_point_repo, ap_inner.id).await?;
 
         let resp = AccessPointResponse {
             id: ap_inner.id,

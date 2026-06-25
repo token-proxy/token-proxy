@@ -8,7 +8,9 @@ use sea_orm::{
     TransactionTrait,
 };
 
-use crate::domain::access_point::access_point_account::AccessPointAccount;
+use crate::domain::access_point::access_point_account::{
+    AccessPointAccount, AccessPointAccountDetail,
+};
 use crate::domain::access_point::repository::AccessPointRepository;
 use crate::domain::access_point::AccessPoint;
 use crate::domain::access_point::{
@@ -184,6 +186,46 @@ impl AccessPointRepository for SeaOrmAccessPointRepository {
                 priority: a.priority,
             })
             .collect())
+    }
+
+    async fn find_account_details_by_access_point(
+        &self,
+        access_point_id: Uuid,
+    ) -> Result<Vec<AccessPointAccountDetail>, AppError> {
+        // 1. 查询接入点关联的账户池条目
+        let links = accounts_mod::Entity::find()
+            .filter(accounts_mod::Column::AccessPointId.eq(access_point_id))
+            .order_by_asc(accounts_mod::Column::Priority)
+            .all(&*self.db)
+            .await?;
+
+        // 2. 收集 account_id 并批量查询 accounts 表
+        let account_ids: Vec<Uuid> = links.iter().map(|l| l.account_id).collect();
+        let accounts = if account_ids.is_empty() {
+            Vec::new()
+        } else {
+            crate::domain::provider::AccountEntity::find()
+                .filter(crate::domain::provider::AccountColumn::Id.is_in(account_ids))
+                .all(&*self.db)
+                .await?
+        };
+
+        // 3. 按 account_id 查找账号信息并合并
+        let detail = links
+            .into_iter()
+            .map(|link| {
+                let acct = accounts.iter().find(|a| a.id == link.account_id);
+                AccessPointAccountDetail {
+                    account_id: link.account_id,
+                    provider_id: acct.map_or(Uuid::nil(), |a| a.provider_id),
+                    weight: link.weight,
+                    priority: link.priority,
+                    status: acct.map_or_else(|| "unknown".to_string(), |a| a.status.to_string()),
+                }
+            })
+            .collect();
+
+        Ok(detail)
     }
 
     async fn save_accounts(

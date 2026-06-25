@@ -3,7 +3,9 @@
 //! 定义 `AccessPointRepository` trait，提供接入点及其账户池的持久化契约。
 
 use crate::domain::access_point::access_point::{AccessPointEx, Model as AccessPoint};
-use crate::domain::access_point::access_point_account::AccessPointAccount;
+use crate::domain::access_point::access_point_account::{
+    AccessPointAccount, AccessPointAccountDetail,
+};
 use crate::shared::error::AppError;
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -38,6 +40,12 @@ pub trait AccessPointRepository: Send + Sync {
         &self,
         access_point_id: Uuid,
     ) -> Result<Vec<AccessPointAccount>, AppError>;
+
+    /// 查询接入点的账户池（含账户状态和所属服务商，JOIN accounts 表）
+    async fn find_account_details_by_access_point(
+        &self,
+        access_point_id: Uuid,
+    ) -> Result<Vec<AccessPointAccountDetail>, AppError>;
 
     /// 保存接入点的账户池（全量替换）
     async fn save_accounts(

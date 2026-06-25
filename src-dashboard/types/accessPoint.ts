@@ -17,10 +17,14 @@ export interface ModelMapping {
 /** 账号池中的单条账号条目 */
 export interface AccountEntry {
   account_id: string;
+  /** 所属服务商 ID */
+  provider_id?: string;
   /** 权重路由模式下使用的权重值 */
   weight?: number;
   /** 优先级路由模式下使用的优先级序号 */
   priority?: number;
+  /** 账号状态: enabled | disabled */
+  status?: string;
 }
 
 /** 模型路由网格的一行：源模型到各服务商目标模型的映射 */

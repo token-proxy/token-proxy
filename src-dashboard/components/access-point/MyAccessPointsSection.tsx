@@ -5,11 +5,19 @@
  * 新建 / 编辑复用 `AccessPointDrawer`（与接入点管理页共享同一表单组件）。
  */
 
-import { Button, Card, Popconfirm, Tag, Typography } from '@douyinfe/semi-ui';
-import { IconCopy, IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
+import { Button, Card, Dropdown, Modal, Tag, Typography } from '@douyinfe/semi-ui';
+import {
+  IconCopy,
+  IconDelete,
+  IconEdit,
+  IconPlus,
+  IconChevronDown,
+  IconTerminal,
+} from '@douyinfe/semi-icons';
 import { useState, type ReactNode } from 'react';
 import useAccessPoints from '../../hooks/useAccessPoints';
 import AccessPointDrawer from './AccessPointDrawer';
+import SplitButtonGroup from '@douyinfe/semi-ui/lib/es/button/splitButtonGroup';
 import type { AccessPoint } from '../../types/accessPoint';
 
 const { Text } = Typography;
@@ -32,12 +40,12 @@ export function MyAccessPointsSection({
     providers,
     accounts,
     accountsLoading,
-    operatingIds,
     copyingUrl,
     emptyForm,
     saveAccessPoint,
     deleteAccessPoint,
     copyAccessUrl,
+    copyClaudeCodeCommand,
   } = useAccessPoints('mine');
 
   const [drawerVisible, setDrawerVisible] = useState(false);
@@ -125,69 +133,112 @@ export function MyAccessPointsSection({
           gap: 16,
         }}
       >
-        {accessPoints.map((ap) => (
-          <Card
-            key={ap.id}
-            style={{
-              backgroundColor: 'var(--semi-color-bg-2)',
-              borderRadius: 12,
-            }}
-            bodyStyle={{ padding: 16 }}
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-              >
-                <Text strong>{ap.name}</Text>
-                <Tag size="small" color={ap.status === 'enabled' ? 'green' : 'grey'} shape="circle">
-                  {ap.status === 'enabled' ? '启用' : '禁用'}
-                </Tag>
-              </div>
+        {accessPoints.map((ap) => {
+          // 统计服务商数、账号总数、可用账号数
+          const providerIds = new Set(ap.accounts?.map((a) => a.provider_id).filter(Boolean));
+          const accountCount = ap.accounts?.length ?? 0;
+          const availableCount = ap.accounts?.filter((a) => a.status === 'enabled').length ?? 0;
 
-              <Text
-                size="small"
-                type="tertiary"
-                style={{ fontFamily: 'monospace' }}
-                ellipsis={{ showTooltip: true }}
-              >
-                /ap/{ap.short_code}
-              </Text>
+          const handleDeleteClick = () => {
+            Modal.confirm({
+              title: '确定删除此接入点？',
+              content: '删除后不可恢复',
+              onOk: () => deleteAccessPoint(ap.id),
+            });
+          };
 
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Tag size="small" color="blue" shape="circle">
-                  {ap.api_type}
-                </Tag>
-                <Tag size="small" color="cyan" shape="circle">
-                  {ap.routing_strategy}
-                </Tag>
-              </div>
-
-              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                <Button
-                  size="small"
-                  icon={<IconCopy />}
-                  loading={copyingUrl}
-                  onClick={() => copyAccessUrl(ap.short_code)}
+          return (
+            <Card
+              key={ap.id}
+              style={{
+                backgroundColor: 'var(--semi-color-bg-2)',
+                borderRadius: 12,
+              }}
+              bodyStyle={{ padding: 16 }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* 第一行：名称 + 状态标签 */}
+                <div
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
                 >
-                  复制链接
-                </Button>
-                <Button size="small" icon={<IconEdit />} onClick={() => handleEdit(ap)}>
-                  编辑
-                </Button>
-                <Popconfirm title="确定删除此接入点？" onConfirm={() => deleteAccessPoint(ap.id)}>
-                  <Button
+                  <Text strong>{ap.name}</Text>
+                  <Tag
                     size="small"
-                    type="danger"
-                    icon={<IconDelete />}
-                    loading={operatingIds.includes(ap.id)}
+                    color={ap.status === 'enabled' ? 'green' : 'grey'}
+                    shape="circle"
                   >
-                    删除
-                  </Button>
-                </Popconfirm>
+                    {ap.status === 'enabled' ? '启用' : '禁用'}
+                  </Tag>
+                </div>
+
+                {/* 短码（去除 /ap/ 前缀，紧贴名称） */}
+                <Text
+                  size="small"
+                  type="tertiary"
+                  style={{ fontFamily: 'monospace', marginTop: -4 }}
+                  ellipsis={{ showTooltip: true }}
+                >
+                  {ap.short_code}
+                </Text>
+
+                {/* 统计信息行 */}
+                <Text style={{ marginTop: 4 }}>
+                  {providerIds.size} 服务商 · {accountCount} 账号 · {availableCount} 可用
+                </Text>
+
+                {/* 底部：类型标签 + 操作按钮 */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginTop: 4,
+                  }}
+                >
+                  <Tag size="small" color="blue" shape="circle">
+                    {ap.api_type}
+                  </Tag>
+
+                  <SplitButtonGroup>
+                    <Button
+                      size="small"
+                      icon={<IconCopy />}
+                      loading={copyingUrl}
+                      onClick={() => copyAccessUrl(ap.short_code)}
+                    >
+                      复制链接
+                    </Button>
+                    <Dropdown
+                      menu={[
+                        {
+                          node: 'item',
+                          name: '编辑',
+                          icon: <IconEdit />,
+                          onClick: () => handleEdit(ap),
+                        },
+                        {
+                          node: 'item',
+                          name: '复制命令',
+                          icon: <IconTerminal />,
+                          onClick: () => copyClaudeCodeCommand(ap.short_code),
+                        },
+                        {
+                          node: 'item',
+                          name: '删除',
+                          icon: <IconDelete />,
+                          type: 'danger' as const,
+                          onClick: handleDeleteClick,
+                        },
+                      ]}
+                    >
+                      <Button size="small" icon={<IconChevronDown />} />
+                    </Dropdown>
+                  </SplitButtonGroup>
+                </div>
               </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
 
       <AccessPointDrawer

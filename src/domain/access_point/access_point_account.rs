@@ -1,7 +1,7 @@
 //! 接入点账户池条目 — domain/access_point/
 //!
-//! 定义 `AccessPointAccount` 值对象，记录接入点与 API 账号的关联关系，
-//! 包含路由所需的权重和优先级字段。
+//! 定义 `AccessPointAccount` 值对象（记录接入点与 API 账号的关联关系，包含路由所需的权重和优先级字段）
+//! 和 `AccessPointAccountDetail` 值对象（JOIN accounts 表后的富化信息，含状态和服务商归属）。
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -25,4 +25,20 @@ impl AccessPointAccount {
             priority,
         }
     }
+}
+
+/// 接入点账户池条目（含账户详情），通过 JOIN accounts 表获取
+///
+/// 用于接入点列表展示等需要账户状态和服务商信息的场景。
+#[derive(Debug, Clone)]
+pub struct AccessPointAccountDetail {
+    pub account_id: Uuid,
+    /// 所属服务商 ID
+    pub provider_id: Uuid,
+    /// 权重，用于加权随机路由策略
+    pub weight: i32,
+    /// 优先级，值越小优先级越高
+    pub priority: i32,
+    /// 账户状态：`"enabled"` | `"disabled"`
+    pub status: String,
 }
