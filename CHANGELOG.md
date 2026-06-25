@@ -5,6 +5,34 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.0] - 2026-06-25
+
+### Added
+
+- 重新设计接入点卡片布局并扩展账号数据
+- Profile 页支持 URL 查询参数控制标签页切换
+
+### Changed
+
+- 优化热力图组件的 tooltip 实现、布局与视觉细节
+
+### Documentation
+
+- Bump uuid from 1.23.3 to 1.23.4 in the cargo-deps group
+
+### Fixed
+
+- 账号自动恢复轮询间隔从 1 小时缩短为 60 秒
+- 显式指定 npm registry 修复 Dependabot 依赖解析失败
+- 跨协议词元归一化与 KPI 统计口径修复
+
+### Miscellaneous
+
+- Bump version to 1.4.0
+- Add CHANGELOG for 1.3.1
+- 将前端包管理工具从 npm 迁移到 pnpm
+- Add CHANGELOG for 1.3.0
+
 ## [1.3.1] - 2026-06-25
 
 ### Fixed
