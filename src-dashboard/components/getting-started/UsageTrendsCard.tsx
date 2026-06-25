@@ -1,7 +1,7 @@
 /**
  * 用量趋势卡片。
  *
- * 左侧面积图展示请求数和会话数变化，右侧堆叠柱状图展示 5 类词元构成变化。
+ * 左侧面积图展示请求数和会话数变化，中间面积图按模型展示消费词元变化，右侧堆叠柱状图展示 5 类词元构成变化。
  * 卡片自管理 30 天 / 自定义时间范围，外部只通过 refreshKey 触发统一刷新。
  */
 
@@ -20,13 +20,14 @@ import {
 } from 'recharts';
 import { dashboardApi } from '../../api';
 import { useFetch } from '../../hooks/useFetch';
-import type { TimeRangeQuery, UsageTrendBucket } from '../../types/dashboard';
+import type { ModelTokenUsage, TimeRangeQuery, UsageTrendBucket } from '../../types/dashboard';
 import { formatNumber } from '../../utils/format';
 import { TimeRangeSelector } from './TimeRangeSelector';
 import {
   formatTrendDate,
   formatTrendNumber,
   formatTrendTooltipDate,
+  hashModelToColor,
   isUsageTrendsEmpty,
   TOKEN_CONFIGS,
 } from './usageTrends';
@@ -216,6 +217,68 @@ export function UsageTrendsCard(): ReactNode {
     [buckets],
   );
 
+  // ─── 模型消费图数据 ───────────────────────────────────
+
+  /**
+   * 收集所有出现过的模型名，按总词元降序排列。
+   *
+   * 仅保留总词元 > 0 的模型，过滤掉窗口内全量为 0 的模型。
+   */
+  const modelNames = useMemo(() => {
+    const totals = new Map<string, number>();
+    buckets.forEach((b) => {
+      b.per_model?.forEach((m: ModelTokenUsage) => {
+        totals.set(m.model, (totals.get(m.model) ?? 0) + m.total_tokens);
+      });
+    });
+    return [...totals.entries()]
+      .filter(([, total]) => total > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([model]) => model);
+  }, [buckets]);
+
+  /**
+   * 模型消费图数据：在每个 bucket 上挂载各模型的总词元字段。
+   *
+   * 将 `per_model` 数组 pivot 为扁平的 `{ [modelName]: total_tokens }` key，
+   * 使 Recharts 的 `<Area dataKey="modelName" />` 能直接消费。
+   * 每个模型在所有 bucket 中预初始化为 0，确保该模型无数据的日期也能画出连线（回落 0）。
+   */
+  const modelChartData = useMemo(
+    () =>
+      chartData.map((bucket) => {
+        const entry: Record<string, unknown> = { ...bucket };
+        // 预初始化所有模型为 0，保证无数据日期线条不断开
+        modelNames.forEach((model) => {
+          entry[model] = 0;
+        });
+        if (bucket.per_model) {
+          bucket.per_model.forEach((m: ModelTokenUsage) => {
+            entry[m.model] = m.total_tokens;
+          });
+        }
+        return entry;
+      }),
+    [chartData, modelNames],
+  );
+
+  /** 模型消费图图例项。 */
+  const modelLegendItems = useMemo<TrendLegendItem[]>(
+    () =>
+      modelNames.map((model) => ({
+        key: model,
+        label: model,
+        total: buckets.reduce(
+          (sum, b) =>
+            sum + (b.per_model?.find((m: ModelTokenUsage) => m.model === model)?.total_tokens ?? 0),
+          0,
+        ),
+        color: hashModelToColor(model),
+        formatValue: formatNumber,
+      })),
+    [buckets, modelNames],
+  );
+
   const headerExtra = (
     <TimeRangeSelector
       value={timeRange}
@@ -268,6 +331,7 @@ export function UsageTrendsCard(): ReactNode {
                   tickLine={false}
                 />
                 <YAxis
+                  domain={[0, 'dataMax']}
                   tickFormatter={formatTrendNumber}
                   tick={{ fill: 'var(--semi-color-text-2)', fontSize: 12 }}
                   axisLine={false}
@@ -297,6 +361,64 @@ export function UsageTrendsCard(): ReactNode {
             </ResponsiveContainer>
           </section>
 
+          <section className="usage-trends-panel" aria-label="模型消费趋势">
+            <div className="usage-trends-panel-title">模型消费</div>
+            <TrendLegend items={modelLegendItems} />
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={modelChartData} margin={{ top: 12, right: 16, bottom: 0, left: 0 }}>
+                <defs>
+                  {modelNames.map((model) => {
+                    const color = hashModelToColor(model);
+                    const id = `usage-trends-model-${model.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                    return (
+                      <linearGradient key={model} id={id} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={color} stopOpacity={0.32} />
+                        <stop offset="95%" stopColor={color} stopOpacity={0.04} />
+                      </linearGradient>
+                    );
+                  })}
+                </defs>
+                <CartesianGrid
+                  stroke="var(--semi-color-border)"
+                  strokeDasharray="3 3"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="bucket_start"
+                  tickFormatter={formatTrendDate}
+                  tick={{ fill: 'var(--semi-color-text-2)', fontSize: 12 }}
+                  axisLine={{ stroke: 'var(--semi-color-border)' }}
+                  tickLine={false}
+                />
+                <YAxis
+                  domain={[0, 'dataMax']}
+                  tickFormatter={formatTrendNumber}
+                  tick={{ fill: 'var(--semi-color-text-2)', fontSize: 12 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={52}
+                />
+                <Tooltip content={<UsageTrendTooltip mode="requests" />} />
+                {modelNames.map((model) => {
+                  const color = hashModelToColor(model);
+                  const gradientId = `usage-trends-model-${model.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                  return (
+                    <Area
+                      key={model}
+                      type="monotone"
+                      dataKey={model}
+                      name={model}
+                      stroke={color}
+                      strokeWidth={2}
+                      fill={`url(#${gradientId})`}
+                      isAnimationActive={false}
+                    />
+                  );
+                })}
+              </AreaChart>
+            </ResponsiveContainer>
+          </section>
+
           <section className="usage-trends-panel" aria-label="词元趋势">
             <div className="usage-trends-panel-title">词元构成</div>
             <TrendLegend items={tokenLegendItems} />
@@ -315,6 +437,7 @@ export function UsageTrendsCard(): ReactNode {
                   tickLine={false}
                 />
                 <YAxis
+                  domain={[0, 'dataMax']}
                   tickFormatter={formatTrendNumber}
                   tick={{ fill: 'var(--semi-color-text-2)', fontSize: 12 }}
                   axisLine={false}

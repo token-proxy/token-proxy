@@ -52,6 +52,47 @@ export const TOKEN_CONFIGS = [
   { key: 'thinking_tokens', label: '思考', group: 'output', color: TOKEN_COLORS.thinking },
 ] satisfies UsageTrendTokenConfig[];
 
+// ─── 模型消费图颜色 ───────────────────────────────────────
+
+/**
+ * 模型消费面积图色板。
+ *
+ * 12 种视觉区分度高的 hex 颜色，用于为不同模型名分配不同的面积曲线颜色。
+ * 与词元堆叠柱状图的颜色区分开，避免视觉混淆。
+ */
+const MODEL_CHART_COLORS = [
+  '#6366f1', // indigo
+  '#f59e0b', // amber
+  '#10b981', // emerald
+  '#ef4444', // red
+  '#06b6d4', // cyan
+  '#f97316', // orange
+  '#8b5cf6', // violet
+  '#14b8a6', // teal
+  '#ec4899', // pink
+  '#84cc16', // lime
+  '#3b82f6', // blue
+  '#e11d48', // rose
+] as const;
+
+/**
+ * 基于 DJB2 算法将模型名映射为稳定颜色。
+ *
+ * 与 `AutoColoredTag` 的 `hashToColor` 使用相同算法，
+ * 区别在于返回 hex 色值而非 Semi Design TagColor 名，适合图表渲染。
+ *
+ * @param model - 模型名
+ * @returns 色板中的一个 hex 颜色值
+ */
+export function hashModelToColor(model: string): string {
+  let hash = 5381;
+  for (let i = 0; i < model.length; i++) {
+    hash = ((hash << 5) + hash + model.charCodeAt(i)) | 0;
+  }
+  const index = Math.abs(hash) % MODEL_CHART_COLORS.length;
+  return MODEL_CHART_COLORS[index];
+}
+
 /** 格式化普通数值，超过万级时使用紧凑表示。 */
 export function formatTrendNumber(value: number | null | undefined): string {
   if (value == null) return '—';

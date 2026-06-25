@@ -20,10 +20,10 @@ use chrono::{Duration, Utc};
 use uuid::Uuid;
 
 use crate::application::dashboard::dto::{
-    CacheHitRate, HeatmapCellDto, HeatmapResponse, KpiResponse, KpiTrendItem, QualityResponse,
-    RateTrendItem, SparklineBucketDto, SparklineSeries, TimeRangePreset, TimeRangeQuery,
-    TokenComposition, TopAccessPointItem, TopAccessPointsResponse, TopModelItem, TopModelsResponse,
-    TrendBadge, UsageTrendBucketDto, UsageTrendsResponse,
+    CacheHitRate, HeatmapCellDto, HeatmapResponse, KpiResponse, KpiTrendItem, ModelTokenUsageDto,
+    QualityResponse, RateTrendItem, SparklineBucketDto, SparklineSeries, TimeRangePreset,
+    TimeRangeQuery, TokenComposition, TopAccessPointItem, TopAccessPointsResponse, TopModelItem,
+    TopModelsResponse, TrendBadge, UsageTrendBucketDto, UsageTrendsResponse,
 };
 use crate::application::dashboard::time_window::resolve_windows;
 use crate::application::dashboard::timezone::validate_timezone;
@@ -164,6 +164,14 @@ impl DashboardService {
                     cache_creation_tokens: b.cache_creation_tokens,
                     cache_read_tokens: b.cache_read_tokens,
                     thinking_tokens: b.thinking_tokens,
+                    per_model: b
+                        .per_model
+                        .into_iter()
+                        .map(|m| ModelTokenUsageDto {
+                            model: m.model,
+                            total_tokens: m.total_tokens,
+                        })
+                        .collect(),
                 })
                 .collect(),
         })

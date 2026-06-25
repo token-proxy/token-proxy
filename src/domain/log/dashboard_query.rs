@@ -83,6 +83,19 @@ pub struct UsageTrendBucket {
     pub cache_read_tokens: i64,
     /// 思考词元数
     pub thinking_tokens: i64,
+    /// 该桶内按模型拆分的词元用量
+    pub per_model: Vec<ModelTokenUsage>,
+}
+
+/// 单日单模型词元用量
+///
+/// 用于模型消费面积图的数据源，每个 bucket 包含若干模型的词元用量。
+#[derive(Debug, Clone)]
+pub struct ModelTokenUsage {
+    /// 模型名（来自 log_metadata.model_mapped 或 model_original，回落 '(未知)'）
+    pub model: String,
+    /// 该模型在该桶内的总词元数
+    pub total_tokens: i64,
 }
 
 /// 日历热力图单元格

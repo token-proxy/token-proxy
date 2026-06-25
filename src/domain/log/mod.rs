@@ -14,8 +14,8 @@ pub use audit_entity_type::AuditEntityType;
 pub use audit_log::Model as AuditLog;
 pub use content::Model as LogContent;
 pub use dashboard_query::{
-    DashboardWindow, HeatmapCell, KpiAggregate, QualityMetrics, SparklineBucket, TopAccessPointRow,
-    TopModelRow, UsageTrendBucket,
+    DashboardWindow, HeatmapCell, KpiAggregate, ModelTokenUsage, QualityMetrics, SparklineBucket,
+    TopAccessPointRow, TopModelRow, UsageTrendBucket,
 };
 pub use metadata::Model as LogMetadata;
 pub use repository_audit_log::AuditLogRepository;

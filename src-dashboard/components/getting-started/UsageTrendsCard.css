@@ -20,19 +20,19 @@
 }
 
 .usage-trends-panel {
-  flex: 1 1 500px;
-  min-width: min(100%, 500px);
+  flex: 1 1 380px;
+  min-width: min(100%, 380px);
   padding: 12px;
   border: 1px solid var(--semi-color-border);
   border-radius: 10px;
   background: var(--semi-color-bg-1);
 }
 
-/* 词元构成面板略宽，保持与请求数面板的视觉比例 */
+/* 词元构成面板略宽，保持与左侧面板的视觉比例 */
 .usage-trends-panel:last-child {
-  flex-grow: 1.2;
-  flex-basis: 560px;
-  min-width: min(100%, 560px);
+  flex-grow: 1.4;
+  flex-basis: 460px;
+  min-width: min(100%, 460px);
 }
 
 .usage-trends-panel-title {

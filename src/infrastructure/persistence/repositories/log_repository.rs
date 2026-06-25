@@ -6,6 +6,7 @@
 //! - 会话聚合查询
 //! - Dashboard 聚合查询（KPI / sparkline / Top N 排行）
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -20,8 +21,8 @@ use crate::domain::log::content::{ActiveModel as ContentActiveModel, Entity as C
 use crate::domain::log::metadata::{ActiveModel, Column, Entity};
 use crate::domain::log::{
     DashboardWindow, HeatmapCell, KpiAggregate, LogMetadataWithTokenSummary, LogQuery,
-    LogRepository, QualityMetrics, SessionQuery, SessionSummaryData, SparklineBucket,
-    TopAccessPointRow, TopModelRow, UsageTrendBucket,
+    LogRepository, ModelTokenUsage, QualityMetrics, SessionQuery, SessionSummaryData,
+    SparklineBucket, TopAccessPointRow, TopModelRow, UsageTrendBucket,
 };
 use crate::domain::log::{LogContent, LogMetadata, LogTokenUsage};
 use crate::shared::error::AppError;
@@ -830,6 +831,7 @@ impl LogRepository for SeaOrmLogRepository {
     /// 1. `usage_by_log` 先按 `log_id` 聚合词元，避免未来 token 表扩展为多行后 JOIN 放大。
     /// 2. `data` 仅按当前用户与闭右开窗口过滤，保证个人视角隔离。
     /// 3. `series` 用日级 `generate_series` 补齐空桶，前端无需再补缺口。
+    /// 4. `by_model` 按日 + 模型维度聚合总词元，用于模型消费面积图。
     #[tracing::instrument(
         skip(self),
         fields(user_id = %user_id, window.start = %window.start, window.end = %window.end)
@@ -840,6 +842,8 @@ impl LogRepository for SeaOrmLogRepository {
         window: &DashboardWindow,
     ) -> Result<Vec<UsageTrendBucket>, AppError> {
         let db = &*self.db;
+
+        // ─── 主查询：按日聚合请求数与词元分项 ───
         let sql = r#"
             WITH series AS (
                 SELECT generate_series(
@@ -898,7 +902,7 @@ impl LogRepository for SeaOrmLogRepository {
         );
 
         let results = db.query_all_raw(stmt).await?;
-        let buckets = results
+        let mut buckets: Vec<UsageTrendBucket> = results
             .iter()
             .map(|row| {
                 let bucket_start: DateTime<FixedOffset> = row.try_get_by_index(0)?;
@@ -912,9 +916,62 @@ impl LogRepository for SeaOrmLogRepository {
                     cache_creation_tokens: row.try_get_by_index::<i64>(6)?,
                     cache_read_tokens: row.try_get_by_index::<i64>(7)?,
                     thinking_tokens: row.try_get_by_index::<i64>(8)?,
+                    per_model: Vec::new(),
                 })
             })
             .collect::<Result<Vec<_>, AppError>>()?;
+
+        // ─── 模型维度查询：按日 + 模型聚合总词元 ───
+        let model_sql = r#"
+            WITH usage_by_log AS (
+                SELECT
+                    log_id,
+                    COALESCE(SUM(total_tokens), 0)::BIGINT AS total_tokens
+                FROM log_token_usage
+                GROUP BY log_id
+            )
+            SELECT
+                date_trunc('day', lm.timestamp) AS bucket_start,
+                COALESCE(lm.model_mapped, lm.model_original, '(未知)') AS model,
+                COALESCE(SUM(ubl.total_tokens), 0)::BIGINT AS total_tokens
+            FROM log_metadata lm
+            LEFT JOIN usage_by_log ubl ON ubl.log_id = lm.id
+            WHERE lm.user_id = $1::uuid
+              AND lm.timestamp >= $2::timestamptz
+              AND lm.timestamp < $3::timestamptz
+            GROUP BY 1, 2
+            ORDER BY 1, 3 DESC
+        "#;
+
+        let model_stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            model_sql,
+            [user_id.into(), window.start.into(), window.end.into()],
+        );
+
+        let model_results = db.query_all_raw(model_stmt).await?;
+
+        // 将模型行按 bucket_start 分组为 HashMap
+        let mut model_map: HashMap<DateTime<Utc>, Vec<ModelTokenUsage>> = HashMap::new();
+        for row in &model_results {
+            let bucket_start: DateTime<FixedOffset> = row.try_get_by_index(0)?;
+            let model: String = row.try_get_by_index(1)?;
+            let total_tokens: i64 = row.try_get_by_index(2)?;
+            model_map
+                .entry(bucket_start.with_timezone(&Utc))
+                .or_default()
+                .push(ModelTokenUsage {
+                    model,
+                    total_tokens,
+                });
+        }
+
+        // 将模型数据注入到对应桶中
+        for bucket in &mut buckets {
+            if let Some(models) = model_map.remove(&bucket.bucket_start) {
+                bucket.per_model = models;
+            }
+        }
 
         Ok(buckets)
     }

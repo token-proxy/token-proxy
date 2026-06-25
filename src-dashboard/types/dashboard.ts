@@ -137,6 +137,18 @@ export interface KpiResponse {
 }
 
 /**
+ * 单日单模型词元用量。
+ *
+ * 后端按日 + 模型聚合总词元，前端用于模型消费面积图。
+ */
+export interface ModelTokenUsage {
+  /** 模型名（来自 model_mapped 或 model_original，回落 '(未知)'） */
+  model: string;
+  /** 该模型在该桶内的总词元数 */
+  total_tokens: number;
+}
+
+/**
  * 用量趋势时间序列桶。
  *
  * 每个桶包含请求数、会话数和 5 类词元用量，供趋势图一次性绘制面积图与堆叠柱状图。
@@ -160,6 +172,8 @@ export interface UsageTrendBucket {
   cache_read_tokens: number;
   /** 思考词元数 */
   thinking_tokens: number;
+  /** 该桶内按模型拆分的词元用量 */
+  per_model: ModelTokenUsage[];
 }
 
 /**
