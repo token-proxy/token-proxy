@@ -1,7 +1,7 @@
 {
   "name": "token-proxy-frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.5.0",
   "type": "module",
   "packageManager": "pnpm@11.5.2",
   "scripts": {
