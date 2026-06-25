@@ -22,6 +22,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import api from '../api.ts';
 import AccountManager, { type Account } from '@components/provider/AccountManager';
+import AutoColoredTag from '@components/common/AutoColoredTag';
 import type { FaultConfigJson } from '../types/accessPoint.ts';
 
 const { Title, Text } = Typography;
@@ -545,16 +546,16 @@ export default function ProviderManagement(): ReactNode {
         const tags: ReactNode[] = [];
         if (record.openai_base_url) {
           tags.push(
-            <Tag key="openai" size="small" color="blue">
+            <AutoColoredTag key="openai" size="small">
               OpenAI
-            </Tag>,
+            </AutoColoredTag>,
           );
         }
         if (record.anthropic_base_url) {
           tags.push(
-            <Tag key="anthropic" size="small" color="purple">
+            <AutoColoredTag key="anthropic" size="small">
               Anthropic
-            </Tag>,
+            </AutoColoredTag>,
           );
         }
         return tags.length > 0 ? (

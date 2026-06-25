@@ -6,6 +6,7 @@
  */
 
 import { Button, Card, Dropdown, Modal, Tag, Typography } from '@douyinfe/semi-ui';
+import AutoColoredTag from '@components/common/AutoColoredTag';
 import {
   IconCopy,
   IconDelete,
@@ -215,9 +216,9 @@ export function MyAccessPointsSection({
                     marginTop: 4,
                   }}
                 >
-                  <Tag size="small" color="blue" shape="circle">
+                  <AutoColoredTag size="small" shape="circle">
                     {ap.api_type}
-                  </Tag>
+                  </AutoColoredTag>
 
                   <SplitButtonGroup>
                     <Button
