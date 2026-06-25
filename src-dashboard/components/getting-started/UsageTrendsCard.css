@@ -14,17 +14,25 @@
 }
 
 .usage-trends-grid {
-  display: grid;
-  grid-template-columns: 1fr 1.2fr;
+  display: flex;
+  flex-wrap: wrap;
   gap: 16px;
 }
 
 .usage-trends-panel {
-  min-width: 0;
+  flex: 1 1 500px;
+  min-width: min(100%, 500px);
   padding: 12px;
   border: 1px solid var(--semi-color-border);
   border-radius: 10px;
   background: var(--semi-color-bg-1);
+}
+
+/* 词元构成面板略宽，保持与请求数面板的视觉比例 */
+.usage-trends-panel:last-child {
+  flex-grow: 1.2;
+  flex-basis: 560px;
+  min-width: min(100%, 560px);
 }
 
 .usage-trends-panel-title {
@@ -132,12 +140,6 @@
   color: var(--semi-color-text-0);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-}
-
-@media (max-width: 1023px) {
-  .usage-trends-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 767px) {
