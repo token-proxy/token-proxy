@@ -407,7 +407,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 启动后台定时任务：自动恢复已到恢复时间的账号
     let ar_account_service = account_service.clone();
-    let recover_interval = std::time::Duration::from_secs(config.partition_check_interval_secs);
+    let recover_interval = std::time::Duration::from_secs(60);
     {
         let mut task_shutdown_rx = shutdown_rx.clone();
         tokio::spawn(async move {
