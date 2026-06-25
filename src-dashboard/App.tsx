@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import AdminLayout from './layouts/AdminLayout.tsx';
 import LoginPage from './pages/LoginPage.tsx';
-import DashboardPage from './pages/DashboardPage.tsx';
+import GettingStartedPage from './pages/GettingStartedPage.tsx';
 import ProviderManagement from './pages/ProviderManagement.tsx';
 import AccessPointManagement from './pages/AccessPointManagement.tsx';
 import UserManagement from './pages/UserManagement.tsx';
@@ -22,8 +22,9 @@ function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<AdminLayout />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
+          <Route index element={<Navigate to="/getting-started" replace />} />
+          <Route path="getting-started" element={<GettingStartedPage />} />
+          <Route path="dashboard" element={<Navigate to="/getting-started" replace />} />
           <Route path="providers/*" element={<ProviderManagement />} />
           <Route path="access-points" element={<AccessPointManagement />} />
           <Route path="sessions" element={<SessionLogPage />} />
@@ -34,7 +35,7 @@ function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/getting-started" replace />} />
       </Routes>
     </BrowserRouter>
   );

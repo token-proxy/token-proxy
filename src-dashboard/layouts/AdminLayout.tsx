@@ -22,7 +22,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { itemKey: '/dashboard', text: 'Dashboard', icon: <IconHomeStroked /> },
+  { itemKey: '/getting-started', text: '开始使用', icon: <IconHomeStroked /> },
   { itemKey: '/providers', text: '服务商管理', icon: <IconServerStroked /> },
   { itemKey: '/access-points', text: '接入点管理', icon: <IconRoute /> },
   { itemKey: '/sessions', text: '会话日志', icon: <IconCommentStroked /> },
@@ -50,7 +50,7 @@ export default function AdminLayout(): ReactNode {
 
   // selectedKeys 完全派生自 pathname，无需 state
   const selectedKeys = useMemo(() => {
-    const path = location.pathname.replace(/\/$/, '') || '/dashboard';
+    const path = location.pathname.replace(/\/$/, '') || '/getting-started';
     if (DETAIL_PAGE_PATTERN.test(path)) return [];
     const matchingItem = [...navItems]
       .sort((a, b) => b.itemKey.length - a.itemKey.length)

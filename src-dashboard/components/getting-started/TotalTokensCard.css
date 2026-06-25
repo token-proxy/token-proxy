@@ -1,0 +1,82 @@
+/**
+ * TotalTokensCard 样式。
+ *
+ * 主卡片视觉沿用 KpiCard 自带样式，此文件仅控制词元构成区域
+ * （缓存命中率胶囊 + 堆叠条 + 图例）的布局与字号。
+ *
+ * 排版策略：图例字号统一 12px，与排行卡片文字层级一致；
+ * 缓存胶囊使用品牌色强调。
+ */
+
+.total-tokens-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 词元构成区域包装 */
+.total-tokens-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 4px;
+}
+
+/* 缓存命中率胶囊：紧随 KPI 数字下方，水平居左 */
+.total-tokens-cache-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px;
+  border-radius: 12px;
+  background-color: var(--semi-color-fill-0);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  align-self: flex-start;
+}
+
+.total-tokens-cache-label {
+  color: var(--semi-color-text-2);
+}
+
+.total-tokens-cache-value {
+  font-weight: 600;
+  color: var(--semi-color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 5 段图例：横向排列，窄屏自动换行 */
+.total-tokens-composition-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+
+/* 单个图例项 */
+.total-tokens-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--semi-color-text-2);
+}
+
+.total-tokens-legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.total-tokens-legend-value {
+  font-weight: 500;
+  color: var(--semi-color-text-0);
+}
+
+.total-tokens-legend-pct {
+  color: var(--semi-color-text-2);
+}

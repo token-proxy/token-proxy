@@ -7,8 +7,8 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::domain::log::{
-    DashboardWindow, KpiAggregate, LogContent, LogMetadata, LogTokenUsage, SparklineBucket,
-    TopAccountRow, TopUserRow,
+    DashboardWindow, HeatmapCell, KpiAggregate, LogContent, LogMetadata, LogTokenUsage,
+    QualityMetrics, SparklineBucket, TopAccessPointRow, TopModelRow,
 };
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
@@ -125,35 +125,56 @@ pub trait LogRepository: Send + Sync {
 
     /// 聚合 KPI 标量值（单次 SQL，5 个聚合列）
     ///
-    /// 用于 Dashboard 顶部 4 张 KPI 卡。缓存命中率 = `cache_read_tokens / input_plus_cache_read_tokens`，
-    /// 分母为 0 时由调用方判定为 None。
-    async fn aggregate_kpi(&self, window: &DashboardWindow) -> Result<KpiAggregate, AppError>;
+    /// 用于个人 Dashboard 顶部 KPI 卡。所有数据按 `user_id` 过滤，覆盖当前登录用户视角。
+    /// 缓存命中率 = `cache_read_tokens / input_plus_cache_read_tokens`，分母为 0 时由调用方判定为 None。
+    async fn aggregate_kpi(
+        &self,
+        user_id: Uuid,
+        window: &DashboardWindow,
+    ) -> Result<KpiAggregate, AppError>;
 
     /// 聚合 sparkline 时间序列（按 hour 或 day 分桶）
     ///
-    /// 自动用 `generate_series` 补齐空桶，确保返回 `bucket_count` 个桶。
+    /// 限定 `user_id` 范围。自动用 `generate_series` 补齐空桶，确保返回 `bucket_count` 个桶。
     /// `bucket_count = 24` 时按小时分桶（用于"今日"），否则按天分桶。
     async fn aggregate_sparkline(
         &self,
+        user_id: Uuid,
         window: &DashboardWindow,
         bucket_count: u32,
     ) -> Result<Vec<SparklineBucket>, AppError>;
 
-    /// 成员请求量排行 Top N
+    /// 用户日级 365 天词元热力图（独立于 DashboardWindow）
     ///
-    /// LEFT JOIN users 表容忍删除：被删除成员的 `username` / `display_name` 返回 None。
-    async fn top_users(
+    /// 按浏览器时区 `timezone`（已通过 application 层 chrono-tz 白名单校验）做 `AT TIME ZONE` 日级分桶；
+    /// SQL 用 `generate_series` 补齐 365 天空桶，确保返回 365 行。
+    async fn user_daily_token_heatmap(
         &self,
-        window: &DashboardWindow,
-        limit: u32,
-    ) -> Result<Vec<TopUserRow>, AppError>;
+        user_id: Uuid,
+        end: DateTime<Utc>,
+        timezone: &str,
+    ) -> Result<Vec<HeatmapCell>, AppError>;
 
-    /// 账号词元消耗排行 Top N
-    ///
-    /// LEFT JOIN accounts + providers 表容忍删除：被删除账号 / 服务商的对应字段返回 None。
-    async fn top_accounts(
+    /// 用户视角模型 Top N（按 model_mapped 分组，request_count 降序）
+    async fn top_models_for_user(
         &self,
+        user_id: Uuid,
         window: &DashboardWindow,
         limit: u32,
-    ) -> Result<Vec<TopAccountRow>, AppError>;
+    ) -> Result<Vec<TopModelRow>, AppError>;
+
+    /// 用户视角接入点 Top N（LEFT JOIN access_points 容忍删除）
+    async fn top_access_points_for_user(
+        &self,
+        user_id: Uuid,
+        window: &DashboardWindow,
+        limit: u32,
+    ) -> Result<Vec<TopAccessPointRow>, AppError>;
+
+    /// 用户视角调用质量指标（状态码分布 + 中断 + 平均/P95 耗时）
+    async fn quality_metrics_for_user(
+        &self,
+        user_id: Uuid,
+        window: &DashboardWindow,
+    ) -> Result<QualityMetrics, AppError>;
 }

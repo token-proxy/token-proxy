@@ -44,17 +44,21 @@ export function ComparisonArrow({
     return <span style={{ color: 'var(--semi-color-tertiary)', fontSize: 13 }}>—</span>;
   }
 
-  // 2. 边界状态：上一窗为 0，本窗有值（无百分比可言）
+  // 2. 边界状态：上一窗为 0，本窗有值（新增 100%）
   if (trend === 'new') {
     return (
       <span
         style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
           color: 'var(--semi-color-success)',
           fontSize: 13,
           fontWeight: 500,
         }}
       >
-        新增
+        <IconArrowUp size="small" />
+        {showText && <span>100%</span>}
       </span>
     );
   }

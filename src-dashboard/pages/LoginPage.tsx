@@ -13,8 +13,8 @@ interface LoginFormValues {
 /**
  * LoginPage - 登录页面
  *
- * 提供账号密码登录表单，登录成功后存储 JWT 并跳转到 Dashboard。
- * 已登录用户自动重定向到 /dashboard。
+ * 提供账号密码登录表单，登录成功后存储 JWT 并跳转到「开始使用」页。
+ * 已登录用户自动重定向到 /getting-started。
  */
 export default function LoginPage(): ReactNode {
   const navigate = useNavigate();
@@ -22,7 +22,7 @@ export default function LoginPage(): ReactNode {
   const [submitting, setSubmitting] = useState(false);
 
   if (token) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/getting-started" replace />;
   }
 
   const handleSubmit = async (values: LoginFormValues) => {
@@ -48,7 +48,7 @@ export default function LoginPage(): ReactNode {
       localStorage.setItem('display_name', data.display_name ?? values.username);
 
       Toast.success('登录成功');
-      navigate('/dashboard', { replace: true });
+      navigate('/getting-started', { replace: true });
     } catch {
       Toast.error('网络错误');
     } finally {

@@ -1,0 +1,108 @@
+/**
+ * 「开始使用」页面布局样式。
+ *
+ * 页面结构：
+ *   header → hero-grid（用量总览热力图 + 核心指标）→ 我的接入点 → 我的接入凭证 → 请求日志。
+ *
+ * 响应式断点：768px 以下多列布局降级为单列。
+ */
+
+.getting-started-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+}
+
+/* 顶部 header：左侧标题 + 右侧时间切换器，窄屏自动换行 */
+.getting-started-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* ─── 首屏：用量总览（热力图） + 核心指标 50/50 ─── */
+
+.gs-hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+@media (max-width: 767px) {
+  .gs-hero-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gs-hero-left-card,
+.gs-hero-right-card {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 指标卡 body 填充剩余空间，使内容等高匹配左侧 */
+.gs-hero-right-card .semi-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── 数据指标两组链路布局 ─── */
+
+.metrics-card-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 一行指标横向 3 列，两行平分空间 */
+.metrics-row {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1px;
+  background: var(--semi-color-border);
+  overflow: hidden;
+}
+
+/* 第一行与第二行之间 1px 分隔 */
+.metrics-row:nth-child(1) {
+  border-radius: 8px 8px 0 0;
+}
+
+.metrics-row:nth-child(2) {
+  border-radius: 0 0 8px 8px;
+}
+
+/* 单个指标单元格 */
+.metrics-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 6px;
+  background: var(--semi-color-bg-2);
+}
+
+/* 指标标签 */
+.metrics-cell-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* 指标数值 */
+.metrics-cell-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}

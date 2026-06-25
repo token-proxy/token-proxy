@@ -2,19 +2,19 @@
  * Dashboard 时间范围切换器组件。
  *
  * 整合预设范围（今日 / 7 天 / 30 天）、自定义日期区间和刷新按钮，
- * 是 DashboardPage 顶部唯一的时间控制入口。
+ * 挂载在「数据指标」卡片 `headerExtraContent` 内，使用小尺寸控件避免撑开卡片标题。
  *
  * 设计要点：
- * - 主体使用 Semi RadioGroup 按钮组样式，4 个预设视觉上等宽紧凑
+ * - 主体使用 Semi ButtonGroup 按钮组样式，4 个预设视觉上等宽紧凑，size=small
  * - "自定义"激活时弹出 Popover 内嵌 DatePicker（dateTimeRange 模式），
  *   避免首屏拥挤；触发按钮上回显已选区间
- * - 右侧刷新按钮（IconRefresh + loading spinner）通过 flex: 1 占位推到末端
+ * - 右侧刷新按钮（IconRefresh + loading spinner）
  * - 整体 flexWrap: wrap，窄屏自动换行
  */
 
 import { useState } from 'react';
-import { Button, DatePicker, Popover, RadioGroup, Radio } from '@douyinfe/semi-ui';
-import { IconRefresh, IconCalendar } from '@douyinfe/semi-icons';
+import { Button, ButtonGroup, DatePicker, Popover } from '@douyinfe/semi-ui';
+import { IconCalendar, IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import type { TimeRangePreset, TimeRangeQuery } from '../../types/dashboard';
 import { toIsoString } from '../../utils/query';
@@ -111,21 +111,22 @@ export function TimeRangeSelector({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
+        gap: 8,
         flexWrap: 'wrap',
       }}
     >
-      <RadioGroup
-        type="button"
-        value={value.range}
-        onChange={(e) => handlePresetChange(e.target.value as TimeRangePreset)}
-      >
+      <ButtonGroup size="small" aria-label="时间范围">
         {(Object.keys(PRESET_LABELS) as TimeRangePreset[]).map((preset) => (
-          <Radio key={preset} value={preset}>
+          <Button
+            key={preset}
+            theme={value.range === preset ? 'solid' : 'light'}
+            type="primary"
+            onClick={() => handlePresetChange(preset)}
+          >
             {PRESET_LABELS[preset]}
-          </Radio>
+          </Button>
         ))}
-      </RadioGroup>
+      </ButtonGroup>
 
       {/* 自定义模式：日期选择器折叠在 Popover 内，避免首屏拥挤 */}
       {value.range === 'custom' && (
@@ -137,7 +138,7 @@ export function TimeRangeSelector({
           content={
             <div style={{ padding: 12 }}>
               <DatePicker
-                type="dateTimeRange"
+                type="dateRange"
                 value={customDates}
                 onChange={handleCustomDateChange}
                 density="compact"
@@ -145,7 +146,7 @@ export function TimeRangeSelector({
             </div>
           }
         >
-          <Button icon={<IconCalendar />} size="default">
+          <Button icon={<IconCalendar />} size="small">
             {customDates
               ? `${customDates[0].toLocaleDateString('zh-CN')} - ${customDates[1].toLocaleDateString('zh-CN')}`
               : '选择日期'}
@@ -153,10 +154,14 @@ export function TimeRangeSelector({
         </Popover>
       )}
 
-      {/* 弹性占位：将刷新按钮推到行末 */}
-      <div style={{ flex: 1 }} />
-
-      <Button icon={<IconRefresh />} loading={loading} onClick={onRefresh} type="tertiary">
+      {/* 刷新按钮 */}
+      <Button
+        icon={<IconRefresh />}
+        loading={loading}
+        onClick={onRefresh}
+        type="tertiary"
+        size="small"
+      >
         刷新
       </Button>
     </div>

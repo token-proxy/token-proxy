@@ -24,9 +24,11 @@ const EMPTY_FORM: AccessPointFormData = {
  * 封装接入点的增删改查、状态切换、服务商/账号加载等功能。
  * 提供接入点列表、服务商树、账号池等数据。
  *
+ * @param scope - 数据范围：`'all'` 所有接入点（默认），`'mine'` 仅当前用户创建的接入点
  * @returns 接入点列表、加载状态、服务商/账号数据、CRUD 操作方法、复制 URL 等工具方法
  */
-export default function useAccessPoints() {
+export default function useAccessPoints(scope: 'all' | 'mine' = 'all') {
+  const apUrl = scope === 'mine' ? '/api/access-points/me' : '/api/access-points';
   const [accessPoints, setAccessPoints] = useState<AccessPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [providers, setProviders] = useState<ProviderOption[]>([]);
@@ -49,14 +51,14 @@ export default function useAccessPoints() {
 
   const loadAccessPoints = useCallback(async () => {
     try {
-      const data = await api.get<AccessPoint[]>('/api/access-points');
+      const data = await api.get<AccessPoint[]>(apUrl);
       setAccessPoints(data);
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '获取接入点列表失败');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [apUrl]);
 
   const loadProviderById = useCallback(async (providerId: string) => {
     const provider = await api.get<ProviderOption>(`/api/providers/${providerId}`);
@@ -86,7 +88,7 @@ export default function useAccessPoints() {
     const init = async () => {
       try {
         const [apData, provData] = await Promise.all([
-          api.get<AccessPoint[]>('/api/access-points'),
+          api.get<AccessPoint[]>(apUrl),
           api.get<ProviderOption[]>('/api/providers'),
         ]);
         setAccessPoints(apData);

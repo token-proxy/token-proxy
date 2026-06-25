@@ -1,8 +1,8 @@
 /**
  * KpiCard - 含内嵌 Sparkline 的 KPI 卡片。
  *
- * 用于总请求数 / 词元量 / 活跃成员数三张主 KPI 卡，统一视觉与交互。
- * 单一类型卡片，无 sparkline 的比率类指标请使用 CacheHitCard。
+ * 用于请求数 / 词元量两张主 KPI 卡，统一视觉与交互。
+ * 无 sparkline 的比率类指标请使用独立的指标卡片组件。
  */
 
 import { Card, Skeleton } from '@douyinfe/semi-ui';
@@ -13,7 +13,7 @@ import { Sparkline } from './Sparkline';
 
 /** KpiCard 组件 Props */
 interface KpiCardProps {
-  /** 卡片标题（如 "总请求数"） */
+  /** 卡片标题（如 "我的请求数"） */
   title: string;
   /** 当前窗口值（KpiTrendItem.current） */
   value: number;
@@ -33,18 +33,18 @@ interface KpiCardProps {
  * KPI 卡片（含内嵌 Sparkline）。
  *
  * 布局自上而下：
- * 1. 标题（13px 二级文字）
- * 2. 大数字（36px 加粗）+ ComparisonArrow（baseline 对齐）
+ * 1. 标题（14px，letter-spacing 增强可读性）
+ * 2. 大数字（36px 加粗，tabular-nums 等宽数字）+ ComparisonArrow（baseline 对齐）
  * 3. Sparkline（48px 高的极简单色折线）
  *
  * 样式策略：
  * - 卡片背景使用 `--semi-color-bg-2`，去边框 + 12px 圆角，暗色优先
  * - 所有颜色经 Semi CSS 变量，明暗主题自动适配
- * - 整体高度固定 160px，与 CacheHitCard 视觉对齐
+ * - 整体高度固定 160px，与同列卡片视觉对齐
  *
  * @example
  * <KpiCard
- *   title="总请求数"
+ *   title="我的请求数"
  *   value={3847}
  *   trend="up"
  *   changePct={18.2}
@@ -89,7 +89,9 @@ export function KpiCard({
       {/* 标题 */}
       <div
         style={{
-          fontSize: 13,
+          fontSize: 14,
+          fontWeight: 500,
+          letterSpacing: '0.02em',
           color: 'var(--semi-color-text-2)',
           marginBottom: 8,
         }}
@@ -112,6 +114,7 @@ export function KpiCard({
             fontWeight: 600,
             color: 'var(--semi-color-text-0)',
             lineHeight: 1,
+            fontVariantNumeric: 'tabular-nums',
           }}
         >
           {format(value)}

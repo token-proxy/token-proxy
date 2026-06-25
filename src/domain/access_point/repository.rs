@@ -20,6 +20,8 @@ pub trait AccessPointRepository: Send + Sync {
 
     /// 查询所有接入点
     async fn find_all(&self) -> Result<Vec<AccessPoint>, AppError>;
+    /// 按创建者查询接入点
+    async fn find_by_created_by(&self, created_by: Uuid) -> Result<Vec<AccessPoint>, AppError>;
     /// 查询所有已启用的接入点
     async fn find_enabled(&self) -> Result<Vec<AccessPoint>, AppError>;
     /// 根据 Provider ID 查找关联的接入点

@@ -6,10 +6,12 @@
  */
 
 import type {
+  HeatmapResponse,
   KpiResponse,
-  TopUsersResponse,
-  TopAccountsResponse,
+  QualityResponse,
   TimeRangeQuery,
+  TopAccessPointsResponse,
+  TopModelsResponse,
 } from './types/dashboard';
 
 // access_token 距离过期不足该阈值时, 请求前主动刷新（秒）
@@ -197,22 +199,38 @@ function buildDashboardQuery(q: TimeRangeQuery): string {
 /**
  * Dashboard 数据洞察 API 集合。
  *
- * 所有方法接受统一的 `TimeRangeQuery`，对应后端 4 个聚合端点：
- * - `/api/dashboard/kpi` — 4 张 KPI 卡（含内嵌 sparkline）
- * - `/api/dashboard/top-users` — 成员请求量排行 Top 10
- * - `/api/dashboard/top-accounts` — 上游账号词元消耗排行 Top 10
+ * 所有方法接受统一的 `TimeRangeQuery`（热力图除外，固定 365 天），对应后端 5 个聚合端点：
+ * - `/api/getting-started/kpi` — 4 张 KPI 卡（含内嵌 sparkline）
+ * - `/api/getting-started/heatmap` — 近 1 年活跃度热力图
+ * - `/api/getting-started/top-models` — 用户视角模型 Top 8
+ * - `/api/getting-started/top-access-points` — 用户视角接入点 Top 5
+ * - `/api/getting-started/quality` — 用户视角调用质量指标
  */
 export const dashboardApi = {
   /** 获取 4 张 KPI 卡数据 + 内嵌 sparkline 时间序列 */
   getKpi(q: TimeRangeQuery): Promise<KpiResponse> {
-    return api.get<KpiResponse>(`/api/dashboard/kpi?${buildDashboardQuery(q)}`);
+    return api.get<KpiResponse>(`/api/getting-started/kpi?${buildDashboardQuery(q)}`);
   },
-  /** 获取成员请求量排行 Top 10（按 request_count 降序） */
-  getTopUsers(q: TimeRangeQuery): Promise<TopUsersResponse> {
-    return api.get<TopUsersResponse>(`/api/dashboard/top-users?${buildDashboardQuery(q)}`);
+  /**
+   * 获取近 1 年用量热力图（固定 365 天，不受时间范围选择器影响）。
+   *
+   * @param tz IANA 时区名，建议传 `Intl.DateTimeFormat().resolvedOptions().timeZone`
+   */
+  getHeatmap(tz: string): Promise<HeatmapResponse> {
+    return api.get<HeatmapResponse>(`/api/getting-started/heatmap?tz=${encodeURIComponent(tz)}`);
   },
-  /** 获取上游账号词元消耗排行 Top 10（按 total_tokens 降序） */
-  getTopAccounts(q: TimeRangeQuery): Promise<TopAccountsResponse> {
-    return api.get<TopAccountsResponse>(`/api/dashboard/top-accounts?${buildDashboardQuery(q)}`);
+  /** 获取用户视角模型 Top 8（按 total_tokens 降序） */
+  getTopModels(q: TimeRangeQuery): Promise<TopModelsResponse> {
+    return api.get<TopModelsResponse>(`/api/getting-started/top-models?${buildDashboardQuery(q)}`);
+  },
+  /** 获取用户视角接入点 Top 5（按 total_tokens 降序） */
+  getTopAccessPoints(q: TimeRangeQuery): Promise<TopAccessPointsResponse> {
+    return api.get<TopAccessPointsResponse>(
+      `/api/getting-started/top-access-points?${buildDashboardQuery(q)}`,
+    );
+  },
+  /** 获取用户视角调用质量指标（成功率 / 错误率 / 中断率 / 平均与 P95 耗时） */
+  getQuality(q: TimeRangeQuery): Promise<QualityResponse> {
+    return api.get<QualityResponse>(`/api/getting-started/quality?${buildDashboardQuery(q)}`);
   },
 };

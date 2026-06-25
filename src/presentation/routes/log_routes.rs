@@ -13,6 +13,7 @@ use crate::application::log::dto::{
     SessionContentItemResponse, SessionSummaryResponse, TokenUsageResponse,
 };
 use crate::application::AppState;
+use crate::presentation::middleware::jwt_auth::CurrentUser;
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
 
@@ -28,6 +29,7 @@ use crate::shared::types::PaginatedResult;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/logs", get(query_logs))
+        .route("/api/logs/me", get(query_my_logs))
         .route("/api/logs/sessions", get(get_sessions))
         .route(
             "/api/logs/sessions/{id}/contents",
@@ -57,6 +59,20 @@ async fn query_logs(
     State(state): State<AppState>,
     Query(filters): Query<LogFilterParams>,
 ) -> Result<Json<PaginatedResult<LogSummaryResponse>>, AppError> {
+    let logs = state.log_service.query_logs(filters).await?;
+    Ok(Json(logs))
+}
+
+/// GET /api/logs/me
+///
+/// 分页查询当前用户的代理请求日志，强制过滤 user_id
+async fn query_my_logs(
+    State(state): State<AppState>,
+    CurrentUser(user_id): CurrentUser,
+    Query(mut filters): Query<LogFilterParams>,
+) -> Result<Json<PaginatedResult<LogSummaryResponse>>, AppError> {
+    // 强制覆盖为当前用户，忽略前端传入的 user_id
+    filters.user_id = Some(user_id);
     let logs = state.log_service.query_logs(filters).await?;
     Ok(Json(logs))
 }

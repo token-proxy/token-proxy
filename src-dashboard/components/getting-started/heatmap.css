@@ -1,0 +1,227 @@
+/**
+ * 热力图样式：双色系 CSS 变量 + 统一网格布局 + 微光晕效果。
+ *
+ * 月份、周几、格子共用一个 Grid（54 列 × 8 行），天然对齐。
+ * 第 1 行 = 月份，第 1 列 = 周几，其余 = 格子。
+ *
+ * 高活跃度单元格带有微妙的 box-shadow 光晕；
+ * hover 仅增强光晕（不放大），Tooltip 置于格子上方居中 + 底边小三角。
+ *
+ * ─── 色彩体系 ───
+ * 直接使用 Semi Design 原生色板变量，不硬编码 hex，不依赖 color-mix：
+ *
+ * 请求次数（蓝色系）：`--semi-blue-{1,3,5,7,9}`
+ * 词元总量（绿色系）：`--semi-green-{1,3,5,7,9}`
+ *
+ * 5 档色阶全部为相应色系着色，图例全部使用有色色块；
+ * 零值格子单独覆盖为灰色 `--semi-color-fill-0`。
+ */
+
+/* ─── 亮色 / 暗色主题共用色板（Semi 色板变量自动跟随主题）─── */
+
+.heatmap-container[data-metric='requests'] {
+  --heatmap-l0: rgba(var(--semi-blue-1), 1);
+  --heatmap-l1: rgba(var(--semi-blue-3), 1);
+  --heatmap-l2: rgba(var(--semi-blue-5), 1);
+  --heatmap-l3: rgba(var(--semi-blue-7), 1);
+  --heatmap-l4: rgba(var(--semi-blue-9), 1);
+}
+
+.heatmap-container[data-metric='tokens'] {
+  --heatmap-l0: rgba(var(--semi-green-1), 1);
+  --heatmap-l1: rgba(var(--semi-green-3), 1);
+  --heatmap-l2: rgba(var(--semi-green-5), 1);
+  --heatmap-l3: rgba(var(--semi-green-7), 1);
+  --heatmap-l4: rgba(var(--semi-green-9), 1);
+}
+
+/* ─── 容器 ─── */
+
+.heatmap-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+/* ─── 标题行 ─── */
+
+.heatmap-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.heatmap-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--semi-color-text-2);
+}
+
+/* ─── 统一网格：54 列 × 8 行 ─── */
+/* col 1 = 周几标签（预留 24px），col 2-54 = 53 周数据 */
+/* row 1 = 月份标头，row 2-8 = 7 天数据 */
+
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: 24px repeat(53, 11px);
+  gap: 2px;
+}
+
+/* ─── 网格子项 ─── */
+
+.heatmap-month-label {
+  font-size: 10px;
+  color: var(--semi-color-text-2);
+  line-height: 11px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.heatmap-weekday-label {
+  font-size: 10px;
+  color: var(--semi-color-text-2);
+  line-height: 11px;
+}
+
+/* ─── 格子基础样式 ─── */
+
+.heatmap-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--heatmap-l0);
+  cursor: default;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.12s ease;
+  position: relative;
+}
+
+/* 格子 level 0 覆盖为灰色（零活跃度），图例保持颜色递进 */
+.heatmap-cell[data-level='0'] {
+  background: var(--semi-color-fill-0);
+}
+.heatmap-cell[data-level='1'] {
+  background: var(--heatmap-l1);
+}
+.heatmap-cell[data-level='2'] {
+  background: var(--heatmap-l2);
+}
+.heatmap-cell[data-level='3'] {
+  background: var(--heatmap-l3);
+  box-shadow: 0 0 3px color-mix(in srgb, var(--heatmap-l3) 25%, transparent);
+}
+.heatmap-cell[data-level='4'] {
+  background: var(--heatmap-l4);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--heatmap-l4) 35%, transparent);
+}
+
+/* ─── 格子 hover 态：仅增强光晕，不放大 ─── */
+
+.heatmap-cell:hover {
+  z-index: 1;
+}
+
+.heatmap-cell[data-level='1']:hover {
+  box-shadow: 0 0 6px color-mix(in srgb, var(--heatmap-l1) 40%, transparent);
+}
+
+.heatmap-cell[data-level='2']:hover {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--heatmap-l2) 45%, transparent);
+}
+
+.heatmap-cell[data-level='3']:hover {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--heatmap-l3) 50%, transparent);
+}
+
+.heatmap-cell[data-level='4']:hover {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--heatmap-l4) 55%, transparent);
+}
+
+/* ─── 图例 ─── */
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+}
+
+.heatmap-legend-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  cursor: default;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.heatmap-legend-cell[data-level='0'] {
+  background: var(--heatmap-l0);
+}
+.heatmap-legend-cell[data-level='1'] {
+  background: var(--heatmap-l1);
+}
+.heatmap-legend-cell[data-level='2'] {
+  background: var(--heatmap-l2);
+}
+.heatmap-legend-cell[data-level='3'] {
+  background: var(--heatmap-l3);
+  box-shadow: 0 0 3px color-mix(in srgb, var(--heatmap-l3) 25%, transparent);
+}
+.heatmap-legend-cell[data-level='4'] {
+  background: var(--heatmap-l4);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--heatmap-l4) 35%, transparent);
+}
+
+.heatmap-legend-cell:hover {
+  transform: scale(1.3);
+}
+
+/* ─── Tooltip：格子上方居中 + 底边小三角（pointer-events: none）─── */
+
+.heatmap-tooltip {
+  position: fixed;
+  z-index: 2000;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.82);
+  border-radius: 6px;
+  pointer-events: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  /* 以 left 为水平中心点 */
+  transform: translate(-50%, -100%);
+}
+
+/* 底边小三角（指向下方格子） */
+.heatmap-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid rgba(0, 0, 0, 0.82);
+}
+
+/* ─── 加载态骨架 ─── */
+
+.heatmap-skeleton {
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--semi-color-text-2);
+  font-size: 13px;
+}

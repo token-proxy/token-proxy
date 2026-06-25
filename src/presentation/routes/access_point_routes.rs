@@ -23,6 +23,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/access-points", get(list_access_points))
         .route("/api/access-points", post(create_access_point))
+        .route("/api/access-points/me", get(list_my_access_points))
         .route("/api/access-points/{id}", get(get_access_point))
         .route("/api/access-points/{id}", put(update_access_point))
         .route("/api/access-points/{id}", delete(delete_access_point))
@@ -35,6 +36,20 @@ async fn list_access_points(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<AccessPointResponse>>, AppError> {
     let access_points = state.access_point_service.list_all().await?;
+    Ok(Json(access_points))
+}
+
+/// GET /api/access-points/me
+///
+/// 返回当前用户创建的接入点列表
+async fn list_my_access_points(
+    State(state): State<AppState>,
+    CurrentUser(user_id): CurrentUser,
+) -> Result<Json<Vec<AccessPointResponse>>, AppError> {
+    let access_points = state
+        .access_point_service
+        .list_by_created_by(user_id)
+        .await?;
     Ok(Json(access_points))
 }
 

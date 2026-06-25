@@ -6,16 +6,17 @@
 
 本版本对仪表盘需求进行了以下重大更新：
 
-| # | 修改点 | 变更类型 | 说明 |
-|---|--------|---------|------|
-| 1 | 统一统计周期 | 架构调整 | 全局 `periodDays` 控制所有图表 |
-| 2 | 数字格式化修正 | 规范变更 | 使用四位分节的 `formatNumber`，禁用缩写 |
-| 3 | 饼图分类修正 | 数据定义变更 | 消除重复统计，输入/输出/缓存创建三分类 |
-| 4 | 新增服务商排名 | 功能新增 | 按 provider 维度的 Token 消耗排名，模型排名改为按 `model_mapped` |
+| #   | 修改点         | 变更类型     | 说明                                                             |
+| --- | -------------- | ------------ | ---------------------------------------------------------------- |
+| 1   | 统一统计周期   | 架构调整     | 全局 `periodDays` 控制所有图表                                   |
+| 2   | 数字格式化修正 | 规范变更     | 使用四位分节的 `formatNumber`，禁用缩写                          |
+| 3   | 饼图分类修正   | 数据定义变更 | 消除重复统计，输入/输出/缓存创建三分类                           |
+| 4   | 新增服务商排名 | 功能新增     | 按 provider 维度的 Token 消耗排名，模型排名改为按 `model_mapped` |
 
 ## 需求概述
 
-将当前 Dashboard（展示 4 个统计卡片 + 趋势柱状图 + Top-N 表格）重写为"数据概览"：使用 VChart 图表库，展示 4 个 Token 统计卡片、Token 趋势图、Token 分布饼图、Top-N 排名图，所有图表受全局统计周期控制。
+将当前 Dashboard（展示 4 个统计卡片 + 趋势柱状图 + Top-N 表格）重写为"数据概览"：使用 VChart 图表库，展示 4 个 Token
+统计卡片、Token 趋势图、Token 分布饼图、Top-N 排名图，所有图表受全局统计周期控制。
 
 ### 业务目标
 
@@ -41,18 +42,20 @@
 
 所有 Token 分类和计算公式已通过代码验证：
 
-- **总 Token** = 各字段之和：`total_tokens = input_tokens + output_tokens + cache_creation_input_tokens + cache_read_input_tokens + thinking_tokens`
+- **总 Token** = 各字段之和：
+  `total_tokens = input_tokens + output_tokens + cache_creation_input_tokens + cache_read_input_tokens + thinking_tokens`
 - 验证位置：`src/infrastructure/parsers/parsed_token_usage.rs:118`
 
 **饼图三分类（不重复统计）：**
 
-| 饼图分类 | 计算方式 | 说明 |
-|---------|---------|------|
-| 输入 | `input_tokens + cache_read_input_tokens` | 所有进入模型的 Token（含缓存读取） |
-| 输出 | `output_tokens + thinking_tokens` | 所有模型产出的 Token（含思考过程） |
-| 缓存创建 | `cache_creation_input_tokens` | 新建缓存的 Token，独立写入成本 |
+| 饼图分类 | 计算方式                                 | 说明                               |
+| -------- | ---------------------------------------- | ---------------------------------- |
+| 输入     | `input_tokens + cache_read_input_tokens` | 所有进入模型的 Token（含缓存读取） |
+| 输出     | `output_tokens + thinking_tokens`        | 所有模型产出的 Token（含思考过程） |
+| 缓存创建 | `cache_creation_input_tokens`            | 新建缓存的 Token，独立写入成本     |
 
-**验证**：三分类之和 = (input + cache_read) + (output + thinking) + cache_creation = input + output + cache_creation + cache_read + thinking = 原 total_tokens。用户修改不存在统计偏差。
+**验证**：三分类之和 = (input + cache_read) + (output + thinking) + cache_creation = input + output + cache_creation +
+cache_read + thinking = 原 total_tokens。用户修改不存在统计偏差。
 
 ### 1.2 模型字段选择
 
@@ -72,11 +75,11 @@
 
 **请求参数**（新增）：
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `days` | u64 | 否 | 30 | 统计天数（统一周期参数） |
+| 参数   | 类型 | 必填 | 默认值 | 说明                     |
+| ------ | ---- | ---- | ------ | ------------------------ |
+| `days` | u64  | 否   | 30     | 统计天数（统一周期参数） |
 
-**响应体**（新增 token_* 字段）：
+**响应体**（新增 token\_\* 字段）：
 
 ```json
 {
@@ -100,17 +103,19 @@
 ```
 
 **实现位置**：
+
 - 后端 DTO：`src/presentation/routes/stats/dto/overview_response.rs`
-- 后端 SQL：`LogRepository::get_overview_stats()` 新增 JOIN `log_token_usage` 查询，使用 `SUM(ltu.total_tokens)`、`SUM(ltu.input_tokens + ltu.cache_read_input_tokens)` 等聚合
+- 后端 SQL：`LogRepository::get_overview_stats()` 新增 JOIN `log_token_usage` 查询，使用 `SUM(ltu.total_tokens)`、
+  `SUM(ltu.input_tokens + ltu.cache_read_input_tokens)` 等聚合
 - 环比计算：查询上一周期数据做比较
 
 #### `GET /api/stats/trends` — 扩展（新增 Token 趋势）
 
 **请求参数**：
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `days` | u64 | 否 | 30 | 统计天数 |
+| 参数   | 类型 | 必填 | 默认值 | 说明     |
+| ------ | ---- | ---- | ------ | -------- |
+| `days` | u64  | 否   | 30     | 统计天数 |
 
 **响应体**（新增 token 字段）：
 
@@ -127,6 +132,7 @@
 ```
 
 **实现位置**：
+
 - 后端 DTO：`src/presentation/routes/stats/dto/trend_item.rs`
 - 后端 SQL：`LogRepository::get_token_trends(days)` 新方法，按天聚合 `log_token_usage`
 
@@ -134,10 +140,10 @@
 
 **请求参数**：
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `limit` | u64 | 否 | 10 | 返回条数 |
-| `days` | u64 | 否 | 30 | 统计天数 |
+| 参数    | 类型 | 必填 | 默认值 | 说明     |
+| ------- | ---- | ---- | ------ | -------- |
+| `limit` | u64  | 否   | 10     | 返回条数 |
+| `days`  | u64  | 否   | 30     | 统计天数 |
 
 **响应体**（新增 `token_total` 字段）：
 
@@ -154,6 +160,7 @@
 ```
 
 **实现位置**：
+
 - 需要 JOIN `access_points` 表获取 `short_code` 和 `name`
 - GROUP BY `access_point_id`，SUM token 用量
 
@@ -161,10 +168,10 @@
 
 **请求参数**：
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `limit` | u64 | 否 | 10 | 返回条数 |
-| `days` | u64 | 否 | 30 | 统计天数 |
+| 参数    | 类型 | 必填 | 默认值 | 说明     |
+| ------- | ---- | ---- | ------ | -------- |
+| `limit` | u64  | 否   | 10     | 返回条数 |
+| `days`  | u64  | 否   | 30     | 统计天数 |
 
 **响应体**（改为 token 维度）：
 
@@ -179,6 +186,7 @@
 ```
 
 **实现位置**：
+
 - 将 SQL GROUP BY `model_original` 改为 GROUP BY `model_mapped`
 - 数据来源从 `log_metadata` 迁移到 `log_token_usage`（支持 token 聚合）
 - 使用 `(model_mapped, timestamp DESC)` 索引
@@ -187,10 +195,10 @@
 
 **请求参数**：
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `limit` | u64 | 否 | 10 | 返回条数 |
-| `days` | u64 | 否 | 30 | 统计天数 |
+| 参数    | 类型 | 必填 | 默认值 | 说明     |
+| ------- | ---- | ---- | ------ | -------- |
+| `limit` | u64  | 否   | 10     | 返回条数 |
+| `days`  | u64  | 否   | 30     | 统计天数 |
 
 **响应体**：
 
@@ -206,6 +214,7 @@
 ```
 
 **实现位置**：
+
 - 后端 DTO：新建 `src/presentation/routes/stats/dto/top_provider_item.rs`
 - 后端 SQL：`LogRepository::top_providers(limit, days)` 新方法
 - JOIN `providers` 表获取 `name` 字段
@@ -216,9 +225,9 @@
 
 **请求参数**：
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `days` | u64 | 否 | 30 | 统计天数 |
+| 参数   | 类型 | 必填 | 默认值 | 说明     |
+| ------ | ---- | ---- | ------ | -------- |
+| `days` | u64  | 否   | 30     | 统计天数 |
 
 **响应体**：
 
@@ -231,25 +240,27 @@
 ```
 
 **计算方式**（三分类不重复）：
+
 - `input_total = SUM(input_tokens) + SUM(cache_read_input_tokens)`
 - `output_total = SUM(output_tokens) + SUM(thinking_tokens)`
 - `cache_creation_total = SUM(cache_creation_input_tokens)`
 - `total = input_total + output_total + cache_creation_total`（与原 total_tokens 一致）
 
 **实现位置**：
+
 - 后端 DTO：新建 `src/presentation/routes/stats/dto/token_distribution_response.rs`
 - 后端 SQL：`LogRepository::get_token_distribution(days)` 新方法
 
 ### 2.2 API 路由汇总
 
-| 方法 | 路径 | 说明 | 状态 |
-|------|------|------|------|
-| GET | `/api/stats/overview` | 概览（请求量 + Token 统计 + 环比） | 改造 |
-| GET | `/api/stats/trends` | 每日 Token 趋势 | 改造 |
-| GET | `/api/stats/top-access-points` | 接入点 Token 排名 | 改造 |
-| GET | `/api/stats/top-models` | 映射模型 Token 排名（改为 model_mapped） | 改造 |
-| GET | `/api/stats/top-providers` | 服务商 Token 排名 | 新增 |
-| GET | `/api/stats/token-distribution` | Token 分布（饼图三分类） | 新增 |
+| 方法 | 路径                            | 说明                                     | 状态 |
+| ---- | ------------------------------- | ---------------------------------------- | ---- |
+| GET  | `/api/stats/overview`           | 概览（请求量 + Token 统计 + 环比）       | 改造 |
+| GET  | `/api/stats/trends`             | 每日 Token 趋势                          | 改造 |
+| GET  | `/api/stats/top-access-points`  | 接入点 Token 排名                        | 改造 |
+| GET  | `/api/stats/top-models`         | 映射模型 Token 排名（改为 model_mapped） | 改造 |
+| GET  | `/api/stats/top-providers`      | 服务商 Token 排名                        | 新增 |
+| GET  | `/api/stats/token-distribution` | Token 分布（饼图三分类）                 | 新增 |
 
 ### 2.3 统一 `days` 参数
 
@@ -270,7 +281,7 @@ npm install @visactor/react-vchart @visactor/vchart
 
 ### 3.2 全局统计周期
 
-- DashboardPage 维护一个 `periodDays` 状态（类型 `number`，默认 30）
+- GettingStartedPage 维护一个 `periodDays` 状态（类型 `number`，默认 30）
 - 页面顶部放置三个按钮：7 天 / 30 天 / 90 天，高亮当前选中值
 - 切换时设置 `periodDays`，触发 `useEffect` 全部 API 重新请求
 - 所有 API 调用使用相同的 `days=${periodDays}` 参数
@@ -305,7 +316,7 @@ npm install @visactor/react-vchart @visactor/vchart
 ### 3.4 数据类型定义
 
 ```typescript
-// src-dashboard/types/dashboard.ts
+// src-getting-started/types/getting-started.ts
 
 /** Dashboard 概览统计数据 */
 export interface OverviewData {
@@ -378,7 +389,8 @@ export interface TokenDistribution {
 
 ### 3.6 前端类型与后端对齐
 
-业务层（dashboard）不需要对 `top_provider_item` 中的 `provider_id` 做 UUID 格式化——使用 Semi `Code` 组件展示，等宽字体已通过 CSS 实现，不需要别的方式。
+业务层（dashboard）不需要对 `top_provider_item` 中的 `provider_id` 做 UUID 格式化——使用 Semi `Code` 组件展示，等宽字体已通过
+CSS 实现，不需要别的方式。
 
 ---
 
@@ -386,24 +398,24 @@ export interface TokenDistribution {
 
 ### 4.1 新增文件
 
-| 文件路径 | 说明 |
-|---------|------|
-| `src/presentation/routes/stats/dto/top_provider_item.rs` | Top 服务商排名响应体 |
-| `src/presentation/routes/stats/dto/token_distribution_response.rs` | Token 分布响应体 |
+| 文件路径                                                           | 说明                 |
+| ------------------------------------------------------------------ | -------------------- |
+| `src/presentation/routes/stats/dto/top_provider_item.rs`           | Top 服务商排名响应体 |
+| `src/presentation/routes/stats/dto/token_distribution_response.rs` | Token 分布响应体     |
 
 ### 4.2 修改文件
 
-| 文件路径 | 变更 |
-|---------|------|
-| `src/presentation/routes/stats/dto/overview_response.rs` | 新增 token 字段 |
-| `src/presentation/routes/stats/dto/trend_item.rs` | 新增 token 字段 |
-| `src/presentation/routes/stats/dto/top_access_point_item.rs` | 新增 token_total 字段 |
-| `src/presentation/routes/stats/dto/top_model_item.rs` | 新增 request_count + token_total |
-| `src/presentation/routes/stats/dto/top_query.rs` | 新增 days 字段 |
-| `src/presentation/routes/stats_routes.rs` | 注册新路由，修改现有路由参数 |
-| `src/domain/log/repository_log.rs` | 新增统计方法 trait 签名 |
-| `src/infrastructure/persistence/repositories/log_repository.rs` | 实现新统计 SQL 查询 |
-| `src/application/log/log_service.rs` | 新增统计方法实现 |
+| 文件路径                                                        | 变更                             |
+| --------------------------------------------------------------- | -------------------------------- |
+| `src/presentation/routes/stats/dto/overview_response.rs`        | 新增 token 字段                  |
+| `src/presentation/routes/stats/dto/trend_item.rs`               | 新增 token 字段                  |
+| `src/presentation/routes/stats/dto/top_access_point_item.rs`    | 新增 token_total 字段            |
+| `src/presentation/routes/stats/dto/top_model_item.rs`           | 新增 request_count + token_total |
+| `src/presentation/routes/stats/dto/top_query.rs`                | 新增 days 字段                   |
+| `src/presentation/routes/stats_routes.rs`                       | 注册新路由，修改现有路由参数     |
+| `src/domain/log/repository_log.rs`                              | 新增统计方法 trait 签名          |
+| `src/infrastructure/persistence/repositories/log_repository.rs` | 实现新统计 SQL 查询              |
+| `src/application/log/log_service.rs`                            | 新增统计方法实现                 |
 
 ### 4.3 Token 用量解析需关注的变更
 
@@ -415,21 +427,21 @@ export interface TokenDistribution {
 
 ### 5.1 新增文件
 
-| 文件路径 | 说明 |
-|---------|------|
-| 无（图表组件直接在 DashboardPage 内实现） | |
+| 文件路径                                       | 说明 |
+| ---------------------------------------------- | ---- |
+| 无（图表组件直接在 GettingStartedPage 内实现） |      |
 
 ### 5.2 修改文件
 
-| 文件路径 | 变更 |
-|---------|------|
-| `src-dashboard/package.json` | 新增 `@visactor/react-vchart` 和 `@visactor/vchart` 依赖 |
-| `src-dashboard/types/dashboard.ts` | 新增 TopProvider / TokenDistribution 等类型 |
-| `src-dashboard/pages/DashboardPage.tsx` | 全面重写：全局周期控制 + 4 卡片 + VChart 趋势/饼图 + 3 排名柱状图 + 排名表 |
-| `src-dashboard/components/dashboard/StatCard.tsx` | 无需修改（兼容 token 类型） |
-| `src-dashboard/components/dashboard/TrendChart.tsx` | 降级/废弃（主 Dashboard 不再使用） |
+| 文件路径                                            | 变更                                                                       |
+| --------------------------------------------------- | -------------------------------------------------------------------------- |
+| `src-dashboard/package.json`                        | 新增 `@visactor/react-vchart` 和 `@visactor/vchart` 依赖                   |
+| `src-dashboard/types/dashboard.ts`                  | 新增 TopProvider / TokenDistribution 等类型                                |
+| `src-dashboard/pages/GettingStartedPage.tsx`        | 全面重写：全局周期控制 + 4 卡片 + VChart 趋势/饼图 + 3 排名柱状图 + 排名表 |
+| `src-dashboard/components/dashboard/StatCard.tsx`   | 无需修改（兼容 token 类型）                                                |
+| `src-dashboard/components/dashboard/TrendChart.tsx` | 降级/废弃（主 Dashboard 不再使用）                                         |
 
-### 5.3 DashboardPage 核心逻辑
+### 5.3 GettingStartedPage 核心逻辑
 
 ```typescript
 // 核心状态
@@ -458,25 +470,25 @@ useEffect(() => {
 
 ### 6.1 后端核心文件
 
-| 文件 | 本需求中角色 |
-|------|-------------|
-| `src/domain/log/token_usage.rs` | `log_token_usage` 实体定义，所有 Token 统计的数据库来源 |
-| `src/domain/log/repository_log.rs` | Repository trait，新增统计方法签名 |
-| `src/infrastructure/parsers/parsed_token_usage.rs` | Token 用量解析，`total_tokens` 计算公式所在文件 |
-| `src/infrastructure/persistence/repositories/log_repository.rs` | 具体 SQL 实现 |
-| `src/application/log/log_service.rs` | 应用层编排，已有 `get_overview_stats` 等方法 |
-| `src/presentation/routes/stats_routes.rs` | 统计路由注册 |
-| `src/presentation/routes/stats/dto/` | 已有 6 个 DTO 文件，需扩展 |
+| 文件                                                            | 本需求中角色                                            |
+| --------------------------------------------------------------- | ------------------------------------------------------- |
+| `src/domain/log/token_usage.rs`                                 | `log_token_usage` 实体定义，所有 Token 统计的数据库来源 |
+| `src/domain/log/repository_log.rs`                              | Repository trait，新增统计方法签名                      |
+| `src/infrastructure/parsers/parsed_token_usage.rs`              | Token 用量解析，`total_tokens` 计算公式所在文件         |
+| `src/infrastructure/persistence/repositories/log_repository.rs` | 具体 SQL 实现                                           |
+| `src/application/log/log_service.rs`                            | 应用层编排，已有 `get_overview_stats` 等方法            |
+| `src/presentation/routes/stats_routes.rs`                       | 统计路由注册                                            |
+| `src/presentation/routes/stats/dto/`                            | 已有 6 个 DTO 文件，需扩展                              |
 
 ### 6.2 前端核心文件
 
-| 文件 | 本需求中角色 |
-|------|-------------|
-| `src-dashboard/utils/format.ts` | `formatNumber` 函数已存在 |
-| `src-dashboard/types/dashboard.ts` | 类型定义 |
-| `src-dashboard/pages/DashboardPage.tsx` | 主页面 |
-| `src-dashboard/components/dashboard/StatCard.tsx` | 统计卡片组件 |
-| `src-dashboard/components/dashboard/TrendChart.tsx` | 将降级/废弃 |
+| 文件                                                | 本需求中角色              |
+| --------------------------------------------------- | ------------------------- |
+| `src-dashboard/utils/format.ts`                     | `formatNumber` 函数已存在 |
+| `src-dashboard/types/dashboard.ts`                  | 类型定义                  |
+| `src-dashboard/pages/GettingStartedPage.tsx`        | 主页面                    |
+| `src-dashboard/components/dashboard/StatCard.tsx`   | 统计卡片组件              |
+| `src-dashboard/components/dashboard/TrendChart.tsx` | 将降级/废弃               |
 
 ---
 
@@ -484,7 +496,8 @@ useEffect(() => {
 
 经过三轮需求探索（初始探索 → 核心方向批准 → 4 条修改意见整合），以及以下代码验证工作：
 
-1. **Token 字段语义验证**：确认 `total_tokens = input + output + cache_creation + cache_read + thinking`，用户提议的三分类之和等于原 total_tokens
+1. **Token 字段语义验证**：确认 `total_tokens = input + output + cache_creation + cache_read + thinking`，用户提议的三分类之和等于原
+   total_tokens
 2. **`formatNumber` 已存在**：`src-dashboard/utils/format.ts` 中已有实现，四位分节模式
 3. **`model_mapped` 始终有值**：`ProxyLogData` 中为 `String` 非 Option，`(model_mapped, timestamp DESC)` 索引已存在
 4. **`providers` 表结构确认**：`id: Uuid` + `name: String`，可通过 `provider_id` 关联

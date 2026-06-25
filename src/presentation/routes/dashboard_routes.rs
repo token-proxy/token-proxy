@@ -1,11 +1,14 @@
-//! Dashboard 路由：面向技术主管的数据洞察 API
+//! Dashboard 路由（个人用量报告）。
+//!
+//! 所有端点均按 `CurrentUser` 提取 `user_id` 后传给 Service，
+//! 数据按用户视角过滤。
 //!
 //! 端点：
-//! - `GET /api/dashboard/kpi` —— 4 张 KPI 卡 + sparkline 序列
-//! - `GET /api/dashboard/top-users` —— 成员请求量排行 Top 10
-//! - `GET /api/dashboard/top-accounts` —— 上游账号词元消耗排行 Top 10
-//!
-//! 所有端点支持统一 query 参数：`?range=today|last7|last30|custom[&start=ISO][&end=ISO]`
+//! - `GET /api/getting-started/heatmap?tz=Asia/Shanghai` 近 1 年用量热力图
+//! - `GET /api/getting-started/kpi?range=...` KPI 卡组（请求数 + 词元总量 + 构成 + 缓存命中率 + sparkline）
+//! - `GET /api/getting-started/top-models?range=...` 用户视角模型排行 Top 8
+//! - `GET /api/getting-started/top-access-points?range=...` 用户视角接入点排行 Top 5
+//! - `GET /api/getting-started/quality?range=...` 调用质量指标
 //!
 //! 认证：本模块仅声明路由结构与 handler；JWT 认证 layer 由
 //! `presentation::routes::mod` 的 `jwt_protected` 分组统一加挂。
@@ -17,58 +20,73 @@ use axum::{
 };
 
 use crate::application::dashboard::dto::{
-    KpiResponse, TimeRangeQuery, TopAccountsResponse, TopUsersResponse,
+    HeatmapQuery, HeatmapResponse, KpiResponse, QualityResponse, TimeRangeQuery,
+    TopAccessPointsResponse, TopModelsResponse,
 };
 use crate::application::AppState;
+use crate::presentation::middleware::jwt_auth::CurrentUser;
 use crate::shared::error::AppError;
 
 /// 构建 Dashboard 路由
-///
-/// - `GET /api/dashboard/kpi`           → [`get_kpi`]
-/// - `GET /api/dashboard/top-users`     → [`get_top_users`]
-/// - `GET /api/dashboard/top-accounts`  → [`get_top_accounts`]
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/dashboard/kpi", get(get_kpi))
-        .route("/api/dashboard/top-users", get(get_top_users))
-        .route("/api/dashboard/top-accounts", get(get_top_accounts))
+        .route("/api/getting-started/heatmap", get(get_heatmap))
+        .route("/api/getting-started/kpi", get(get_kpi))
+        .route("/api/getting-started/top-models", get(get_top_models))
+        .route(
+            "/api/getting-started/top-access-points",
+            get(get_top_access_points),
+        )
+        .route("/api/getting-started/quality", get(get_quality))
 }
 
-/// GET /api/dashboard/kpi
-///
-/// 返回 4 张 KPI 卡（请求数 / 词元量 / 活跃成员数 / 缓存命中率）+ 内嵌 sparkline 序列。
-/// 委托给 [`DashboardService::get_kpi`](crate::application::dashboard::DashboardService::get_kpi)。
-#[tracing::instrument(skip_all, fields(range = ?query.range))]
+async fn get_heatmap(
+    State(state): State<AppState>,
+    CurrentUser(user_id): CurrentUser,
+    Query(q): Query<HeatmapQuery>,
+) -> Result<Json<HeatmapResponse>, AppError> {
+    let resp = state.dashboard_service.get_heatmap(user_id, &q.tz).await?;
+    Ok(Json(resp))
+}
+
 async fn get_kpi(
     State(state): State<AppState>,
+    CurrentUser(user_id): CurrentUser,
     Query(query): Query<TimeRangeQuery>,
 ) -> Result<Json<KpiResponse>, AppError> {
-    let resp = state.dashboard_service.get_kpi(query).await?;
+    let resp = state.dashboard_service.get_kpi(user_id, query).await?;
     Ok(Json(resp))
 }
 
-/// GET /api/dashboard/top-users
-///
-/// 返回成员请求量排行 Top 10。
-/// 委托给 [`DashboardService::get_top_users`](crate::application::dashboard::DashboardService::get_top_users)。
-#[tracing::instrument(skip_all, fields(range = ?query.range))]
-async fn get_top_users(
+async fn get_top_models(
     State(state): State<AppState>,
+    CurrentUser(user_id): CurrentUser,
     Query(query): Query<TimeRangeQuery>,
-) -> Result<Json<TopUsersResponse>, AppError> {
-    let resp = state.dashboard_service.get_top_users(query).await?;
+) -> Result<Json<TopModelsResponse>, AppError> {
+    let resp = state
+        .dashboard_service
+        .get_top_models(user_id, query)
+        .await?;
     Ok(Json(resp))
 }
 
-/// GET /api/dashboard/top-accounts
-///
-/// 返回上游账号词元消耗排行 Top 10。
-/// 委托给 [`DashboardService::get_top_accounts`](crate::application::dashboard::DashboardService::get_top_accounts)。
-#[tracing::instrument(skip_all, fields(range = ?query.range))]
-async fn get_top_accounts(
+async fn get_top_access_points(
     State(state): State<AppState>,
+    CurrentUser(user_id): CurrentUser,
     Query(query): Query<TimeRangeQuery>,
-) -> Result<Json<TopAccountsResponse>, AppError> {
-    let resp = state.dashboard_service.get_top_accounts(query).await?;
+) -> Result<Json<TopAccessPointsResponse>, AppError> {
+    let resp = state
+        .dashboard_service
+        .get_top_access_points(user_id, query)
+        .await?;
+    Ok(Json(resp))
+}
+
+async fn get_quality(
+    State(state): State<AppState>,
+    CurrentUser(user_id): CurrentUser,
+    Query(query): Query<TimeRangeQuery>,
+) -> Result<Json<QualityResponse>, AppError> {
+    let resp = state.dashboard_service.get_quality(user_id, query).await?;
     Ok(Json(resp))
 }

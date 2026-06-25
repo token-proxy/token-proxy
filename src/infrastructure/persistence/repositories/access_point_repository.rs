@@ -131,6 +131,14 @@ impl AccessPointRepository for SeaOrmAccessPointRepository {
         Ok(AccessPointEntity::find().all(&*self.db).await?)
     }
 
+    async fn find_by_created_by(&self, created_by: Uuid) -> Result<Vec<AccessPoint>, AppError> {
+        Ok(AccessPointEntity::find()
+            .filter(AccessPointColumn::CreatedBy.eq(created_by))
+            .order_by_desc(AccessPointColumn::CreatedAt)
+            .all(&*self.db)
+            .await?)
+    }
+
     async fn save(&self, access_point: &AccessPoint) -> Result<AccessPoint, AppError> {
         let db = &*self.db;
         let exists = AccessPointEntity::find_by_id(access_point.id)

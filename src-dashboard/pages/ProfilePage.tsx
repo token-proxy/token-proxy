@@ -2,8 +2,8 @@ import { type ReactNode, useState } from 'react';
 import { useFetch } from '../hooks/useFetch.ts';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Form, TabPane, Tabs, Toast, Typography } from '@douyinfe/semi-ui';
-import ApiKeyManager from '@components/user/ApiKeyManager';
 import api from '../api.ts';
+import ApiKeyManager from '../components/user/ApiKeyManager.tsx';
 
 const { Title, Text } = Typography;
 
@@ -170,7 +170,7 @@ export default function ProfilePage(): ReactNode {
             </div>
           </TabPane>
 
-          <TabPane tab="API Key 管理" itemKey="api-keys">
+          <TabPane tab="API Key" itemKey="apikey">
             <div style={{ marginTop: 16 }}>
               <ApiKeyManager />
             </div>

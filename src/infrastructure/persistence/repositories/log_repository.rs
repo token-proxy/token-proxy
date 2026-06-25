@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, Statement,
@@ -19,8 +19,9 @@ use uuid::Uuid;
 use crate::domain::log::content::{ActiveModel as ContentActiveModel, Entity as ContentEntity};
 use crate::domain::log::metadata::{ActiveModel, Column, Entity};
 use crate::domain::log::{
-    DashboardWindow, KpiAggregate, LogMetadataWithTokenSummary, LogQuery, LogRepository,
-    SessionQuery, SessionSummaryData, SparklineBucket, TopAccountRow, TopUserRow,
+    DashboardWindow, HeatmapCell, KpiAggregate, LogMetadataWithTokenSummary, LogQuery,
+    LogRepository, QualityMetrics, SessionQuery, SessionSummaryData, SparklineBucket,
+    TopAccessPointRow, TopModelRow,
 };
 use crate::domain::log::{LogContent, LogMetadata, LogTokenUsage};
 use crate::shared::error::AppError;
@@ -685,34 +686,47 @@ impl LogRepository for SeaOrmLogRepository {
         }
     }
 
-    // ─── Dashboard 聚合查询 ───
+    // ─── Dashboard 聚合查询（个人视角，所有方法均按 user_id 过滤）───
 
-    /// KPI 聚合：单次 SQL 返回请求数 / 词元总量 / 活跃成员数 / 缓存读词元 / 缓存读 + 输入词元总和。
+    /// KPI 聚合：单次 SQL 返回个人视角的请求数与 6 类词元 SUM。
     ///
-    /// `log_metadata` 按月分区，`timestamp >= $1 AND timestamp < $2` 由 PostgreSQL 自动剪枝匹配的子分区。
-    /// `log_token_usage` 与 `log_metadata` 通过 `log_id` 一对一关联；LEFT JOIN 保证没有词元记录的请求仍计入 `request_count`。
+    /// 1. WHERE 子句先按 `user_id` 过滤，再按时间窗口剪枝（`log_metadata` 按月分区，
+    ///    PostgreSQL 会自动剪掉不相关的子分区）。
+    /// 2. `log_token_usage` 通过 `log_id` 与 `log_metadata` 一对一关联，LEFT JOIN
+    ///    保证未写入词元用量的请求仍计入 `request_count`。
+    /// 3. `input_plus_cache_read_tokens` 是缓存命中率的分母，单独聚合可避免前端再算一次。
     #[tracing::instrument(
         skip(self),
-        fields(window.start = %window.start, window.end = %window.end)
+        fields(user_id = %user_id, window.start = %window.start, window.end = %window.end)
     )]
-    async fn aggregate_kpi(&self, window: &DashboardWindow) -> Result<KpiAggregate, AppError> {
+    async fn aggregate_kpi(
+        &self,
+        user_id: Uuid,
+        window: &DashboardWindow,
+    ) -> Result<KpiAggregate, AppError> {
         let db = &*self.db;
         let sql = r#"
             SELECT
                 COUNT(*)::BIGINT AS request_count,
+                COUNT(DISTINCT lm.session_id)::BIGINT AS session_count,
                 COALESCE(SUM(ltu.total_tokens), 0)::BIGINT AS total_tokens,
-                COUNT(DISTINCT lm.user_id)::BIGINT AS active_user_count,
+                COALESCE(SUM(ltu.input_tokens), 0)::BIGINT AS input_tokens,
+                COALESCE(SUM(ltu.output_tokens), 0)::BIGINT AS output_tokens,
+                COALESCE(SUM(ltu.cache_creation_input_tokens), 0)::BIGINT AS cache_creation_tokens,
                 COALESCE(SUM(ltu.cache_read_input_tokens), 0)::BIGINT AS cache_read_tokens,
+                COALESCE(SUM(ltu.thinking_tokens), 0)::BIGINT AS thinking_tokens,
                 COALESCE(SUM(ltu.input_tokens + ltu.cache_read_input_tokens), 0)::BIGINT AS input_plus_cache_read_tokens
             FROM log_metadata lm
             LEFT JOIN log_token_usage ltu ON ltu.log_id = lm.id
-            WHERE lm.timestamp >= $1::timestamptz AND lm.timestamp < $2::timestamptz
+            WHERE lm.user_id = $1::uuid
+              AND lm.timestamp >= $2::timestamptz
+              AND lm.timestamp < $3::timestamptz
         "#;
 
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
-            [window.start.into(), window.end.into()],
+            [user_id.into(), window.start.into(), window.end.into()],
         );
 
         let row = db
@@ -722,10 +736,14 @@ impl LogRepository for SeaOrmLogRepository {
 
         Ok(KpiAggregate {
             request_count: row.try_get_by_index::<i64>(0)?,
-            total_tokens: row.try_get_by_index::<i64>(1)?,
-            active_user_count: row.try_get_by_index::<i64>(2)?,
-            cache_read_tokens: row.try_get_by_index::<i64>(3)?,
-            input_plus_cache_read_tokens: row.try_get_by_index::<i64>(4)?,
+            session_count: row.try_get_by_index::<i64>(1)?,
+            total_tokens: row.try_get_by_index::<i64>(2)?,
+            input_tokens: row.try_get_by_index::<i64>(3)?,
+            output_tokens: row.try_get_by_index::<i64>(4)?,
+            cache_creation_tokens: row.try_get_by_index::<i64>(5)?,
+            cache_read_tokens: row.try_get_by_index::<i64>(6)?,
+            thinking_tokens: row.try_get_by_index::<i64>(7)?,
+            input_plus_cache_read_tokens: row.try_get_by_index::<i64>(8)?,
         })
     }
 
@@ -733,12 +751,19 @@ impl LogRepository for SeaOrmLogRepository {
     ///
     /// `bucket_count == 24` 时按小时聚合（用于"今日"视图），否则按天聚合。
     /// 桶区间为 `[date_trunc($1), date_trunc($2 - 1 epoch))`，与 `window` 的闭右开语义一致。
+    /// SQL 内 WHERE 子句额外加 `AND lm.user_id = $3::uuid`，按用户视角过滤。
     #[tracing::instrument(
         skip(self),
-        fields(window.start = %window.start, window.end = %window.end, bucket_count = bucket_count)
+        fields(
+            user_id = %user_id,
+            window.start = %window.start,
+            window.end = %window.end,
+            bucket_count = bucket_count
+        )
     )]
     async fn aggregate_sparkline(
         &self,
+        user_id: Uuid,
         window: &DashboardWindow,
         bucket_count: u32,
     ) -> Result<Vec<SparklineBucket>, AppError> {
@@ -759,18 +784,18 @@ impl LogRepository for SeaOrmLogRepository {
                 SELECT
                     date_trunc('{unit}', lm.timestamp) AS bucket_start,
                     COUNT(*)::BIGINT AS request_count,
-                    COALESCE(SUM(ltu.total_tokens), 0)::BIGINT AS total_tokens,
-                    COUNT(DISTINCT lm.user_id)::BIGINT AS active_user_count
+                    COALESCE(SUM(ltu.total_tokens), 0)::BIGINT AS total_tokens
                 FROM log_metadata lm
                 LEFT JOIN log_token_usage ltu ON ltu.log_id = lm.id
-                WHERE lm.timestamp >= $1::timestamptz AND lm.timestamp < $2::timestamptz
+                WHERE lm.timestamp >= $1::timestamptz
+                  AND lm.timestamp < $2::timestamptz
+                  AND lm.user_id = $3::uuid
                 GROUP BY 1
             )
             SELECT
                 s.bucket_start,
                 COALESCE(d.request_count, 0)::BIGINT,
-                COALESCE(d.total_tokens, 0)::BIGINT,
-                COALESCE(d.active_user_count, 0)::BIGINT
+                COALESCE(d.total_tokens, 0)::BIGINT
             FROM series s
             LEFT JOIN data d USING (bucket_start)
             ORDER BY s.bucket_start
@@ -780,7 +805,7 @@ impl LogRepository for SeaOrmLogRepository {
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
             &sql,
-            [window.start.into(), window.end.into()],
+            [window.start.into(), window.end.into(), user_id.into()],
         );
 
         let results = db.query_all_raw(stmt).await?;
@@ -793,7 +818,6 @@ impl LogRepository for SeaOrmLogRepository {
                     bucket_start: bucket_start.with_timezone(&Utc),
                     request_count: row.try_get_by_index::<i64>(1)?,
                     total_tokens: row.try_get_by_index::<i64>(2)?,
-                    active_user_count: row.try_get_by_index::<i64>(3)?,
                 })
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -801,41 +825,109 @@ impl LogRepository for SeaOrmLogRepository {
         Ok(buckets)
     }
 
-    /// 成员请求量排行 Top N。
+    /// 用户日级 365 天词元热力图。
     ///
-    /// LEFT JOIN users 容忍已删除成员：`username` / `display_name` 此时为 NULL。
-    /// 过滤 `lm.user_id IS NOT NULL`，避免匿名请求（如未认证场景）混入排行榜。
+    /// 1. `series` CTE 在浏览器时区下补齐 365 个日桶（含今天）。
+    /// 2. `data` CTE 按用户过滤后，将 `timestamp` 转到目标时区再按日截断分组。
+    /// 3. 主查询用 `LEFT JOIN ... USING (day_local)` 把空日补 0，保证返回 365 行。
+    ///
+    /// 时区拼接：`timezone` 在 application 层已通过 `chrono_tz::Tz::from_str` 白名单
+    /// 校验，无 SQL 注入风险；此处用 `format!` 直接拼接是因为 PostgreSQL 不允许
+    /// `AT TIME ZONE` 接受参数占位符。
+    #[tracing::instrument(skip(self), fields(user_id = %user_id, end = %end, timezone = timezone))]
+    async fn user_daily_token_heatmap(
+        &self,
+        user_id: Uuid,
+        end: DateTime<Utc>,
+        timezone: &str,
+    ) -> Result<Vec<HeatmapCell>, AppError> {
+        let db = &*self.db;
+
+        let sql = format!(
+            r#"
+            WITH series AS (
+                SELECT generate_series(
+                    date_trunc('day', ($1::timestamptz - interval '364 days') AT TIME ZONE '{tz}'),
+                    date_trunc('day', $1::timestamptz AT TIME ZONE '{tz}'),
+                    interval '1 day'
+                ) AS day_local
+            ), data AS (
+                SELECT
+                    date_trunc('day', lm.timestamp AT TIME ZONE '{tz}') AS day_local,
+                    COUNT(*)::BIGINT AS request_count,
+                    COALESCE(SUM(ltu.total_tokens), 0)::BIGINT AS total_tokens
+                FROM log_metadata lm
+                LEFT JOIN log_token_usage ltu ON ltu.log_id = lm.id
+                WHERE lm.user_id = $2::uuid
+                  AND lm.timestamp >= ($1::timestamptz - interval '365 days')
+                  AND lm.timestamp <= $1::timestamptz
+                GROUP BY 1
+            )
+            SELECT
+                s.day_local::date AS day,
+                COALESCE(d.request_count, 0)::BIGINT AS request_count,
+                COALESCE(d.total_tokens, 0)::BIGINT AS total_tokens
+            FROM series s
+            LEFT JOIN data d USING (day_local)
+            ORDER BY s.day_local
+            "#,
+            tz = timezone
+        );
+
+        let stmt =
+            Statement::from_sql_and_values(DbBackend::Postgres, &sql, [end.into(), user_id.into()]);
+
+        let results = db.query_all_raw(stmt).await?;
+
+        let cells = results
+            .iter()
+            .map(|row| {
+                Ok(HeatmapCell {
+                    day: row.try_get_by_index::<NaiveDate>(0)?,
+                    request_count: row.try_get_by_index::<i64>(1)?,
+                    total_tokens: row.try_get_by_index::<i64>(2)?,
+                })
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
+
+        Ok(cells)
+    }
+
+    /// 用户视角模型排行 Top N。
+    ///
+    /// 按 `model_mapped`（回落 `model_original`，再回落字符串 `(未知)`）分组聚合。
+    /// `WHERE lm.user_id = $1` 按用户视角过滤，仅返回本人的模型使用情况。
     #[tracing::instrument(
         skip(self),
-        fields(window.start = %window.start, window.end = %window.end, limit = limit)
+        fields(user_id = %user_id, window.start = %window.start, window.end = %window.end, limit = limit)
     )]
-    async fn top_users(
+    async fn top_models_for_user(
         &self,
+        user_id: Uuid,
         window: &DashboardWindow,
         limit: u32,
-    ) -> Result<Vec<TopUserRow>, AppError> {
+    ) -> Result<Vec<TopModelRow>, AppError> {
         let db = &*self.db;
         let sql = r#"
             SELECT
-                lm.user_id,
-                u.username,
-                u.display_name,
+                COALESCE(lm.model_mapped, lm.model_original, '(未知)') AS model,
                 COUNT(*)::BIGINT AS request_count,
                 COALESCE(SUM(ltu.total_tokens), 0)::BIGINT AS total_tokens
             FROM log_metadata lm
             LEFT JOIN log_token_usage ltu ON ltu.log_id = lm.id
-            LEFT JOIN users u ON u.id = lm.user_id
-            WHERE lm.timestamp >= $1::timestamptz AND lm.timestamp < $2::timestamptz
-              AND lm.user_id IS NOT NULL
-            GROUP BY lm.user_id, u.username, u.display_name
+            WHERE lm.user_id = $1::uuid
+              AND lm.timestamp >= $2::timestamptz
+              AND lm.timestamp < $3::timestamptz
+            GROUP BY 1
             ORDER BY request_count DESC
-            LIMIT $3
+            LIMIT $4
         "#;
 
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             [
+                user_id.into(),
                 window.start.into(),
                 window.end.into(),
                 (limit as i64).into(),
@@ -847,10 +939,74 @@ impl LogRepository for SeaOrmLogRepository {
         let rows = results
             .iter()
             .map(|row| {
-                Ok(TopUserRow {
-                    user_id: row.try_get_by_index::<Uuid>(0)?,
-                    username: row.try_get_by_index::<Option<String>>(1)?,
-                    display_name: row.try_get_by_index::<Option<String>>(2)?,
+                Ok(TopModelRow {
+                    model: row.try_get_by_index::<String>(0)?,
+                    request_count: row.try_get_by_index::<i64>(1)?,
+                    total_tokens: row.try_get_by_index::<i64>(2)?,
+                })
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
+
+        Ok(rows)
+    }
+
+    /// 用户视角接入点排行 Top N。
+    ///
+    /// 1. `WHERE lm.user_id = $1` 按用户视角过滤；`access_point_id IS NOT NULL`
+    ///    剔除无接入点归属的请求。
+    /// 2. `LEFT JOIN access_points` 容忍接入点删除：删除后 `name` / `short_code` 为 NULL，
+    ///    前端降级展示为「已删除接入点」。
+    /// 3. 排序按 `total_tokens DESC`，词元消耗大者优先。
+    #[tracing::instrument(
+        skip(self),
+        fields(user_id = %user_id, window.start = %window.start, window.end = %window.end, limit = limit)
+    )]
+    async fn top_access_points_for_user(
+        &self,
+        user_id: Uuid,
+        window: &DashboardWindow,
+        limit: u32,
+    ) -> Result<Vec<TopAccessPointRow>, AppError> {
+        let db = &*self.db;
+        let sql = r#"
+            SELECT
+                lm.access_point_id,
+                ap.name AS access_point_name,
+                ap.short_code AS short_code,
+                COUNT(*)::BIGINT AS request_count,
+                COALESCE(SUM(ltu.total_tokens), 0)::BIGINT AS total_tokens
+            FROM log_metadata lm
+            LEFT JOIN log_token_usage ltu ON ltu.log_id = lm.id
+            LEFT JOIN access_points ap ON ap.id = lm.access_point_id
+            WHERE lm.user_id = $1::uuid
+              AND lm.access_point_id IS NOT NULL
+              AND lm.timestamp >= $2::timestamptz
+              AND lm.timestamp < $3::timestamptz
+            GROUP BY lm.access_point_id, ap.name, ap.short_code
+            ORDER BY total_tokens DESC
+            LIMIT $4
+        "#;
+
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            [
+                user_id.into(),
+                window.start.into(),
+                window.end.into(),
+                (limit as i64).into(),
+            ],
+        );
+
+        let results = db.query_all_raw(stmt).await?;
+
+        let rows = results
+            .iter()
+            .map(|row| {
+                Ok(TopAccessPointRow {
+                    access_point_id: row.try_get_by_index::<Uuid>(0)?,
+                    name: row.try_get_by_index::<Option<String>>(1)?,
+                    short_code: row.try_get_by_index::<Option<String>>(2)?,
                     request_count: row.try_get_by_index::<i64>(3)?,
                     total_tokens: row.try_get_by_index::<i64>(4)?,
                 })
@@ -860,72 +1016,56 @@ impl LogRepository for SeaOrmLogRepository {
         Ok(rows)
     }
 
-    /// 客户端类型请求量排行 Top N。
+    /// 用户视角调用质量指标。
     ///
-    /// 从 `log_token_usage` 按 `client_type` 分组聚合请求数和词元总量。
-    /// 无需联表，直接基于词元用量表统计。
+    /// 1. 状态码分布通过 `SUM(CASE WHEN ...)` 在单次扫描中完成 4 类计数（2xx / 4xx / 5xx / 中断）。
+    /// 2. `AVG(duration_ms)` 与 `PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms)`
+    ///    在 0 行时返回 NULL，对应 Rust 侧 `Option<f64>`。
+    /// 3. 仅查 `log_metadata`，无需联表 `log_token_usage`，索引 `idx_log_metadata_user_id` 适用。
     #[tracing::instrument(
         skip(self),
-        fields(window.start = %window.start, window.end = %window.end, limit = limit)
+        fields(user_id = %user_id, window.start = %window.start, window.end = %window.end)
     )]
-    async fn top_accounts(
+    async fn quality_metrics_for_user(
         &self,
+        user_id: Uuid,
         window: &DashboardWindow,
-        limit: u32,
-    ) -> Result<Vec<TopAccountRow>, AppError> {
+    ) -> Result<QualityMetrics, AppError> {
         let db = &*self.db;
         let sql = r#"
             SELECT
-                ltu.account_id,
-                a.name AS account_name,
-                a.provider_id,
-                p.name AS provider_name,
-                a.disabled_reason,
-                COALESCE(SUM(ltu.input_tokens), 0)::BIGINT AS input_tokens,
-                COALESCE(SUM(ltu.output_tokens), 0)::BIGINT AS output_tokens,
-                COALESCE(SUM(ltu.cache_read_input_tokens), 0)::BIGINT AS cache_read_tokens,
-                COALESCE(SUM(ltu.cache_creation_input_tokens), 0)::BIGINT AS cache_creation_tokens,
-                COALESCE(SUM(ltu.total_tokens), 0)::BIGINT AS total_tokens
-            FROM log_token_usage ltu
-            LEFT JOIN accounts a ON a.id = ltu.account_id
-            LEFT JOIN providers p ON p.id = a.provider_id
-            WHERE ltu.timestamp >= $1::timestamptz AND ltu.timestamp < $2::timestamptz
-              AND ltu.account_id IS NOT NULL
-            GROUP BY ltu.account_id, a.name, a.provider_id, p.name, a.disabled_reason
-            ORDER BY total_tokens DESC
-            LIMIT $3
+                COUNT(*)::BIGINT AS total_count,
+                COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END), 0)::BIGINT AS success_count,
+                COALESCE(SUM(CASE WHEN status_code >= 400 AND status_code < 500 THEN 1 ELSE 0 END), 0)::BIGINT AS client_error_count,
+                COALESCE(SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END), 0)::BIGINT AS server_error_count,
+                COALESCE(SUM(CASE WHEN is_interrupted THEN 1 ELSE 0 END), 0)::BIGINT AS interrupted_count,
+                AVG(duration_ms)::FLOAT8 AS avg_duration_ms,
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms)::FLOAT8 AS p95_duration_ms
+            FROM log_metadata
+            WHERE user_id = $1::uuid
+              AND timestamp >= $2::timestamptz
+              AND timestamp < $3::timestamptz
         "#;
 
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
-            [
-                window.start.into(),
-                window.end.into(),
-                (limit as i64).into(),
-            ],
+            [user_id.into(), window.start.into(), window.end.into()],
         );
 
-        let results = db.query_all_raw(stmt).await?;
+        let row = db
+            .query_one_raw(stmt)
+            .await?
+            .ok_or_else(|| AppError::Internal("调用质量聚合查询无结果".to_string()))?;
 
-        let rows = results
-            .iter()
-            .map(|row| {
-                Ok(TopAccountRow {
-                    account_id: row.try_get_by_index::<Uuid>(0)?,
-                    account_name: row.try_get_by_index::<Option<String>>(1)?,
-                    provider_id: row.try_get_by_index::<Option<Uuid>>(2)?,
-                    provider_name: row.try_get_by_index::<Option<String>>(3)?,
-                    disabled_reason: row.try_get_by_index::<Option<String>>(4)?,
-                    input_tokens: row.try_get_by_index::<i64>(5)?,
-                    output_tokens: row.try_get_by_index::<i64>(6)?,
-                    cache_read_tokens: row.try_get_by_index::<i64>(7)?,
-                    cache_creation_tokens: row.try_get_by_index::<i64>(8)?,
-                    total_tokens: row.try_get_by_index::<i64>(9)?,
-                })
-            })
-            .collect::<Result<Vec<_>, AppError>>()?;
-
-        Ok(rows)
+        Ok(QualityMetrics {
+            total_count: row.try_get_by_index::<i64>(0)?,
+            success_count: row.try_get_by_index::<i64>(1)?,
+            client_error_count: row.try_get_by_index::<i64>(2)?,
+            server_error_count: row.try_get_by_index::<i64>(3)?,
+            interrupted_count: row.try_get_by_index::<i64>(4)?,
+            avg_duration_ms: row.try_get_by_index::<Option<f64>>(5)?,
+            p95_duration_ms: row.try_get_by_index::<Option<f64>>(6)?,
+        })
     }
 }

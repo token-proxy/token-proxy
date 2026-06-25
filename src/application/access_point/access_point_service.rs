@@ -353,6 +353,24 @@ impl AccessPointService {
         Ok(results)
     }
 
+    /// 查询当前用户创建的接入点列表
+    pub async fn list_by_created_by(
+        &self,
+        created_by: Uuid,
+    ) -> Result<Vec<AccessPointResponse>, AppError> {
+        let points = self
+            .access_point_repo
+            .find_by_created_by(created_by)
+            .await?;
+
+        let mut results = Vec::with_capacity(points.len());
+        for ap in &points {
+            results.push(Self::to_response(&self.access_point_repo, ap).await);
+        }
+
+        Ok(results)
+    }
+
     /// 删除接入点（级联删除关联的账户池和路由配置）
     pub async fn delete(&self, id: Uuid, operator_id: Option<Uuid>) -> Result<(), AppError> {
         // 先查询获取名称用于审计日志
