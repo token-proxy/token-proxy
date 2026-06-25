@@ -1,7 +1,7 @@
 //! 日志应用服务 — application/log/
 //!
 //! 编排代理日志的三阶段写入（元数据 → 内容 → 词元用量），
-//! 以及日志查询、会话摘要、日志详情等功能。
+//! 以及日志查询、会话摘要、日志详情、审计日志查询等功能。
 
 use std::sync::Arc;
 
@@ -9,10 +9,16 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use super::dto::{
-    LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse, NewLogEvent,
-    ProxyLogInput, SessionContentItemResponse, SessionSummaryResponse, TokenUsageResponse,
+    AuditLogFilterParams, AuditLogResponse, LogDetailFullResponse, LogDetailResponse,
+    LogFilterParams, LogSummaryResponse, NewLogEvent, ProxyLogInput, SessionContentItemResponse,
+    SessionSummaryResponse, TokenUsageResponse,
 };
 use crate::domain::access_point::repository::AccessPointRepository;
+use crate::domain::log::audit_action::AuditAction;
+use crate::domain::log::audit_entity_type::AuditEntityType;
+use crate::domain::log::repository_audit_log::{
+    AuditLogQuery, AuditLogRepository as AuditLogRepoTrait,
+};
 use crate::domain::log::LogTokenUsageRepository;
 use crate::domain::log::{LogContent, LogMetadata, LogTokenUsage};
 use crate::domain::log::{LogQuery, LogRepository, SessionQuery};
@@ -30,6 +36,7 @@ pub struct LogService {
     token_usage_repo: Arc<dyn LogTokenUsageRepository>,
     user_repo: Arc<dyn UserRepository>,
     access_point_repo: Arc<dyn AccessPointRepository>,
+    audit_log_repo: Arc<dyn AuditLogRepoTrait>,
     /// 日志事件广播发送端（SSE 实时推送）
     event_tx: broadcast::Sender<NewLogEvent>,
 }
@@ -40,6 +47,7 @@ impl LogService {
         token_usage_repo: Arc<dyn LogTokenUsageRepository>,
         user_repo: Arc<dyn UserRepository>,
         access_point_repo: Arc<dyn AccessPointRepository>,
+        audit_log_repo: Arc<dyn AuditLogRepoTrait>,
         event_tx: broadcast::Sender<NewLogEvent>,
     ) -> Self {
         LogService {
@@ -47,6 +55,7 @@ impl LogService {
             token_usage_repo,
             user_repo,
             access_point_repo,
+            audit_log_repo,
             event_tx,
         }
     }
@@ -515,6 +524,72 @@ impl LogService {
         let usages = self.token_usage_repo.find_by_session_id(session_id).await?;
         Ok(usages.iter().map(Self::to_token_usage_response).collect())
     }
+
+    // ─── 审计日志查询 ──────────────────────────────────────────────────
+
+    /// 分页查询审计日志，支持按操作类型、实体类型、操作者、时间范围筛选。
+    #[tracing::instrument(skip(self), fields(page = filters.page.unwrap_or(1), page_size = filters.page_size.unwrap_or(20)))]
+    pub async fn query_audit_logs(
+        &self,
+        filters: AuditLogFilterParams,
+    ) -> Result<PaginatedResult<AuditLogResponse>, AppError> {
+        let page = filters.page.unwrap_or(1);
+        let page_size = filters.page_size.unwrap_or(20);
+
+        // 1. 解析 action 逗号分隔字符串 → Vec<AuditAction>
+        let actions = filters
+            .action
+            .as_ref()
+            .map(|s| parse_action_list(s))
+            .transpose()?;
+
+        // 2. 解析 entity_type 逗号分隔字符串 → Vec<AuditEntityType>
+        let entity_types = filters
+            .entity_type
+            .as_ref()
+            .map(|s| parse_entity_type_list(s))
+            .transpose()?;
+
+        // 3. 构造领域查询对象
+        let query = AuditLogQuery {
+            actions,
+            entity_types,
+            operator_id: filters.operator_id,
+            operator_type: filters.operator_type,
+            start_time: filters.start_time,
+            end_time: filters.end_time,
+        };
+
+        // 4. 调用仓储查询
+        let result = self
+            .audit_log_repo
+            .find_all_paginated_with_username(page, page_size, &query)
+            .await?;
+
+        // 5. 映射到响应 DTO
+        let items: Vec<AuditLogResponse> = result
+            .items
+            .iter()
+            .map(|item| AuditLogResponse {
+                id: item.log.id,
+                timestamp: item.log.timestamp_utc(),
+                operator_id: item.log.operator_id,
+                operator_type: item.log.operator_type.clone(),
+                operator_name: item.username.clone(),
+                action: item.log.action.clone(),
+                entity_type: item.log.entity_type.clone(),
+                entity_id: item.log.entity_id,
+                details: item.log.details.clone(),
+            })
+            .collect();
+
+        Ok(PaginatedResult {
+            items,
+            total: result.total,
+            page: result.page,
+            page_size: result.page_size,
+        })
+    }
 }
 
 // ─── 请求头脱敏（敏感字段替换为 [REDACTED]） ───────────────────────────────────
@@ -557,4 +632,54 @@ fn response_headers_to_json(headers: &axum::http::HeaderMap) -> serde_json::Valu
     serde_json::Value::Object(map)
 }
 
-// ─── 响应头序列化（无需脱敏） ───────────────────────────────────
+// ─── 审计日志筛选项解析 ───────────────────────────────────
+
+/// 解析 action 逗号分隔字符串为 `Vec<AuditAction>`，未知值返回 `AppError::Validation`
+fn parse_action_list(input: &str) -> Result<Vec<AuditAction>, AppError> {
+    input
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| match s {
+            "create" => Ok(AuditAction::Create),
+            "update" => Ok(AuditAction::Update),
+            "delete" => Ok(AuditAction::Delete),
+            "enable" => Ok(AuditAction::Enable),
+            "disable" => Ok(AuditAction::Disable),
+            "recover" => Ok(AuditAction::Recover),
+            "auto_recover" => Ok(AuditAction::AutoRecover),
+            "create_api_key" => Ok(AuditAction::CreateApiKey),
+            "revoke_api_key" => Ok(AuditAction::RevokeApiKey),
+            "update_api_key_description" => Ok(AuditAction::UpdateApiKeyDescription),
+            "change_password" => Ok(AuditAction::ChangePassword),
+            "update_profile" => Ok(AuditAction::UpdateProfile),
+            "update_settings" => Ok(AuditAction::UpdateSettings),
+            "login" => Ok(AuditAction::Login),
+            "login_failed" => Ok(AuditAction::LoginFailed),
+            "logout" => Ok(AuditAction::Logout),
+            "refresh_rejected" => Ok(AuditAction::RefreshRejected),
+            "discover_models" => Ok(AuditAction::DiscoverModels),
+            unknown => Err(AppError::Validation(format!("未知的操作类型: {}", unknown))),
+        })
+        .collect()
+}
+
+/// 解析 entity_type 逗号分隔字符串为 `Vec<AuditEntityType>`，未知值返回 `AppError::Validation`
+fn parse_entity_type_list(input: &str) -> Result<Vec<AuditEntityType>, AppError> {
+    input
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| match s {
+            "access_point" => Ok(AuditEntityType::AccessPoint),
+            "account" => Ok(AuditEntityType::Account),
+            "provider" => Ok(AuditEntityType::Provider),
+            "user" => Ok(AuditEntityType::User),
+            "user_api_key" => Ok(AuditEntityType::UserApiKey),
+            "system_settings" => Ok(AuditEntityType::SystemSettings),
+            "auth_session" => Ok(AuditEntityType::AuthSession),
+            "refresh_token" => Ok(AuditEntityType::RefreshToken),
+            unknown => Err(AppError::Validation(format!("未知的实体类型: {}", unknown))),
+        })
+        .collect()
+}

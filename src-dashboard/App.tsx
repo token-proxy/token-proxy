@@ -10,6 +10,7 @@ import RequestLogPage from './pages/RequestLogPage.tsx';
 import LogDetailPage from './pages/LogDetailPage.tsx';
 import SettingsPage from './pages/SettingsPage.tsx';
 import ProfilePage from './pages/ProfilePage.tsx';
+import AuditLogPage from './pages/AuditLogPage';
 
 /**
  * App - 应用根组件
@@ -32,6 +33,7 @@ function App() {
           <Route path="logs" element={<RequestLogPage />} />
           <Route path="logs/:id" element={<LogDetailPage />} />
           <Route path="users" element={<UserManagement />} />
+          <Route path="audit-logs" element={<AuditLogPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>

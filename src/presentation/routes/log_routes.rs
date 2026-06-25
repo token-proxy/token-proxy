@@ -9,8 +9,9 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::application::log::dto::{
-    LogDetailFullResponse, LogDetailResponse, LogFilterParams, LogSummaryResponse,
-    SessionContentItemResponse, SessionSummaryResponse, TokenUsageResponse,
+    AuditLogFilterParams, AuditLogResponse, LogDetailFullResponse, LogDetailResponse,
+    LogFilterParams, LogSummaryResponse, SessionContentItemResponse, SessionSummaryResponse,
+    TokenUsageResponse,
 };
 use crate::application::AppState;
 use crate::presentation::middleware::jwt_auth::CurrentUser;
@@ -19,15 +20,18 @@ use crate::shared::types::PaginatedResult;
 
 /// 构建日志查询路由（受 JWT 中间件保护）
 ///
-/// - `GET /api/logs`                          → query_logs
-/// - `GET /api/logs/sessions`                 → get_sessions
-/// - `GET /api/logs/sessions/{id}/contents`   → get_session_contents
-/// - `GET /api/logs/sessions/{id}/token-usage`→ get_session_token_usage
-/// - `GET /api/logs/{id}`                     → get_log_detail_full
-/// - `GET /api/logs/{id}/raw`                 → get_log_detail
-/// - `GET /api/logs/{id}/token-usage`         → get_log_token_usage
+/// - `GET /api/audit-logs`                      → query_audit_logs
+/// - `GET /api/logs`                             → query_logs
+/// - `GET /api/logs/me`                          → query_my_logs
+/// - `GET /api/logs/sessions`                    → get_sessions
+/// - `GET /api/logs/sessions/{id}/contents`      → get_session_contents
+/// - `GET /api/logs/sessions/{id}/token-usage`   → get_session_token_usage
+/// - `GET /api/logs/{id}`                        → get_log_detail_full
+/// - `GET /api/logs/{id}/raw`                    → get_log_detail
+/// - `GET /api/logs/{id}/token-usage`            → get_log_token_usage
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/api/audit-logs", get(query_audit_logs))
         .route("/api/logs", get(query_logs))
         .route("/api/logs/me", get(query_my_logs))
         .route("/api/logs/sessions", get(get_sessions))
@@ -209,4 +213,15 @@ async fn log_events(
             .interval(std::time::Duration::from_secs(15))
             .text("keep-alive"),
     )
+}
+
+/// GET /api/audit-logs
+///
+/// 分页查询审计日志，支持按操作类型、实体类型、操作者、时间范围筛选。
+async fn query_audit_logs(
+    State(state): State<AppState>,
+    Query(filters): Query<AuditLogFilterParams>,
+) -> Result<Json<PaginatedResult<AuditLogResponse>>, AppError> {
+    let logs = state.log_service.query_audit_logs(filters).await?;
+    Ok(Json(logs))
 }

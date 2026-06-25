@@ -304,6 +304,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         log_token_usage_repo.clone(),
         user_repo.clone(),
         access_point_repo.clone(),
+        audit_log_repo.clone(),
         log_event_tx.clone(),
     ));
 

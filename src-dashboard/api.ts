@@ -14,6 +14,8 @@ import type {
   TopModelsResponse,
   UsageTrendsResponse,
 } from './types/dashboard';
+import type { AuditLogItem, AuditLogFilters } from './types/auditLog';
+import type { PaginatedResult } from './types/log';
 
 // access_token 距离过期不足该阈值时, 请求前主动刷新（秒）
 const REFRESH_THRESHOLD_SEC = 300;
@@ -240,5 +242,52 @@ export const dashboardApi = {
     return api.get<UsageTrendsResponse>(
       `/api/getting-started/usage-trends?${buildDashboardQuery(q)}`,
     );
+  },
+};
+
+// ─── 审计日志 API ───
+
+/**
+ * 将对象构建为 URL 查询字符串，支持数组字段转逗号分隔。
+ *
+ * 与 `utils/query.ts` 中的 `buildQueryString` 类似，
+ * 但额外支持 `string[]` 类型字段，自动以逗号连接。
+ */
+function buildAuditLogQuery(params: Record<string, unknown>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+    if (Array.isArray(value)) {
+      if (value.length > 0) search.set(key, value.join(','));
+    } else {
+      search.set(key, String(value));
+    }
+  }
+  return search.toString();
+}
+
+/**
+ * 审计日志 API 集合。
+ *
+ * 提供审计日志的分页查询，对应后端 `GET /api/audit-logs` 端点。
+ */
+export const auditLogApi = {
+  /** 分页查询审计日志 */
+  list(
+    page: number,
+    pageSize: number,
+    filters: AuditLogFilters,
+  ): Promise<PaginatedResult<AuditLogItem>> {
+    const qs = buildAuditLogQuery({
+      page,
+      page_size: pageSize,
+      start_time: filters.startTime,
+      end_time: filters.endTime,
+      action: filters.actions,
+      entity_type: filters.entityTypes,
+      operator_id: filters.operatorId,
+      operator_type: filters.operatorType,
+    });
+    return api.get<PaginatedResult<AuditLogItem>>(`/api/audit-logs?${qs}`);
   },
 };

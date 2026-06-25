@@ -10,7 +10,7 @@ provider_id）。
 
 ```
 ├── src/                    # 后端 Rust 核心代码 (~170 个 .rs 文件)
-├── src-dashboard/          # 前端管理面板 SPA (~73 个 .ts/.tsx 源文件)
+├── src-dashboard/          # 前端管理面板 SPA (~76 个 .ts/.tsx 源文件)
 ├── public/                 # 前端静态资源 (favicon, icons)
 ├── index.html              # 前端 HTML 入口 (Vite)
 ├── vite.config.ts          # Vite 构建配置
@@ -49,7 +49,7 @@ src/
 │   ├── provider/           # Provider 聚合 (配置持有者 + 密钥管理, 含限流/故障配置)
 │   ├── proxy/              # Proxy 聚合 (代理转发领域决策: UpstreamOutcome / RetryDecision)
 │   ├── user/               # User 聚合 (认证)
-│   ├── log/                # Log 聚合 (只读事件数据, 含 operator_type、client_type、AuditAction 和 AuditEntityType 枚举)
+│   ├── log/                # Log 聚合 (事件数据 + 审计日志; 含 operator_type、client_type、AuditAction 和 AuditEntityType 枚举)
 │   ├── system/             # System 聚合 (系统设置)
 │   └── shared/             # 跨聚合共享 (Status, ApiKey, AccessPointType + 协议方法, ClientType, EncryptionService, InboundRequest, UpstreamRequest, protocols/)
 ├── application/            # 应用层 (用例编排, 依赖注入, 按聚合组织)
@@ -109,15 +109,15 @@ domain/
 │   ├── repository_user_api_key.rs  # UserApiKeyRepository trait
 │   ├── repository_user_repo.rs     # UserRepository trait
 │   └── mod.rs
-├── log/                    # Log 聚合 (只读事件数据, 含 client_type 列)
+├── log/                    # Log 聚合 (事件数据 + 审计日志, 含 client_type 列)
 │   ├── metadata.rs         # LogMetadata SeaORM Model (含 client_type 列)
 │   ├── content.rs          # LogContent SeaORM Model
 │   ├── token_usage.rs      # LogTokenUsage SeaORM Model (含 client_type 列)
 │   ├── audit_log.rs        # AuditLog SeaORM Model (operator_id/operator_type 替代 user_id)
-│   ├── audit_action.rs     # AuditAction 枚举 (20 variants: Create/Update/Delete/Enable/Disable/Recover/AutoRecover/CreateApiKey/RevokeApiKey/UpdateApiKeyDescription/ChangePassword/UpdateProfile/UpdateSettings/Login/LoginFailed/Logout/RefreshRejected/DiscoverModels)
+│   ├── audit_action.rs     # AuditAction 枚举 (18 variants: Create/Update/Delete/Enable/Disable/Recover/AutoRecover/CreateApiKey/RevokeApiKey/UpdateApiKeyDescription/ChangePassword/UpdateProfile/UpdateSettings/Login/LoginFailed/Logout/RefreshRejected/DiscoverModels)
 │   ├── audit_entity_type.rs # AuditEntityType 枚举 (8 variants: AccessPoint/Account/Provider/User/UserApiKey/SystemSettings/AuthSession/RefreshToken)
 │   ├── dashboard_query.rs  # Dashboard 读模型 (DashboardWindow / KpiAggregate / SparklineBucket / HeatmapCell / UsageTrendBucket / TopModelRow / TopAccessPointRow / QualityMetrics, 全部按 user_id 过滤; LEFT JOIN 容忍引用对象删除)
-│   ├── repository_audit_log.rs # AuditLogRepository trait
+│   ├── repository_audit_log.rs # AuditLogRepository trait (含 find_all_paginated_with_username 方法) + AuditLogQuery 筛选值对象 + AuditLogWithUsername 读模型
 │   ├── repository_log.rs   # LogRepository trait (含个人视角聚合方法: aggregate_kpi / aggregate_sparkline / aggregate_heatmap / usage_trends_for_user / top_models / top_access_points / quality_metrics, 首参均为 user_id: Uuid)
 │   ├── repository_token_usage.rs # LogTokenUsageRepository trait
 │   └── mod.rs
@@ -194,8 +194,8 @@ application/
 │   └── dto/                # Dashboard DTO: TimeRangeQuery / TimezoneQuery / KpiResponse (含 5 项词元 input/output/cache_creation/cache_read/thinking) / KpiTrendItem / TrendBadge / SparklineSeries / HeatmapResponse / HeatmapCellDto / UsageTrendsResponse / UsageTrendPoint (日桶含 request_count / session_count / token 5 项) / TopModelItem / TopAccessPointItem / QualityResponse
 ├── log/                    # Log 聚合用例
 │   ├── mod.rs
-│   ├── log_service.rs      # 日志写入/查询用例 (metadata、content、events、词元用量); 集成 broadcast::Sender 广播新日志事件
-│   └── dto/                # 日志 DTO (含 proxy_log_input —— LogService::record_proxy_log 的一次性入参契约; NewLogEvent —— SSE 广播事件)
+│   ├── log_service.rs      # 日志写入/查询用例 (metadata、content、audit-logs、events、词元用量); 集成 broadcast::Sender 广播新日志事件; 注入 AuditLogRepository 实现审计日志查询
+│   └── dto/                # 日志 DTO (含 proxy_log_input —— LogService::record_proxy_log 的一次性入参契约; NewLogEvent —— SSE 广播事件; audit_log_filter_params / audit_log_response —— 审计日志查询)
 ├── provider/               # Provider 聚合用例
 │   ├── mod.rs
 │   ├── provider_service.rs # 提供商管理用例 (含 rate_limit/balance_exhausted 配置 + 审计日志写入)
@@ -318,7 +318,7 @@ presentation/
 │   ├── me_routes.rs        # GET/PUT /api/users/me/* (个人 profile/密码/API key)
 │   ├── access_point_routes.rs # CRUD /api/access-points (含 accounts/model_routing_grid)
 │   ├── proxy_routes.rs     # POST /ap/{short_code}/v1/messages (强制 API key 认证)
-│   ├── log_routes.rs       # GET /api/logs, /api/logs/events (SSE, JWT 保护), /api/logs/sessions, /api/logs/sessions/:id
+│   ├── log_routes.rs       # GET /api/logs, /api/audit-logs, /api/logs/events (SSE, JWT 保护), /api/logs/sessions, /api/logs/sessions/:id
 │   ├── dashboard_routes.rs # GET /api/getting-started/{kpi,heatmap,usage-trends,top-models,top-access-points,quality} (JWT 保护, handler 通过 CurrentUser extractor 提取 user_id 注入 Service)
 │   ├── settings_routes.rs  # GET/PUT /api/settings
 │   └── frontend.rs         # 前端静态资源服务
@@ -340,6 +340,7 @@ presentation/
 | `/api/users/me/*`        | JWT 认证 (当前用户个人设置)                                            |
 | `/api/access-points/*`   | JWT 认证                                                               |
 | `/api/logs/*`            | JWT 认证 (其中 `/api/logs/events` SSE 端点通过 URL query 参数传递 JWT) |
+| `/api/audit-logs`        | JWT 认证                                                               |
 | `/api/getting-started/*` | JWT 认证                                                               |
 
 ### 共享模块 (shared/)
@@ -474,12 +475,14 @@ shared/
 │   │   ├── SessionLogPage.tsx      # 会话日志路由壳 (根据 URL 中 sessionId 参数切换列表/详情视图: 无 sessionId 渲染 SessionListView, 有 sessionId 渲染 SessionDetailView; 集成 useLogEvents 自动刷新)
 │   │   ├── RequestLogPage.tsx      # GET /api/logs (数据加载 + 过滤 + 委托 RequestLogTable 渲染表格; 集成 useLogEvents 自动刷新)
 │   │   ├── LogDetailPage.tsx       # GET /api/logs/:id (单条日志详情, 含请求/响应内容展示)
+│   │   ├── AuditLogPage.tsx        # 审计日志列表页面 (Table + DatePicker 时间范围 + Select 多选筛选 + 行展开 JSON + 分页)
 │   │   └── SettingsPage.tsx        # 设置页面
-│   ├── types/                      # TypeScript 类型定义 (accessPoint.ts, dashboard.ts, log.ts)
+│   ├── types/                      # TypeScript 类型定义 (accessPoint.ts, auditLog.ts, dashboard.ts, log.ts)
 │   │   ├── accessPoint.ts          # 接入点相关类型定义
+│   │   ├── auditLog.ts             # 审计日志类型: AuditLogItem (含 operator_name) / AuditLogFilters
 │   │   ├── dashboard.ts            # 仪表盘个人用量类型 (镜像后端 DTO: TimeRangeQuery / TimezoneQuery / KpiResponse / KpiTrendItem / TrendBadge / SparklineSeries / HeatmapResponse / HeatmapCell / UsageTrendsResponse / UsageTrendPoint (含 session_count) / TopModelItem / TopAccessPointItem / QualityResponse)
 │   │   └── log.ts                  # 日志相关类型: TokenUsage / SessionContentItem / ConversationTurn(轮次-块-摘要三级结构: 含 TurnBlock 消息块联合类型、TurnTokenSummary 用量汇总、ConversationTurn 轮次容器)
-│   └── utils/                      # 工具函数 (parseLogs.ts, parseOpenAI.ts, format.ts, query.ts, usageTrends.ts)
+│   └── utils/                      # 工具函数 (auditLog.ts, parseLogs.ts, parseOpenAI.ts, format.ts, query.ts, usageTrends.ts)
 ├── index.html                      # HTML 入口 (Vite)
 ├── vite.config.ts                  # Vite 构建配置
 ├── tsconfig.json                   # TypeScript 根配置
@@ -502,6 +505,7 @@ shared/
   /logs                 → RequestLogPage
   /logs/:id             → LogDetailPage (单条日志详情)
   /users                → UserManagement
+  /audit-logs           → AuditLogPage
   /settings             → SettingsPage
   /profile              → ProfilePage (个人设置)
 ```
@@ -511,7 +515,7 @@ shared/
 `api.ts` 封装了基于 fetch 的 HTTP 客户端，自动附加 JWT `Authorization` 头。采用「双层防御」策略处理令牌过期：请求前检查
 Access Token 是否接近过期，必要时通过 Refresh Token 静默刷新；若刷新失败或 401 响应仍到达，则清除所有本地令牌并跳转登录页。模块级
 `refreshing` Promise 实现并发刷新去重，避免 Refresh Token Rotation 模式下多请求互相吊销。提供 `get`、`post`、`put`、`delete`
-四个方法。
+四个方法。此外，`auditLogApi` 模块封装审计日志查询（`list` + `buildAuditLogQuery`），支持按操作类型、实体类型、操作者、时间范围组合筛选。
 
 ### 主题系统
 
@@ -674,13 +678,13 @@ LLM API 协议的差异点（请求头格式、session 标识 header 名、API k
 
 ## 审计日志标准化
 
-审计日志（`audit_logs` 表）记录系统中所有管理操作的审计轨迹，覆盖 7 个 Service 的 26 个写操作。审计日志仅后端写入，不暴露 API
-路由和前端页面。
+审计日志（`audit_logs` 表）记录系统中所有管理操作的审计轨迹，覆盖 7 个 Service 的 26 个写操作。后端通过
+`GET /api/audit-logs` 端点（JWT 保护）提供分页查询能力，前端管理面板提供「审计日志」页面供管理员浏览、筛选和查看详情。
 
 ### 领域模型
 
 **AuditAction 枚举**（`src/domain/log/audit_action.rs`）统一所有审计操作类型，通过 `Display` trait 序列化为 snake_case
-字符串写入 VARCHAR 列：
+字符串写入 VARCHAR 列（共 18 种变体）：
 
 | Variant                 | 序列化字符串                 | 说明                         |
 | ----------------------- | ---------------------------- | ---------------------------- |
@@ -735,8 +739,7 @@ LLM API 协议的差异点（请求头格式、session 标识 header 名、API k
 - **写入模式**：统一 fire-and-forget + `tracing::error!`，不阻塞主业务逻辑。各 Service 内聚私有 `write_audit_log()`
   辅助方法封装日志构造和异步写入
 - **保留策略**：永久保留，不分区、不自动清理。审计日志总量较小，无需分区管理
-- **可见性**：仅后端写入，不暴露 API 路由和前端页面。`AuditLogRepository` 提供 `save`（用于写入）和 `find_all_paginated`
-  （预留未来审计查询）两个方法
+- **可见性**：后端通过 `GET /api/audit-logs` 端点（JWT 保护，`LogService::query_audit_logs` 方法）暴露分页查询，支持按操作类型、实体类型、操作者、时间范围筛选。操作者用户名通过 LEFT JOIN users 表一次性获取（`AuditLogWithUsername` 读模型）。前端 `AuditLogPage` 提供列表浏览、多选筛选、行展开 JSON 详情和分页导航。前端中文映射常量（`ACTION_LABELS` 18 种、`ENTITY_TYPE_LABELS` 8 种）定义于 `src-dashboard/utils/auditLog.ts`。所有登录用户可查看，不区分管理员角色
 - **敏感信息防护**：details 字段不记录 API key 明文、密码哈希、JWT token 等敏感信息。写入前各 Service 负责过滤敏感字段
 - **operator_id 策略**：管理员操作传入 `CurrentUser` 的 UUID，系统自动操作（如 AutoRecover、DiscoverModels）传 `None`
 
@@ -938,7 +941,7 @@ Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules
 | ----------- | ----------------------------------------------------------------------------- |
 | Phase 1 MVP | 已完成                                                                        |
 | 后端        | ~170 个 .rs 文件, cargo check 零错误零警告                                    |
-| 前端        | ~73 个 .ts/.tsx 源文件, tsc --noEmit 零错误                                   |
+| 前端        | ~76 个 .ts/.tsx 源文件, tsc --noEmit 零错误                                   |
 | Schema 迁移 | 3 个迁移文件 (初始表 + 账户池 + client_type)                                  |
 | Docker 构建 | 多阶段构建就绪 (含 .dockerignore + HEALTHCHECK)                               |
 | 镜像分发    | GitHub Container Registry (`ghcr.io/your-org/token-proxy`)                    |
@@ -953,10 +956,11 @@ Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules
 
 | 日期             | 变更说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-25       | 审计日志查看功能: `repository_audit_log.rs` 新增 `AuditLogQuery` 筛选值对象和 `AuditLogWithUsername` 读模型（含 LEFT JOIN 用户名）；`AuditLogRepository` trait 新增 `find_all_paginated_with_username` 方法；`SeaOrmAuditLogRepository` 实现 raw SQL 动态 WHERE 数组筛选 + 分页；`LogService` 新增 `audit_log_repo: Arc<dyn AuditLogRepository>` 依赖和 `query_audit_logs` 方法（18 种 action + 8 种 entity_type 字符串→枚举映射）；`log_routes.rs` 新增 `GET /api/audit-logs` JWT 保护端点；`main.rs` 注入 `audit_log_repo.clone()`。前端：新增 `AuditLogPage.tsx`（Table + Select 多选筛选 + DatePicker 时间范围 + 行展开 JSON + 分页）、`types/auditLog.ts`（AuditLogItem / AuditLogFilters 接口）、`utils/auditLog.ts`（ACTION_LABELS 18 种 + ENTITY_TYPE_LABELS 8 种中文映射常量）；`api.ts` 新增 `auditLogApi`（list + buildAuditLogQuery）；`App.tsx` 新增 `/audit-logs` 路由；`AdminLayout.tsx` 菜单新增「审计日志」项（位于用户管理和系统设置之间，IconHistory 图标）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 2026-06-25       | Dashboard 时间选择器自定义范围继承规则: 两个 `TimeRangeSelector`（数据指标与用量趋势）切换到 `custom` 时继承当前已选预设范围，`today` 映射为当天 00:00 到当前时间，`last7` 映射为最近 7 天，`last30` 映射为最近 30 天；已有 custom start/end 时保留原自定义范围。该规则保持时间维度解耦原则不变，补充前端交互契约，避免自定义范围固定回退到最近 7 天                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | 2026-06-25       | Dashboard 用量趋势卡片追加契约: `usage-trends` 后端响应日桶新增 `session_count`，与 `request_count` 一起描述请求量和会话量；前端 `UsageTrendsCard` 左侧面积图同时展示请求数和会话数，右侧每日 token 堆叠柱状图使用明确的非黑色色板区分 5 类词元。该变更保持个人视角、`user_id` 过滤和时间维度解耦原则不变，仅扩展 Dashboard 读模型和图表展示契约                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 2026-06-24       | Dashboard 个人用量报告重构: 视角从「全局聚合」反转为「个人用量报告」——项目无 role 字段，所有用户（含管理员）只看自己。`LogRepository` 删除 `top_users` / `top_accounts`，新增 `aggregate_heatmap` / `top_models` / `top_access_points` / `quality_metrics` 共 4 个个人视角聚合方法；`aggregate_kpi` / `aggregate_sparkline` 改造首参为 `user_id: Uuid`；所有聚合 SQL 强制 `WHERE user_id = ?` 过滤。领域读模型扩展：`KpiAggregate` 删除 `active_user_count`、新增 5 项词元（input/output/cache_creation/cache_read/thinking），新增 `HeatmapCell` / `TopModelRow` / `TopAccessPointRow` / `QualityMetrics`，删除 `TopUserRow` / `TopAccountRow`。新增 `application/dashboard/timezone.rs` 用 `chrono_tz::Tz::from_str` 实现 IANA 时区白名单校验，拦截 PostgreSQL `AT TIME ZONE` 字面量拼接的 SQL 注入风险；时区校验置于 application 层，domain trait 接受已校验 `&str`。路由端点变更为 5 个（`/api/getting-started/{kpi,heatmap,top-models,top-access-points,quality}`），handler 注入 `CurrentUser(user_id)` extractor。前端：新增 `Heatmap.tsx`（GitHub 风格 53×7 方格矩阵 + 分位数色阶, 固定近 1 年窗口）/ `TopModelsRanking.tsx` / `TopAccessPointsRanking.tsx` / `QualityCard.tsx`，删除 `TopUsersRanking.tsx` / `TopAccountsRanking.tsx` / `TopClientsRanking.tsx`；GettingStartedPage 改为 5 个 useFetch 并行，热力图 deps 与 timeRange 解耦（仅依赖 refreshKey）；Dashboard 移除 SSE 订阅；浏览器时区通过 `Intl.DateTimeFormat().resolvedOptions().timeZone` 获取并作为 query 参数传后端。新增依赖 `chrono-tz = "0.10"`。新增核心架构原则 13 (个人用量报告) / 14 (时区 SQL 注入防护) / 15 (时间维度解耦)，替换旧的「Dashboard 只读视图」原则 |
-| 2026-06-23       | 审计日志标准化: 新增 `AuditAction` 枚举（20 variants, domain/log/audit_action.rs）和 `AuditEntityType` 枚举（8 variants, domain/log/audit_entity_type.rs），通过 Display trait 序列化为 snake_case 字符串写入 VARCHAR 列。7 个 Service 的 26 个写操作全部覆盖审计日志（UserService 5 / UserApiKeyService 4 / ProviderService 4 / AccountService 6 / AccessPointService 3 / SettingsService 1 / AuthService 3），各 Service 内聚私有 `write_audit_log()` 辅助方法，统一 fire-and-forget + tracing::error! 模式。领域层、数据库 schema 无变更（audit_logs 表结构保持 7 字段不变）。审计日志永久保留、不分区、仅后端写入、不暴露 API 和前端页面。operator_id 管理员操作传入 CurrentUser，系统自动操作传 None。details 不记录 API key 明文、密码哈希、JWT token 等敏感信息                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 2026-06-23       | 审计日志标准化: 新增 `AuditAction` 枚举（18 variants, domain/log/audit_action.rs）和 `AuditEntityType` 枚举（8 variants, domain/log/audit_entity_type.rs），通过 Display trait 序列化为 snake_case 字符串写入 VARCHAR 列。7 个 Service 的 26 个写操作全部覆盖审计日志（UserService 5 / UserApiKeyService 4 / ProviderService 4 / AccountService 6 / AccessPointService 3 / SettingsService 1 / AuthService 3），各 Service 内聚私有 `write_audit_log()` 辅助方法，统一 fire-and-forget + tracing::error! 模式。领域层、数据库 schema 无变更（audit_logs 表结构保持 7 字段不变）。审计日志永久保留、不分区、仅后端写入、不暴露 API 和前端页面。operator_id 管理员操作传入 CurrentUser，系统自动操作传 None。details 不记录 API key 明文、密码哈希、JWT token 等敏感信息                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 2026-06-23       | 前端日志实时刷新（SSE 推送）: 新增 `NewLogEvent` DTO（`application/log/dto/new_log_event.rs`），LogService 集成 `broadcast::Sender` 在日志写入后广播事件；展示层新增 `GET /api/logs/events` SSE 端点（JWT 保护，`text/event-stream`，响应 `shutdown_rx` 优雅关闭信号）；AppState 新增 `log_event_tx` 和 `shutdown_rx` 字段；main.rs 创建 `broadcast::channel::<NewLogEvent>(256)`。选择 SSE 而非 WebSocket（仅需单向推送，axum 原生支持，EventSource 自动重连）；broadcast 容量 256 满时丢弃最旧事件，前端全量刷新兜底；JWT 通过 URL query 参数传递（EventSource API 不支持自定义 header）。前端：新增 `useLogEvents.ts` hook（EventSource 连接管理）、`ConnectionIndicator.tsx`（SSE 连接状态绿/黄/红三色圆点指示器）；`useFetch.ts` 改造 refetch 时 `setLoading(true)`；`RequestLogPage.tsx`、`SessionLogPage.tsx` 集成 SSE 自动刷新；`SessionDetailView.tsx` 新增 `beforeRefresh` prop。领域层和基础设施层无变更，数据库 schema 无变更                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | 2026-06-23       | OpenAI 协议支持: `AccessPointType` 新增 `OpenAi` 变体 + 新建 `domain/shared/protocols/openai.rs` 实现 Chat Completions + Responses API 双端点协议适配；新增 `ClientType` 枚举（`domain/shared/client_type.rs`，ClaudeCode / Codex / Other / Unknown）与 `AccessPointType` 正交——前者描述调用客户端，后者描述上游协议。`InboundRequest` 新增 `client_type` 字段，`ProxyPipeline` 协议解析阶段从 User-Agent 和请求路径识别 ClientType；`log_metadata` 和 `log_token_usage` 新增 `client_type` 列（迁移 `m20260623_000003_client_type`）；`LogRepository` 新增 `top_clients` 聚合方法；`DashboardService` 新增 `get_top_clients`；`GET /api/getting-started/top-clients` 端点。前端：`parseOpenAI.ts` OpenAI 响应/请求解析器；`AccessPointDrawer` 启用 OpenAI 选项 + MODEL_FAMILIES 按 api_type 动态切换；`RequestContentCard` / `ResponseContentCard` 支持 OpenAI 协议渲染；`buildConversationTurns` 按 api_type 分发；`TopClientsRanking` 排行卡片；`GettingStartedPage` 集成第 4 个 `useFetch`。基础设施：`parsed_token_usage.rs` 扩展支持 OpenAI Chat/Responses 词元格式；`Provider::base_url_for` 补 `OpenAi` 分支                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | 2026-06-23       | Dashboard 数据分析重做: 新增 `application/dashboard/` 模块（`dashboard_service.rs` + `time_window.rs` + 12 个 DTO），仅依赖 `LogRepository`；`LogRepository` trait 扩展 4 个聚合方法（`aggregate_kpi` / `aggregate_sparkline` / `top_users` / `top_accounts`），SQL 统一用 `Statement::from_sql_and_values` 配合 `generate_series` 在 SQL 层补齐空桶；新增 `domain/log/dashboard_query.rs` 领域读模型（DashboardWindow / KpiAggregate / SparklineBucket / TopUserRow / TopAccountRow，LEFT JOIN 容忍删除）。新增 3 个 JWT 保护端点：`GET /api/getting-started/kpi` (KPI + 内嵌 sparkline) / `top-users` / `top-accounts`。删除旧 `stats_routes.rs` + `stats/dto/` 目录、`LogService` 4 个统计方法、`LogRepository` 5 个旧方法。前端 `components/dashboard/` 重写为 8 个组件（Sparkline / ComparisonArrow / StackedBar / KpiCard / CacheHitCard / TimeRangeSelector / TopUsersRanking / TopAccountsRanking），删除旧 `StatCard` / `TrendChart`；`GettingStartedPage.tsx` 完全重写为 CSS Grid 布局（1280/768 响应式断点）+ 3 个并行 `useFetch`；新增 `recharts@^3.8.1` 依赖、`formatTokenCompact` 工具函数、`.dashboard-deleted` 全局 CSS 类。新增架构原则 13「Dashboard 只读视图」                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

@@ -3,6 +3,8 @@
 //! 包含日志查询、详情、会话摘要、词元用量等 DTO 定义，
 //! 以及 `ProxyLogInput`（代理日志写入的入参契约）。
 
+pub mod audit_log_filter_params;
+pub mod audit_log_response;
 pub mod log_detail_full_response;
 pub mod log_detail_response;
 pub mod log_filter_params;
@@ -12,6 +14,9 @@ pub mod proxy_log_input;
 pub mod session_content_item_response;
 pub mod session_summary_response;
 pub mod token_usage_response;
+
+pub use audit_log_filter_params::AuditLogFilterParams;
+pub use audit_log_response::AuditLogResponse;
 
 pub use log_detail_full_response::LogDetailFullResponse;
 pub use log_detail_response::LogDetailResponse;

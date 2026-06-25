@@ -10,6 +10,7 @@ import {
   IconUserGroup,
   IconSettingStroked,
   IconUserCircle,
+  IconHistory,
 } from '@douyinfe/semi-icons';
 import ThemeToggle from '@components/common/ThemeToggle';
 
@@ -28,6 +29,7 @@ const navItems: NavItem[] = [
   { itemKey: '/sessions', text: '会话日志', icon: <IconCommentStroked /> },
   { itemKey: '/logs', text: '请求日志', icon: <IconListView /> },
   { itemKey: '/users', text: '用户管理', icon: <IconUserGroup /> },
+  { itemKey: '/audit-logs', text: '审计日志', icon: <IconHistory /> },
   { itemKey: '/settings', text: '系统设置', icon: <IconSettingStroked /> },
 ];
 

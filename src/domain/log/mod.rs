@@ -18,7 +18,9 @@ pub use dashboard_query::{
     TopAccessPointRow, TopModelRow, UsageTrendBucket,
 };
 pub use metadata::Model as LogMetadata;
+pub use repository_audit_log::AuditLogQuery;
 pub use repository_audit_log::AuditLogRepository;
+pub use repository_audit_log::AuditLogWithUsername;
 pub use repository_log::LogRepository;
 pub use repository_log::{LogMetadataWithTokenSummary, LogQuery, SessionQuery, SessionSummaryData};
 pub use repository_token_usage::LogTokenUsageRepository;
