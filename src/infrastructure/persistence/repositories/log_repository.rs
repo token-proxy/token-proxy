@@ -694,7 +694,7 @@ impl LogRepository for SeaOrmLogRepository {
     ///    PostgreSQL 会自动剪掉不相关的子分区）。
     /// 2. `log_token_usage` 通过 `log_id` 与 `log_metadata` 一对一关联，LEFT JOIN
     ///    保证未写入词元用量的请求仍计入 `request_count`。
-    /// 3. `input_plus_cache_read_tokens` 是缓存命中率的分母，单独聚合可避免前端再算一次。
+    /// 3. `total_input_side_tokens` 是输入方向词元总量（缓存命中率的分母），单独聚合可避免前端再算一次。
     #[tracing::instrument(
         skip(self),
         fields(user_id = %user_id, window.start = %window.start, window.end = %window.end)
@@ -715,7 +715,7 @@ impl LogRepository for SeaOrmLogRepository {
                 COALESCE(SUM(ltu.cache_creation_input_tokens), 0)::BIGINT AS cache_creation_tokens,
                 COALESCE(SUM(ltu.cache_read_input_tokens), 0)::BIGINT AS cache_read_tokens,
                 COALESCE(SUM(ltu.thinking_tokens), 0)::BIGINT AS thinking_tokens,
-                COALESCE(SUM(ltu.input_tokens + ltu.cache_read_input_tokens), 0)::BIGINT AS input_plus_cache_read_tokens
+                COALESCE(SUM(ltu.input_tokens + ltu.cache_creation_input_tokens + ltu.cache_read_input_tokens), 0)::BIGINT AS total_input_side_tokens
             FROM log_metadata lm
             LEFT JOIN log_token_usage ltu ON ltu.log_id = lm.id
             WHERE lm.user_id = $1::uuid
@@ -743,7 +743,7 @@ impl LogRepository for SeaOrmLogRepository {
             cache_creation_tokens: row.try_get_by_index::<i64>(5)?,
             cache_read_tokens: row.try_get_by_index::<i64>(6)?,
             thinking_tokens: row.try_get_by_index::<i64>(7)?,
-            input_plus_cache_read_tokens: row.try_get_by_index::<i64>(8)?,
+            total_input_side_tokens: row.try_get_by_index::<i64>(8)?,
         })
     }
 

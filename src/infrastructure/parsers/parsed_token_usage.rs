@@ -1,13 +1,17 @@
 //! 词元用量解析器（基础设施层）
 //!
-//! 从上游响应中解析词元用量信息。
-//! 支持以下格式：
-//! - Anthropic SSE（`message_delta` 事件中的 `usage` 字段）
-//! - Anthropic 非流式（顶层 `usage` 对象，字段名为 `input_tokens` / `output_tokens` 等）
-//! - OpenAI Chat Completions SSE（最后一个 `data:` chunk 中的 `usage` 对象）
-//! - OpenAI Chat Completions 非流式（顶层 `usage` 对象，字段名为 `prompt_tokens` / `completion_tokens` 等）
-//! - OpenAI Responses API SSE（`response.completed` 事件中的 `usage` 对象）
-//! - OpenAI Responses API 非流式（顶层 `usage` 对象，字段名为 `input_tokens` / `output_tokens` 等）
+//! 从上游响应中解析词元用量信息，支持 4 种协议格式。
+//!
+//! ## 归一化策略
+//!
+//! 不同 LLM 服务商对 usage 字段的语义定义不同，本模块负责归一化为统一的互斥语义：
+//! 5 个词元维度（input / output / cache_creation / cache_read / thinking）相互独立、可加法求和。
+//!
+//! | 协议                    | 原始语义                         | 归一化操作                        |
+//! | ----------------------- | -------------------------------- | --------------------------------- |
+//! | Anthropic               | 5 个字段互斥，天然符合           | 无需处理                          |
+//! | OpenAI Chat Completions | `cached_tokens` ⊆ `prompt_tokens` | `input = prompt - cached`         |
+//! | OpenAI Responses API    | `reasoning_tokens` ⊆ `output_tokens` | `output = output - reasoning` |
 
 use serde_json::Value;
 
@@ -116,7 +120,10 @@ fn process_usage_event(
     None
 }
 
-/// 解析 Anthropic 命名约定的 usage 字段（`input_tokens` / `output_tokens` / `cache_creation_input_tokens` / `cache_read_input_tokens` / `thinking_tokens`）
+/// 解析 Anthropic 命名约定的 usage 字段
+///
+/// Anthropic 的 5 个词元维度是互斥的加法维度（input / output / cache_creation / cache_read / thinking），
+/// 无需做重叠扣除，直接读取并求和即为总量。
 fn extract_usage_fields(raw_usage: &Value) -> ParsedTokenUsage {
     let input = int_field(raw_usage, "input_tokens");
     let output = int_field(raw_usage, "output_tokens");
@@ -169,17 +176,19 @@ fn extract_openai_chat_usage(body: &str) -> Option<ParsedTokenUsage> {
 
 /// 解析 OpenAI Chat Completions 的 `usage` 对象字段
 ///
-/// 字段映射：
-/// - `prompt_tokens` → `input_tokens`
+/// 字段映射（OpenAI Chat Completions 与 Anthropic 语义不同，需归一化）：
+/// - `prompt_tokens` **包含** `cached_tokens`，需扣除后存入 `input_tokens`
 /// - `completion_tokens` → `output_tokens`
 /// - `prompt_tokens_details.cached_tokens` → `cache_read_input_tokens`
-/// - `total_tokens` → `total_tokens`
+/// - `total_tokens` → 直接使用 API 返回的总量
+///
+/// 归一化后 `input + cache_read = prompt_tokens`（与 Anthropic 的互斥语义对齐）。
 fn parse_openai_usage_fields(usage: &Value) -> Option<ParsedTokenUsage> {
-    let input_tokens = usage
+    let prompt_tokens = usage
         .get("prompt_tokens")
         .and_then(Value::as_i64)
         .unwrap_or(0) as i32;
-    let output_tokens = usage
+    let completion_tokens = usage
         .get("completion_tokens")
         .and_then(Value::as_i64)
         .unwrap_or(0) as i32;
@@ -187,15 +196,20 @@ fn parse_openai_usage_fields(usage: &Value) -> Option<ParsedTokenUsage> {
         .get("total_tokens")
         .and_then(Value::as_i64)
         .unwrap_or(0) as i32;
-    let cache_read = usage
+    let cached_tokens = usage
         .get("prompt_tokens_details")
         .and_then(|v| v.get("cached_tokens"))
         .and_then(Value::as_i64)
         .unwrap_or(0) as i32;
 
+    // OpenAI 的 cached_tokens 是 prompt_tokens 的子集；归一化为互斥语义后
+    // input_tokens = 未命中缓存，cache_read = 命中缓存
+    let cache_read = cached_tokens;
+    let input = (prompt_tokens - cached_tokens).max(0);
+
     Some(ParsedTokenUsage {
-        input_tokens,
-        output_tokens,
+        input_tokens: input,
+        output_tokens: completion_tokens,
         cache_creation_input_tokens: 0, // OpenAI Chat Completions 无此概念
         cache_read_input_tokens: cache_read,
         thinking_tokens: 0, // Chat Completions 无 reasoning_tokens
@@ -238,17 +252,19 @@ fn extract_openai_responses_usage(body: &str) -> Option<ParsedTokenUsage> {
 
 /// 解析 OpenAI Responses API 的 `usage` 对象字段
 ///
-/// 字段映射：
-/// - `input_tokens` → `input_tokens`
-/// - `output_tokens` → `output_tokens`
+/// 字段映射（OpenAI Responses API 与 Anthropic 语义不同，需归一化）：
+/// - `input_tokens` → `input_tokens`（Responses API 无缓存概念，直接使用）
+/// - `output_tokens` **包含** `reasoning_tokens`，需扣除后存入 `output_tokens`
 /// - `output_tokens_details.reasoning_tokens` → `thinking_tokens`
-/// - `total_tokens` → `total_tokens`
+/// - `total_tokens` → 直接使用 API 返回的总量
+///
+/// 归一化后 `output + thinking = output_tokens`（与 Anthropic 的互斥语义对齐）。
 fn parse_openai_responses_usage_fields(usage: &Value) -> Option<ParsedTokenUsage> {
     let input_tokens = usage
         .get("input_tokens")
         .and_then(Value::as_i64)
         .unwrap_or(0) as i32;
-    let output_tokens = usage
+    let output_tokens_raw = usage
         .get("output_tokens")
         .and_then(Value::as_i64)
         .unwrap_or(0) as i32;
@@ -262,9 +278,13 @@ fn parse_openai_responses_usage_fields(usage: &Value) -> Option<ParsedTokenUsage
         .and_then(Value::as_i64)
         .unwrap_or(0) as i32;
 
+    // OpenAI 的 reasoning_tokens 是 output_tokens 的子集；归一化为互斥语义后
+    // output_tokens = 不含思考的输出，thinking = 推理词元
+    let output = (output_tokens_raw - reasoning_tokens).max(0);
+
     Some(ParsedTokenUsage {
         input_tokens,
-        output_tokens,
+        output_tokens: output,
         cache_creation_input_tokens: 0,
         cache_read_input_tokens: 0, // Responses API 暂未有 cached_tokens
         thinking_tokens: reasoning_tokens,
@@ -288,7 +308,7 @@ pub struct ParsedTokenUsage {
     pub output_tokens: i32,
     /// 缓存创建输入词元数
     pub cache_creation_input_tokens: i32,
-    /// 缓存读取输入词元数
+    /// 缓存命中输入词元数
     pub cache_read_input_tokens: i32,
     /// 思考词元数
     pub thinking_tokens: i32,
@@ -355,7 +375,8 @@ data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"outpu
         }"#;
 
         let result = extract_openai_chat_usage(json_data).unwrap();
-        assert_eq!(result.input_tokens, 100);
+        // prompt_tokens = 100, cached_tokens = 50 → input = 100 - 50 = 50
+        assert_eq!(result.input_tokens, 50);
         assert_eq!(result.output_tokens, 200);
         assert_eq!(result.cache_read_input_tokens, 50);
         assert_eq!(result.cache_creation_input_tokens, 0);
@@ -377,7 +398,8 @@ data: [DONE]
 "#;
 
         let result = extract_openai_chat_usage(sse_data).unwrap();
-        assert_eq!(result.input_tokens, 150);
+        // prompt_tokens = 150, cached_tokens = 80 → input = 150 - 80 = 70
+        assert_eq!(result.input_tokens, 70);
         assert_eq!(result.output_tokens, 300);
         assert_eq!(result.cache_read_input_tokens, 80);
         assert_eq!(result.total_tokens, 450);
@@ -403,8 +425,9 @@ data: [DONE]
         }"#;
 
         let result = extract_openai_responses_usage(json_data).unwrap();
+        // output_tokens = 500, reasoning_tokens = 100 → output = 500 - 100 = 400
         assert_eq!(result.input_tokens, 200);
-        assert_eq!(result.output_tokens, 500);
+        assert_eq!(result.output_tokens, 400);
         assert_eq!(result.thinking_tokens, 100);
         assert_eq!(result.cache_read_input_tokens, 0);
         assert_eq!(result.cache_creation_input_tokens, 0);
@@ -423,8 +446,9 @@ data: [DONE]
 "#;
 
         let result = extract_openai_responses_usage(sse_data).unwrap();
+        // output_tokens = 120, reasoning_tokens = 40 → output = 120 - 40 = 80
         assert_eq!(result.input_tokens, 50);
-        assert_eq!(result.output_tokens, 120);
+        assert_eq!(result.output_tokens, 80);
         assert_eq!(result.thinking_tokens, 40);
         assert_eq!(result.total_tokens, 170);
     }
@@ -448,8 +472,9 @@ data: [DONE]
         let body = r#"data: {"type":"response.completed","response":{"id":"r","usage":{"input_tokens":10,"output_tokens":20,"output_tokens_details":{"reasoning_tokens":5},"total_tokens":30}}}"#;
 
         let result = parse_usage_from_response(body).unwrap();
+        // output_tokens = 20, reasoning_tokens = 5 → output = 20 - 5 = 15
         assert_eq!(result.input_tokens, 10);
-        assert_eq!(result.output_tokens, 20);
+        assert_eq!(result.output_tokens, 15);
         assert_eq!(result.thinking_tokens, 5);
         assert_eq!(result.total_tokens, 30);
     }

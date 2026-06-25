@@ -29,9 +29,9 @@ export default function TokenUsageCard({ data: d, style }: TokenUsageCardProps):
     <Card title="词元用量" style={style} bodyStyle={{ padding: '20px 24px' }}>
       <Descriptions row size="small">
         <Descriptions.Item itemKey={<strong>总计</strong>}>{formatNumber(total)}</Descriptions.Item>
-        <Descriptions.Item itemKey="新输入">{formatNumber(input)}</Descriptions.Item>
-        <Descriptions.Item itemKey="缓存读取">{formatNumber(cacheRead)}</Descriptions.Item>
-        <Descriptions.Item itemKey="缓存创建">{formatNumber(cacheCreate)}</Descriptions.Item>
+        <Descriptions.Item itemKey="未命中缓存">{formatNumber(input)}</Descriptions.Item>
+        <Descriptions.Item itemKey="缓存命中输入">{formatNumber(cacheRead)}</Descriptions.Item>
+        <Descriptions.Item itemKey="缓存创建输入">{formatNumber(cacheCreate)}</Descriptions.Item>
         <Descriptions.Item itemKey="输出">{formatNumber(output)}</Descriptions.Item>
         <Descriptions.Item itemKey="思考">{formatNumber(thinking)}</Descriptions.Item>
       </Descriptions>

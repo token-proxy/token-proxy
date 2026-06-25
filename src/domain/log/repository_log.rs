@@ -126,7 +126,7 @@ pub trait LogRepository: Send + Sync {
     /// 聚合 KPI 标量值（单次 SQL，5 个聚合列）
     ///
     /// 用于个人 Dashboard 顶部 KPI 卡。所有数据按 `user_id` 过滤，覆盖当前登录用户视角。
-    /// 缓存命中率 = `cache_read_tokens / input_plus_cache_read_tokens`，分母为 0 时由调用方判定为 None。
+    /// 缓存命中率 = `cache_read_tokens / total_input_side_tokens`，分母为 0 时由调用方判定为 None。
     async fn aggregate_kpi(
         &self,
         user_id: Uuid,

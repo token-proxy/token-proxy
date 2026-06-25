@@ -99,13 +99,13 @@ export interface SparklineBucket {
  * 用于堆叠条 / 环形图等可视化组件。
  */
 export interface TokenComposition {
-  /** 输入词元数 */
+  /** 未命中缓存输入词元数 */
   input_tokens: number;
   /** 输出词元数 */
   output_tokens: number;
-  /** 缓存创建词元数 */
+  /** 缓存创建输入词元数 */
   cache_creation_tokens: number;
-  /** 缓存读取词元数 */
+  /** 缓存命中输入词元数 */
   cache_read_tokens: number;
   /** 思考词元数 */
   thinking_tokens: number;

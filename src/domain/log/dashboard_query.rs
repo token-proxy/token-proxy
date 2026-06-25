@@ -33,18 +33,18 @@ pub struct KpiAggregate {
     pub session_count: i64,
     /// 总词元数（来自 log_token_usage）
     pub total_tokens: i64,
-    /// 输入词元数（input_tokens 之和，不含缓存）
+    /// 未命中缓存输入词元数（input_tokens 列之和，不含缓存和思考）
     pub input_tokens: i64,
-    /// 输出词元数（output_tokens 之和）
+    /// 输出词元数（output_tokens 列之和，不含思考词元）
     pub output_tokens: i64,
-    /// 缓存命中词元数（cache_read_input_tokens 之和）
+    /// 缓存命中输入词元数（cache_read_input_tokens 列之和）
     pub cache_read_tokens: i64,
-    /// 缓存写入词元数（cache_creation_input_tokens 之和）
+    /// 缓存创建输入词元数（cache_creation_input_tokens 列之和）
     pub cache_creation_tokens: i64,
-    /// 思考词元数（thinking_tokens 之和）
+    /// 思考词元数（thinking_tokens 列之和）
     pub thinking_tokens: i64,
-    /// 缓存命中率分母（input_tokens + cache_read_input_tokens 之和）
-    pub input_plus_cache_read_tokens: i64,
+    /// 输入方向词元总量（input + cache_creation + cache_read，缓存命中率的分母）
+    pub total_input_side_tokens: i64,
 }
 
 /// Sparkline 时间序列桶

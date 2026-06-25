@@ -17,10 +17,10 @@ import './TotalTokensCard.css';
 
 /** 5 段词元构成的颜色与标签定义（与 TokenComposition 共享） */
 const COMPOSITION_SEGMENTS = [
-  { key: 'input_tokens', label: '输入', color: '#3b82f6' },
+  { key: 'input_tokens', label: '未命中缓存', color: '#3b82f6' },
   { key: 'output_tokens', label: '输出', color: '#10b981' },
-  { key: 'cache_creation_tokens', label: '缓存创建', color: '#f59e0b' },
-  { key: 'cache_read_tokens', label: '缓存读取', color: '#06b6d4' },
+  { key: 'cache_creation_tokens', label: '缓存创建输入', color: '#f59e0b' },
+  { key: 'cache_read_tokens', label: '缓存命中输入', color: '#06b6d4' },
   { key: 'thinking_tokens', label: '思考', color: '#a855f7' },
 ] as const;
 

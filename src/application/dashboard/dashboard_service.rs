@@ -66,11 +66,20 @@ impl DashboardService {
         )?;
 
         // 2. 装配 KPI 标量项
+        // ─── 注意：输入词元 = 未命中缓存输入 + 缓存创建输入 + 缓存命中输入（用户体验视角的"输入总量"）───
+        // ─── 注意：输出词元 = 输出 + 思考词元（思考也是输出方向消耗）───
+        let total_input_tokens =
+            current.input_tokens + current.cache_creation_tokens + current.cache_read_tokens;
+        let prev_total_input_tokens =
+            previous.input_tokens + previous.cache_creation_tokens + previous.cache_read_tokens;
+        let total_output_tokens = current.output_tokens + current.thinking_tokens;
+        let prev_total_output_tokens = previous.output_tokens + previous.thinking_tokens;
+
         let session_count = build_trend_item(current.session_count, previous.session_count);
         let request_count = build_trend_item(current.request_count, previous.request_count);
         let total_tokens = build_trend_item(current.total_tokens, previous.total_tokens);
-        let input_tokens = build_trend_item(current.input_tokens, previous.input_tokens);
-        let output_tokens = build_trend_item(current.output_tokens, previous.output_tokens);
+        let input_tokens = build_trend_item(total_input_tokens, prev_total_input_tokens);
+        let output_tokens = build_trend_item(total_output_tokens, prev_total_output_tokens);
         let cache_hit_rate = build_cache_hit_rate(&current, &previous);
 
         // 3. 装配词元构成（5 维度绝对值）
@@ -291,14 +300,8 @@ fn build_trend_item(current: i64, previous: i64) -> KpiTrendItem {
 
 /// 装配缓存命中率项
 fn build_cache_hit_rate(current: &KpiAggregate, previous: &KpiAggregate) -> CacheHitRate {
-    let rate = compute_rate(
-        current.cache_read_tokens,
-        current.input_plus_cache_read_tokens,
-    );
-    let previous_rate = compute_rate(
-        previous.cache_read_tokens,
-        previous.input_plus_cache_read_tokens,
-    );
+    let rate = compute_rate(current.cache_read_tokens, current.total_input_side_tokens);
+    let previous_rate = compute_rate(previous.cache_read_tokens, previous.total_input_side_tokens);
     let (trend, change_pct) = compute_rate_trend(rate, previous_rate);
     CacheHitRate {
         rate,
@@ -326,7 +329,7 @@ fn build_rate_trend_item(
     }
 }
 
-/// 计算缓存命中率：`cache_read / (input + cache_read)`；分母为 0 返回 None
+/// 计算缓存命中率：`cache_read / (input + cache_creation + cache_read)`；分母为 0 返回 None
 fn compute_rate(numerator: i64, denominator: i64) -> Option<f64> {
     if denominator <= 0 {
         None

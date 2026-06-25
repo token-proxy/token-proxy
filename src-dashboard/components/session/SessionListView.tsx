@@ -144,8 +144,10 @@ export default function SessionListView({
                     <div style={{ fontSize: 12, lineHeight: 1.6 }}>
                       <div>总输入: {formatNumber(record.total_input_tokens)}</div>
                       <div>总输出: {formatNumber(record.total_output_tokens)}</div>
-                      <div>缓存创建: {formatNumber(record.total_cache_creation_input_tokens)}</div>
-                      <div>缓存读取: {formatNumber(record.total_cache_read_input_tokens)}</div>
+                      <div>
+                        缓存创建输入: {formatNumber(record.total_cache_creation_input_tokens)}
+                      </div>
+                      <div>缓存命中输入: {formatNumber(record.total_cache_read_input_tokens)}</div>
                       <div>思考: {formatNumber(record.total_thinking_tokens)}</div>
                       <div>总计: {formatNumber(record.total_tokens)}</div>
                     </div>

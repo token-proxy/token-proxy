@@ -172,10 +172,12 @@ export default function SessionDetailView({
                 <Tag color="light-blue">总输入 &uarr;{formatNumber(tokenTotals.inputTokens)}</Tag>
                 <Tag color="light-blue">总输出 &darr;{formatNumber(tokenTotals.outputTokens)}</Tag>
                 {tokenTotals.cacheCreationTokens > 0 && (
-                  <Tag color="teal">缓存创建 {formatNumber(tokenTotals.cacheCreationTokens)}</Tag>
+                  <Tag color="teal">
+                    缓存创建输入 {formatNumber(tokenTotals.cacheCreationTokens)}
+                  </Tag>
                 )}
                 {tokenTotals.cacheReadTokens > 0 && (
-                  <Tag color="teal">缓存读取 {formatNumber(tokenTotals.cacheReadTokens)}</Tag>
+                  <Tag color="teal">缓存命中输入 {formatNumber(tokenTotals.cacheReadTokens)}</Tag>
                 )}
                 {tokenTotals.thinkingTokens > 0 && (
                   <Tag color="amber">思考 {formatNumber(tokenTotals.thinkingTokens)}</Tag>

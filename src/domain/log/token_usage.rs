@@ -26,10 +26,15 @@ pub struct Model {
     pub conversation_source: Option<String>,
     pub agent_id: Option<String>,
     pub agent_type: Option<String>,
+    /// 未命中缓存输入词元数
     pub input_tokens: i32,
+    /// 输出词元数（不含思考）
     pub output_tokens: i32,
+    /// 缓存创建输入词元数
     pub cache_creation_input_tokens: i32,
+    /// 缓存命中输入词元数
     pub cache_read_input_tokens: i32,
+    /// 思考词元数
     pub thinking_tokens: i32,
     pub total_tokens: i32,
     pub raw_usage: Option<Json>,

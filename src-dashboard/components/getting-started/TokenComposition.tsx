@@ -1,7 +1,7 @@
 /**
  * TokenComposition - 词元构成卡片。
  *
- * 用于 Dashboard 展示当前时间窗口内 5 维度词元（输入 / 输出 / 缓存创建 / 缓存读取 / 思考）
+ * 用于 Dashboard 展示当前时间窗口内 5 维度词元（未命中缓存 / 输出 / 缓存创建输入 / 缓存命中输入 / 思考）
  * 的占比与绝对值，并在右上角附带缓存命中率胶囊（含对比箭头）。
  *
  * 视觉策略：
@@ -46,10 +46,10 @@ interface SegmentSpec {
 }
 
 const SEGMENT_SPECS = [
-  { key: 'input_tokens', label: '输入', color: '#3b82f6' },
+  { key: 'input_tokens', label: '未命中缓存', color: '#3b82f6' },
   { key: 'output_tokens', label: '输出', color: '#10b981' },
-  { key: 'cache_creation_tokens', label: '缓存创建', color: '#f59e0b' },
-  { key: 'cache_read_tokens', label: '缓存读取', color: '#06b6d4' },
+  { key: 'cache_creation_tokens', label: '缓存创建输入', color: '#f59e0b' },
+  { key: 'cache_read_tokens', label: '缓存命中输入', color: '#06b6d4' },
   { key: 'thinking_tokens', label: '思考', color: '#a855f7' },
 ] as const satisfies readonly SegmentSpec[];
 
