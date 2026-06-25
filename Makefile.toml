@@ -14,7 +14,7 @@ run_task = { name = ["dev-frontend", "dev-backend"], parallel = true }
 
 [tasks.dev-frontend]
 description = "启动前端 Vite dev server"
-command = "npm"
+command = "pnpm"
 args = ["run", "dev"]
 
 [tasks.dev-backend]
@@ -27,12 +27,12 @@ args = ["watch", "-x", "run"]
 
 [tasks.build]
 clear = true
-description = "生产构建 (前端 npm build + 后端 cargo build --release)"
+description = "生产构建 (前端 pnpm build + 后端 cargo build --release)"
 run_task = { name = ["build-frontend", "build-backend"], parallel = false }
 
 [tasks.build-frontend]
 description = "构建前端静态资源"
-command = "npm"
+command = "pnpm"
 args = ["run", "build"]
 
 [tasks.build-backend]
@@ -70,8 +70,8 @@ command = "cargo"
 args = ["check"]
 
 [tasks.check-frontend]
-command = "npx"
-args = ["tsc", "--noEmit"]
+command = "pnpm"
+args = ["exec", "tsc", "--noEmit"]
 
 [tasks.fmt]
 description = "代码格式化"

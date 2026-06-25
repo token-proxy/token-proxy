@@ -3,15 +3,19 @@ FROM node:26-alpine AS frontend-builder
 
 WORKDIR /app
 
-# 清单文件优先复制，配合 npm 缓存挂载加速依赖安装
-COPY package.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm install
+# 安装 pnpm，版本与 package.json 中 packageManager 声明的 pnpm@11.5.2 保持一致
+RUN npm install -g pnpm@11
+
+# 清单文件优先复制，配合 pnpm store 缓存挂载加速依赖安装
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm config set store-dir /pnpm/store && \
+    pnpm install --frozen-lockfile --ignore-scripts
 
 COPY index.html tsconfig.json tsconfig.app.json tsconfig.node.json vite.config.ts eslint.config.js ./
 COPY public/ public/
 COPY src-dashboard/ src-dashboard/
-RUN npm run build
+RUN pnpm run build
 
 # ─── 阶段 2: 构建后端 ─────────────────────────────
 FROM rust:1.96-alpine AS backend-builder

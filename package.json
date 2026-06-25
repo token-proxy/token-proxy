@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "pnpm@11.5.2",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -41,7 +42,7 @@
     "vite": "^8.0.12"
   },
   "simple-git-hooks": {
-    "pre-commit": "npx lint-staged"
+    "pre-commit": "pnpm exec lint-staged"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

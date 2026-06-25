@@ -141,6 +141,33 @@ curl https://your-domain/ap/my-team/v1/messages \
 
 ## 开发者文档
 
+### 本地开发
+
+前端依赖使用 pnpm 管理，首次开发前执行：
+
+```bash
+pnpm install
+```
+
+常用前端命令：
+
+```bash
+pnpm run dev
+pnpm run build
+pnpm run lint
+pnpm exec tsc --noEmit
+```
+
+也可以通过 cargo-make 统一编排：
+
+```bash
+cargo make dev
+cargo make build
+cargo make check
+```
+
+### 参考文档
+
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — 架构设计与技术细节
 - [CLAUDE.md](./CLAUDE.md) — AI 辅助开发配置
 

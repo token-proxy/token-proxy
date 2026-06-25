@@ -16,7 +16,7 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 3
     groups:
-      npm-deps:
+      frontend-deps:
         patterns:
           - "*"
 

@@ -7,6 +7,8 @@ on:
     paths:
       - 'src-dashboard/**'
       - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - 'tsconfig.json'
       - 'tsconfig.*.json'
       - 'vite.config.ts'
@@ -20,16 +22,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+
       - name: 安装 Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: 安装依赖
-        run: npm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint 检查
-        run: npm run lint
+        run: pnpm run lint
 
       - name: TypeScript 类型检查
-        run: npx tsc --noEmit
+        run: pnpm exec tsc --noEmit

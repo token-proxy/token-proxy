@@ -7,12 +7,12 @@
 ## 技术栈
 
 - **后端**: Rust (edition 2021) + axum 0.8 + SeaORM 2 + tokio
-- **前端**: React 19 + TypeScript + Vite + Semi Design 2.97
+- **前端**: React 19 + TypeScript + Vite + Semi Design 2.97（pnpm 管理依赖）
 - **数据库**: PostgreSQL 17（应用层按月分区管理）
 - **代码质量**: Prettier + lint-staged + simple-git-hooks（pre-commit 自动格式化）、cargo fmt/clippy
 - **CI/CD**: GitHub Actions（fmt + clippy + build + PostgreSQL 集成测试）、Dependabot（每周依赖检查）
 - **构建**: cargo-make + Docker 多阶段构建（.dockerignore 优化构建上下文）
-- **工具链**: Rust 工具链固定于 1.96（rust-toolchain.toml）
+- **工具链**: Rust 工具链固定于 1.96（rust-toolchain.toml），前端 pnpm 版本通过 `packageManager` 固定
 
 ## 架构概要
 
@@ -40,7 +40,7 @@ DDD 四层：领域层（`domain/`）→ 应用层（`application/`）→ 基础
 - **仓储 trait 契约**: 所有仓储 trait 必须使用 `#[async_trait] + Send + Sync`，方法返回 `Result<..., AppError>`
 - **DTO 目录统一**: 每个 Service 的 DTO 放在 `dto/` 子目录，`mod.rs` 用 `pub use` 重导出；外部引用使用绝对路径
   `crate::application::<聚合>::dto::*`
-- **Cargo.lock 纳入版本控制**（确定性构建），`package-lock.json` 不纳入（`.gitignore` 排除）
+- **Cargo.lock 与 pnpm-lock.yaml 纳入版本控制**（确定性构建），`package-lock.json` 不纳入（`.gitignore` 排除）
 - **`.`rs` 空文件留作占位**，不应删除
 
 ## 术语表
@@ -320,18 +320,18 @@ token/key/密码到控制台；提取 `X-Request-ID` 在 Toast 中展示。
 
 ## Makefile 任务
 
-| 命令                 | 说明                            |
-| -------------------- | ------------------------------- |
-| `cargo make dev`     | 并行启动前端 Vite HMR + 后端    |
-| `cargo make build`   | 顺序构建前端 + 后端 release     |
-| `cargo make check`   | 并行 cargo check + tsc --noEmit |
-| `cargo make preview` | build 并运行 release 二进制     |
-| `cargo make fmt`     | cargo fmt                       |
-| `cargo make clippy`  | clippy（deny warnings）         |
-| `cargo make test`    | cargo test                      |
+| 命令                 | 说明                                      |
+| -------------------- | ----------------------------------------- |
+| `cargo make dev`     | 并行启动前端 Vite HMR + 后端              |
+| `cargo make build`   | 顺序构建前端 + 后端 release               |
+| `cargo make check`   | 并行 cargo check + pnpm exec tsc --noEmit |
+| `cargo make preview` | build 并运行 release 二进制               |
+| `cargo make fmt`     | cargo fmt                                 |
+| `cargo make clippy`  | clippy（deny warnings）                   |
+| `cargo make test`    | cargo test                                |
 
 **Pre-commit**: `simple-git-hooks` + `lint-staged`，pre-commit 自动运行 eslint + prettier + cargo fmt。安装依赖后首次执行
-`npm run prepare` 激活 hook。
+`pnpm run prepare` 激活 hook。
 
 ## 环境变量
 

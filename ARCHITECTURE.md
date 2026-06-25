@@ -21,7 +21,9 @@ provider_id）。
 ├── .prettierrc             # Prettier 前端格式化配置
 ├── .prettierignore         # Prettier 忽略规则
 ├── cliff.toml              # git-cliff 变更日志生成配置
-├── package.json            # 前端依赖声明
+├── package.json            # 前端依赖声明和脚本
+├── pnpm-lock.yaml          # 前端依赖锁文件（纳入版本控制）
+├── pnpm-workspace.yaml     # pnpm workspace 与依赖构建策略配置
 ├── migration/              # 数据库迁移 (独立 workspace crate)
 ├── target/                 # Rust 构建产物
 ├── node_modules/           # 前端依赖 (root 级, 供 cargo-make 使用)
@@ -31,7 +33,7 @@ provider_id）。
 ├── Cargo.lock              # Rust 依赖锁文件
 ├── rust-toolchain.toml     # Rust 工具链固定 (1.96, clippy + rustfmt)
 ├── Makefile.toml           # cargo-make 任务编排
-├── Dockerfile              # 多阶段 Docker 构建 (Node 22 → Rust 1.89 → Alpine 3.21)
+├── Dockerfile              # 多阶段 Docker 构建 (Node 26 → Rust 1.96 → Alpine 3.24)
 ├── .dockerignore           # Docker 构建上下文优化
 └── product.md              # 产品需求文档
 ```
@@ -819,7 +821,7 @@ cargo make dev          # 并行启动 Vite HMR + cargo run
 ### 生产构建
 
 ```bash
-cargo make build        # 顺序: npm build → cargo build --release
+cargo make build        # 顺序: pnpm build → cargo build --release
 cargo make preview      # 构建并运行 release 版本
 ```
 
@@ -827,10 +829,10 @@ cargo make preview      # 构建并运行 release 版本
 
 Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules/` 等构建上下文中的无关文件，加速远程构建:
 
-1. **frontend-builder**: Node 22 Alpine — npm ci + npm run build
+1. **frontend-builder**: Node 26 Alpine — pnpm install --frozen-lockfile + pnpm run build
 2. **backend-builder**: Rust 1.96 Alpine — cargo build --release (reqwest 使用 rustls TLS, 无需 OpenSSL 系统库;
    嵌入前端产物)
-3. **runtime**: Alpine 3.22 — 仅包含二进制和运行时依赖 (ca-certificates + tzdata + libgcc)
+3. **runtime**: Alpine 3.24 — 仅包含二进制和运行时依赖 (ca-certificates + tzdata + libgcc)
 
 镜像通过 CI 发布到 `ghcr.io/your-org/token-proxy:latest`，直接 `docker run` 即可启动。
 
@@ -843,32 +845,32 @@ Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules
 | Job                | 步骤                                           | 说明                      |
 | ------------------ | ---------------------------------------------- | ------------------------- |
 | **check-backend**  | cargo fmt --check + cargo clippy + cargo build | 后端格式、lint 和编译检查 |
-| **check-frontend** | npm lint + tsc --noEmit + npm run build        | 前端 lint、类型检查和构建 |
+| **check-frontend** | pnpm lint + pnpm exec tsc --noEmit             | 前端 lint 和类型检查      |
 | **test**           | cargo test (PostgreSQL 17 服务容器)            | 数据库集成测试            |
 
-缓存策略: 后端使用 `Swatinem/rust-cache@v2` 加速依赖恢复。
+缓存策略: 后端使用 `Swatinem/rust-cache@v2` 加速依赖恢复，前端使用 `actions/setup-node` 的 pnpm store 缓存。
 
 ### Dependabot
 
-`.github/dependabot.yml` 配置每周检查 cargo 和 npm 依赖更新，自动提交 PR:
+`.github/dependabot.yml` 配置每周检查 cargo、pnpm 前端依赖和 Docker 基础镜像更新，自动提交 PR:
 
 | 生态  | 检查目录 | 频率 |
 | ----- | -------- | ---- |
 | cargo | `/`      | 每周 |
-| npm   | `/`      | 每周 |
+| pnpm  | `/`      | 每周 |
 
 ### Makefile 任务
 
-| 命令                 | 说明                                   |
-| -------------------- | -------------------------------------- |
-| `cargo make dev`     | 并行启动前端 Vite HMR + 后端 cargo run |
-| `cargo make build`   | 顺序构建前端 + 后端 release            |
-| `cargo make check`   | 并行 cargo check + tsc --noEmit        |
-| `cargo make preview` | build 并运行 release 二进制            |
-| `cargo make fmt`     | cargo fmt                              |
-| `cargo make clippy`  | cargo clippy (deny warnings)           |
-| `cargo make test`    | cargo test                             |
-| `cargo make clean`   | cargo clean                            |
+| 命令                 | 说明                                      |
+| -------------------- | ----------------------------------------- |
+| `cargo make dev`     | 并行启动前端 Vite HMR + 后端 cargo run    |
+| `cargo make build`   | 顺序构建前端 + 后端 release               |
+| `cargo make check`   | 并行 cargo check + pnpm exec tsc --noEmit |
+| `cargo make preview` | build 并运行 release 二进制               |
+| `cargo make fmt`     | cargo fmt                                 |
+| `cargo make clippy`  | cargo clippy (deny warnings)              |
+| `cargo make test`    | cargo test                                |
+| `cargo make clean`   | cargo clean                               |
 
 ## 工具链
 
@@ -887,7 +889,7 @@ Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules
 | ---------- | ------------ | ------------------------------------------------------------------ |
 | pre-commit | `git commit` | ts/tsx → eslint + prettier; json/css/md → prettier; rs → cargo fmt |
 
-配置声明于 `package.json` 的 `simple-git-hooks` 字段，`lint-staged` 定义文件过滤器。
+配置声明于 `package.json` 的 `simple-git-hooks` 字段，`lint-staged` 定义文件过滤器；前端依赖由 pnpm 管理，`pnpm-lock.yaml` 纳入版本控制以保证本地、CI 与 Docker 构建一致。
 
 ### 变更日志
 
@@ -939,7 +941,7 @@ Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules
 | Docker 构建 | 多阶段构建就绪 (含 .dockerignore + HEALTHCHECK)                               |
 | 镜像分发    | GitHub Container Registry (`ghcr.io/your-org/token-proxy`)                    |
 | CI          | GitHub Actions 3 并行 job (后端检查 + 前端检查 + 集成测试)                    |
-| 依赖更新    | Dependabot 每周自动检查 cargo 和 npm                                          |
+| 依赖更新    | Dependabot 每周自动检查 cargo、pnpm 前端依赖和 Docker 基础镜像                |
 | 代码格式化  | Prettier (前端) + rustfmt (后端), pre-commit hook 自动执行                    |
 | 变更日志    | git-cliff 基于约定式提交生成 CHANGELOG                                        |
 | 工具链固定  | rust-toolchain.toml 锁定 Rust 1.96                                            |

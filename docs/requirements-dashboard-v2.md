@@ -276,7 +276,7 @@ cache_read + thinking = 原 total_tokens。用户修改不存在统计偏差。
 
 ```bash
 cd /home/viktor/dev/projects/github/token-proxy/token-proxy
-npm install @visactor/react-vchart @visactor/vchart
+pnpm add @visactor/react-vchart @visactor/vchart
 ```
 
 ### 3.2 全局统计周期
