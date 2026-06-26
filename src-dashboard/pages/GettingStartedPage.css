@@ -23,18 +23,40 @@
   flex-wrap: wrap;
 }
 
-/* ─── 首屏：用量总览（热力图） + 核心指标 50/50 ─── */
+/* ─── 首屏：用量总览（热力图） + 核心指标 ─── */
 
 .gs-hero-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   align-items: stretch;
 }
 
-@media (max-width: 767px) {
-  .gs-hero-grid {
-    grid-template-columns: 1fr;
+/*
+ * 左卡（用量总览）flex-basis 800px：
+ *   热力图 grid 766px + Semi Card 默认 body padding ≈ 32px
+ * flex-shrink: 0 防止被右卡挤压——空间不足时直接换行
+ */
+.gs-hero-left-card {
+  flex: 1 0 800px;
+}
+
+/*
+ * 右卡（数据指标）flex-basis 600px
+ */
+.gs-hero-right-card {
+  flex: 1 0 600px;
+}
+
+/* 极窄屏（<800px）：左卡无法容纳热力图 → 允许收缩 + 内部水平滚动 */
+@media (max-width: 800px) {
+  .gs-hero-left-card {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .gs-hero-left-card .semi-card-body {
+    overflow-x: auto;
   }
 }
 
