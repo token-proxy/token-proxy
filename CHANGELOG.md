@@ -5,6 +5,19 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.6.0] - 2026-06-26
+
+### Changed
+
+- 重构日志存储架构，合并 metadata + token_usage → log_requests 并新增 model_normalized
+- 重构时间范围选择器，支持时区感知分桶
+
+### Miscellaneous
+
+- Bump version to 1.6.0
+- 优化热力图与首屏卡片的响应式布局
+- Add CHANGELOG for 1.5.0
+
 ## [1.5.0] - 2026-06-25
 
 ### Added
