@@ -195,7 +195,7 @@ impl SettingsService {
 
     /// 删除指定月份的日志分区数据
     ///
-    /// 删除 `log_metadata` 和 `log_contents` 中对应月份的分区。
+    /// 仅删除 `log_contents` 中对应月份的分区（log_requests 为普通表，不可按月删除）。
     /// 当前月份不可删除（保护种子分区），保留窗口内的月份也不可删除。
     pub async fn delete_month_logs(
         &self,
@@ -227,16 +227,12 @@ impl SettingsService {
             ));
         }
 
-        // 3. 删除两个父表的分区
-        let metadata_partition = self
-            .partition_manager
-            .drop_partition("log_metadata", year_month)
-            .await?;
+        // 3. 删除 log_contents 分区（log_requests 不分片，无需清理）
         let contents_partition = self
             .partition_manager
             .drop_partition("log_contents", year_month)
             .await?;
-        let deleted = vec![metadata_partition, contents_partition];
+        let deleted = vec![contents_partition];
 
         // 4. 审计日志
         self.log_audit(

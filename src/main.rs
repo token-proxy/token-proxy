@@ -31,7 +31,6 @@ use token_proxy::domain::access_point::repository::AccessPointRepository;
 use token_proxy::domain::access_point::SessionAffinityRepository;
 use token_proxy::domain::log::AuditLogRepository;
 use token_proxy::domain::log::LogRepository;
-use token_proxy::domain::log::LogTokenUsageRepository;
 use token_proxy::domain::provider::repository::AccountRepository;
 use token_proxy::domain::provider::repository::ProviderRepository;
 use token_proxy::domain::shared::EncryptionService;
@@ -46,7 +45,6 @@ use token_proxy::infrastructure::persistence::repositories::SeaOrmAccessPointRep
 use token_proxy::infrastructure::persistence::repositories::SeaOrmAccountRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmAuditLogRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmLogRepository;
-use token_proxy::infrastructure::persistence::repositories::SeaOrmLogTokenUsageRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmProviderRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmRefreshTokenRepository;
 use token_proxy::infrastructure::persistence::repositories::SeaOrmSessionAffinityRepository;
@@ -250,9 +248,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let log_repo: Arc<dyn LogRepository> = Arc::new(SeaOrmLogRepository::new(db.clone()));
 
-    let log_token_usage_repo: Arc<dyn LogTokenUsageRepository> =
-        Arc::new(SeaOrmLogTokenUsageRepository::new(db.clone()));
-
     let audit_log_repo: Arc<dyn AuditLogRepository> =
         Arc::new(SeaOrmAuditLogRepository::new(db.clone()));
 
@@ -301,7 +296,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let log_service = Arc::new(LogService::new(
         log_repo.clone(),
-        log_token_usage_repo.clone(),
         user_repo.clone(),
         access_point_repo.clone(),
         audit_log_repo.clone(),

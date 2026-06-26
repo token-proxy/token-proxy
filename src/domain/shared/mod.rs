@@ -3,6 +3,7 @@ pub mod api_type;
 pub mod client_type;
 pub mod encryption;
 pub mod inbound_request;
+pub mod model_name;
 pub(crate) mod protocols;
 pub mod status;
 pub mod upstream_request;

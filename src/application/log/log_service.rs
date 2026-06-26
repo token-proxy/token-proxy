@@ -1,6 +1,6 @@
 //! 日志应用服务 — application/log/
 //!
-//! 编排代理日志的三阶段写入（元数据 → 内容 → 词元用量），
+//! 编排代理日志的二阶段写入（请求记录 → 原始内容），
 //! 以及日志查询、会话摘要、日志详情、审计日志查询等功能。
 
 use std::sync::Arc;
@@ -19,9 +19,9 @@ use crate::domain::log::audit_entity_type::AuditEntityType;
 use crate::domain::log::repository_audit_log::{
     AuditLogQuery, AuditLogRepository as AuditLogRepoTrait,
 };
-use crate::domain::log::LogTokenUsageRepository;
-use crate::domain::log::{LogContent, LogMetadata, LogTokenUsage};
-use crate::domain::log::{LogQuery, LogRepository, SessionQuery};
+use crate::domain::log::LogRequest;
+use crate::domain::log::{LogContent, LogQuery, LogRepository, SessionQuery};
+use crate::domain::shared::model_name::normalize_model_name;
 use crate::domain::user::UserRepository;
 use crate::infrastructure::parsers::{claude_code_context, parsed_token_usage};
 use crate::shared::error::AppError;
@@ -29,11 +29,10 @@ use crate::shared::types::PaginatedResult;
 
 /// 日志应用服务
 ///
-/// 编排日志的写入（三阶段）和查询操作。
-/// 写入流程：元数据 → 内容 → 词元用量，前序失败不阻塞后续。
+/// 编排日志的二阶段写入和查询操作。
+/// 写入流程：LogRequest（所有标量 + 词元合一） → LogContent（原始请求/响应体）。
 pub struct LogService {
     log_repo: Arc<dyn LogRepository>,
-    token_usage_repo: Arc<dyn LogTokenUsageRepository>,
     user_repo: Arc<dyn UserRepository>,
     access_point_repo: Arc<dyn AccessPointRepository>,
     audit_log_repo: Arc<dyn AuditLogRepoTrait>,
@@ -44,7 +43,6 @@ pub struct LogService {
 impl LogService {
     pub fn new(
         log_repo: Arc<dyn LogRepository>,
-        token_usage_repo: Arc<dyn LogTokenUsageRepository>,
         user_repo: Arc<dyn UserRepository>,
         access_point_repo: Arc<dyn AccessPointRepository>,
         audit_log_repo: Arc<dyn AuditLogRepoTrait>,
@@ -52,7 +50,6 @@ impl LogService {
     ) -> Self {
         LogService {
             log_repo,
-            token_usage_repo,
             user_repo,
             access_point_repo,
             audit_log_repo,
@@ -60,28 +57,23 @@ impl LogService {
         }
     }
 
-    fn to_token_usage_response(usage: &LogTokenUsage) -> TokenUsageResponse {
+    /// 从 LogRequest 提取词元用量为 TokenUsageResponse
+    fn to_token_usage_response(entry: &LogRequest) -> TokenUsageResponse {
         TokenUsageResponse {
-            id: usage.id,
-            log_id: usage.log_id,
-            session_id: usage.session_id.clone(),
-            timestamp: usage.timestamp.to_utc(),
-            input_tokens: usage.input_tokens,
-            output_tokens: usage.output_tokens,
-            cache_creation_input_tokens: usage.cache_creation_input_tokens,
-            cache_read_input_tokens: usage.cache_read_input_tokens,
-            thinking_tokens: usage.thinking_tokens,
-            total_tokens: usage.total_tokens,
-            raw_usage: usage.raw_usage.clone(),
-            server_tool_usage: usage.server_tool_usage.clone(),
-            cache_creation: usage.cache_creation.clone(),
+            id: entry.id,
+            log_id: entry.id,
+            session_id: entry.session_id.clone(),
+            timestamp: entry.timestamp_utc(),
+            input_tokens: entry.input_tokens,
+            output_tokens: entry.output_tokens,
+            cache_creation_input_tokens: entry.cache_creation_input_tokens,
+            cache_read_input_tokens: entry.cache_read_input_tokens,
+            thinking_tokens: entry.thinking_tokens,
+            total_tokens: entry.total_tokens,
+            raw_usage: entry.raw_usage.clone(),
+            server_tool_usage: entry.server_tool_usage.clone(),
+            cache_creation: entry.cache_creation.clone(),
         }
-    }
-
-    /// 创建日志条目（仅元数据），返回日志 ID
-    pub async fn create_log_entry(&self, entry: &LogMetadata) -> Result<Uuid, AppError> {
-        let saved = self.log_repo.save(entry).await?;
-        Ok(saved.id)
     }
 
     /// 保存日志内容（请求/响应体）
@@ -89,14 +81,16 @@ impl LogService {
         self.log_repo.save_content(content).await
     }
 
-    /// 记录代理日志的核心入口
+    /// 记录代理日志的核心入口（二阶段写入）
     ///
     /// 接收 `ProxyLogInput` DTO，内部负责：
-    /// - 从入参构造 LogMetadata
+    /// - 词元用量提取（前置，从 SSE message_delta）
+    /// - 模型名称规范化（model_normalized 列）
     /// - HTTP 头解析（claude_code、user_agent）
     /// - 请求头脱敏 + JSON 序列化
-    /// - 词元用量提取（从 SSE message_delta）
-    /// - 原始内容存储（request_body、response_body）
+    /// - 标量字段一体写入 LogRequest
+    /// - 大体积内容异步写入 LogContent
+    #[tracing::instrument(skip_all, fields(user_id = %data.user_id, access_point_id = %data.access_point_id, status_code = %data.status_code))]
     pub async fn record_proxy_log(&self, data: ProxyLogInput) -> Result<Uuid, AppError> {
         // 解析 HTTP 头（会话 ID、Agent ID、conversation_source 等）
         let header_context = claude_code_context::parse_headers(&data.request_headers);
@@ -109,13 +103,19 @@ impl LogService {
         });
 
         // session_id 为 None 时存为 "unknown" 字符串
-        // （log_metadata.session_id 是 NOT NULL 列，且历史数据约定 "unknown" 代表无会话标识）
         let session_id_for_db = data
             .session_id
             .clone()
             .unwrap_or_else(|| "unknown".to_string());
 
-        let entry = LogMetadata {
+        // ── 词元用量解析（前置，失败不阻塞）──
+        let usage_data = parsed_token_usage::parse_usage_from_response(&data.response_body);
+
+        // ── 模型名称规范化 ──
+        let model_normalized = normalize_model_name(&data.model_mapped);
+
+        // ── 阶段 1：构造并保存 LogRequest（所有标量 + 词元合一）──
+        let entry = LogRequest {
             id: Uuid::new_v4(),
             timestamp: data.timestamp,
             session_id: session_id_for_db,
@@ -125,6 +125,7 @@ impl LogService {
             account_id: Some(data.account_id),
             model_original: Some(data.model_original.clone()),
             model_mapped: Some(data.model_mapped.clone()),
+            model_normalized,
             api_type: data.api_type.clone(),
             client_type: data.client_type.clone(),
             status_code: Some(data.status_code as i16),
@@ -134,21 +135,40 @@ impl LogService {
             client_user_agent: header_context.client_user_agent,
             conversation_source: header_context.conversation_source,
             agent_id: header_context.agent_id,
+            agent_type: None,
             has_error: false,
-            raw_content_available: true,
             client_version,
+            input_tokens: usage_data.as_ref().map_or(0, |u| u.input_tokens),
+            output_tokens: usage_data.as_ref().map_or(0, |u| u.output_tokens),
+            cache_creation_input_tokens: usage_data
+                .as_ref()
+                .map_or(0, |u| u.cache_creation_input_tokens),
+            cache_read_input_tokens: usage_data.as_ref().map_or(0, |u| u.cache_read_input_tokens),
+            thinking_tokens: usage_data.as_ref().map_or(0, |u| u.thinking_tokens),
+            total_tokens: usage_data.as_ref().map_or(0, |u| u.total_tokens),
+            raw_usage: usage_data
+                .as_ref()
+                .map(|u| u.raw_usage.clone().into())
+                .unwrap_or_default(),
+            server_tool_usage: None,
+            cache_creation: None,
+            created_at: chrono::Utc::now().fixed_offset(),
         };
 
-        // ── 阶段 1：保存元数据（主表，失败则后续无意义）──
+        if usage_data.is_none() {
+            tracing::warn!(
+                status_code = %data.status_code,
+                body_len = data.response_body.len(),
+                "未从响应体中解析到词元用量"
+            );
+        }
+
         let saved = self.log_repo.save(&entry).await?;
 
-        // 请求头脱敏 + 序列化为 JSON
+        // ── 阶段 2：保存原始内容（请求/响应体，磁盘重数据）──
         let request_headers_json = headers_to_json(&data.request_headers);
-
-        // 响应头序列化为 JSON
         let response_headers_json = response_headers_to_json(&data.resp_headers);
 
-        // ── 阶段 2：保存原始内容 ──
         let req_body_type = if data.request_body.is_object() {
             "object"
         } else if data.request_body.is_null() {
@@ -182,48 +202,6 @@ impl LogService {
             );
         }
 
-        // ── 阶段 3：提取词元用量（独立步骤，失败不影响日志完整性）──
-        match parsed_token_usage::parse_usage_from_response(&data.response_body) {
-            Some(usage_data) => {
-                let token_entry = LogTokenUsage {
-                    id: Uuid::new_v4(),
-                    log_id: saved.id,
-                    session_id: saved.session_id.clone(),
-                    timestamp: saved.timestamp,
-                    user_id: saved.user_id,
-                    access_point_id: saved.access_point_id,
-                    provider_id: saved.provider_id,
-                    account_id: saved.account_id,
-                    model_original: saved.model_original.clone(),
-                    model_mapped: saved.model_mapped.clone(),
-                    client_type: saved.client_type.clone(),
-                    conversation_source: Some(saved.conversation_source.clone()),
-                    agent_id: saved.agent_id.clone(),
-                    agent_type: None,
-                    input_tokens: usage_data.input_tokens,
-                    output_tokens: usage_data.output_tokens,
-                    cache_creation_input_tokens: usage_data.cache_creation_input_tokens,
-                    cache_read_input_tokens: usage_data.cache_read_input_tokens,
-                    thinking_tokens: usage_data.thinking_tokens,
-                    total_tokens: usage_data.total_tokens,
-                    raw_usage: Some(usage_data.raw_usage),
-                    server_tool_usage: None,
-                    cache_creation: None,
-                    created_at: chrono::Utc::now().fixed_offset(),
-                };
-                if let Err(e) = self.token_usage_repo.save(&token_entry).await {
-                    tracing::error!(error = %e, "词元用量写入失败");
-                }
-            }
-            None => {
-                tracing::warn!(
-                    status_code = ?entry.status_code,
-                    body_len = data.response_body.len(),
-                    "未从响应体中解析到词元用量"
-                );
-            }
-        }
-
         // ─── 广播新日志事件（SSE 实时推送）───
         let event = NewLogEvent {
             log_id: saved.id,
@@ -238,20 +216,7 @@ impl LogService {
         Ok(saved.id)
     }
 
-    /// 保存词元用量记录
-    pub async fn save_token_usage(&self, usage: &LogTokenUsage) -> Result<(), AppError> {
-        self.token_usage_repo.save(usage).await
-    }
-
-    /// 查询某个会话的所有词元用量记录
-    pub async fn get_session_token_usage(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<LogTokenUsage>, AppError> {
-        self.token_usage_repo.find_by_session_id(session_id).await
-    }
-
-    /// 分页查询日志摘要（含词元用量摘要）
+    /// 分页查询日志摘要（LogRequest 自含词元字段，无需联表）
     pub async fn query_logs(
         &self,
         filters: LogFilterParams,
@@ -273,35 +238,35 @@ impl LogService {
 
         let result = self
             .log_repo
-            .find_all_paginated_with_token_summary(page, page_size, &log_query)
+            .find_all_paginated(page, page_size, &log_query)
             .await?;
 
         let items: Vec<LogSummaryResponse> = result
             .items
             .iter()
-            .map(|item| LogSummaryResponse {
-                id: item.entry.id,
-                timestamp: item.entry.timestamp.to_utc(),
-                session_id: item.entry.session_id.clone(),
-                user_id: item.entry.user_id,
-                access_point_id: item.entry.access_point_id,
-                provider_id: item.entry.provider_id,
-                account_id: item.entry.account_id,
-                model_original: item.entry.model_original.clone(),
-                model_mapped: item.entry.model_mapped.clone(),
-                status_code: item.entry.status_code,
-                duration_ms: item.entry.duration_ms,
-                is_interrupted: item.entry.is_interrupted,
-                conversation_source: item.entry.conversation_source.clone(),
-                agent_id: item.entry.agent_id.clone(),
-                client_version: item.entry.client_version.clone(),
-                api_type: item.entry.api_type.clone(),
-                token_input_tokens: item.input_tokens,
-                token_output_tokens: item.output_tokens,
-                token_cache_creation_input_tokens: item.cache_creation_input_tokens,
-                token_cache_read_input_tokens: item.cache_read_input_tokens,
-                token_thinking_tokens: item.thinking_tokens,
-                token_total_tokens: item.total_tokens,
+            .map(|lr| LogSummaryResponse {
+                id: lr.id,
+                timestamp: lr.timestamp_utc(),
+                session_id: lr.session_id.clone(),
+                user_id: lr.user_id,
+                access_point_id: lr.access_point_id,
+                provider_id: lr.provider_id,
+                account_id: lr.account_id,
+                model_original: lr.model_original.clone(),
+                model_mapped: lr.model_mapped.clone(),
+                status_code: lr.status_code,
+                duration_ms: lr.duration_ms,
+                is_interrupted: lr.is_interrupted,
+                conversation_source: lr.conversation_source.clone(),
+                agent_id: lr.agent_id.clone(),
+                client_version: lr.client_version.clone(),
+                api_type: lr.api_type.clone(),
+                token_input_tokens: Some(lr.input_tokens),
+                token_output_tokens: Some(lr.output_tokens),
+                token_cache_creation_input_tokens: Some(lr.cache_creation_input_tokens),
+                token_cache_read_input_tokens: Some(lr.cache_read_input_tokens),
+                token_thinking_tokens: Some(lr.thinking_tokens),
+                token_total_tokens: Some(lr.total_tokens),
             })
             .collect();
 
@@ -323,7 +288,7 @@ impl LogService {
             Some(entry) => {
                 let detail = LogDetailResponse {
                     id: entry.id,
-                    timestamp: entry.timestamp.with_timezone(&chrono::Utc),
+                    timestamp: entry.timestamp_utc(),
                     session_id: entry.session_id,
                     user_id: entry.user_id,
                     access_point_id: entry.access_point_id,
@@ -345,6 +310,8 @@ impl LogService {
     }
 
     /// 获取日志完整详情
+    ///
+    /// LogRequest 自含词元字段，无需再单独查询 token_usage。
     pub async fn get_log_detail_full(
         &self,
         id: Uuid,
@@ -352,7 +319,7 @@ impl LogService {
         let result = self.log_repo.find_log_detail_full(id).await?;
 
         match result {
-            Some((entry, content, usage)) => {
+            Some((entry, content)) => {
                 let user_name = match entry.user_id {
                     Some(uid) => self
                         .user_repo
@@ -376,7 +343,7 @@ impl LogService {
 
                 let detail = LogDetailFullResponse {
                     id: entry.id,
-                    timestamp: entry.timestamp.with_timezone(&chrono::Utc),
+                    timestamp: entry.timestamp_utc(),
                     session_id: entry.session_id,
                     user_id: entry.user_id,
                     user_name,
@@ -389,7 +356,7 @@ impl LogService {
                     status_code: entry.status_code.unwrap_or(0) as i32,
                     duration_ms: entry.duration_ms.unwrap_or(0),
                     error_message: entry.error_message,
-                    conversation_source: entry.conversation_source,
+                    conversation_source: entry.conversation_source.clone(),
                     agent_id: entry.agent_id,
                     client_version: entry.client_version,
                     api_type: Some(entry.api_type.clone()),
@@ -397,17 +364,13 @@ impl LogService {
                     response_headers: content.response_headers.unwrap_or(serde_json::Value::Null),
                     request_body: content.request_body.unwrap_or(serde_json::Value::Null),
                     response_body: content.response_body.unwrap_or_default(),
-                    token_input_tokens: usage.as_ref().map(|u| u.input_tokens),
-                    token_output_tokens: usage.as_ref().map(|u| u.output_tokens),
-                    token_cache_creation_input_tokens: usage
-                        .as_ref()
-                        .map(|u| u.cache_creation_input_tokens),
-                    token_cache_read_input_tokens: usage
-                        .as_ref()
-                        .map(|u| u.cache_read_input_tokens),
-                    token_thinking_tokens: usage.as_ref().map(|u| u.thinking_tokens),
-                    token_total_tokens: usage.as_ref().map(|u| u.total_tokens),
-                    token_raw_usage: usage.as_ref().and_then(|u| u.raw_usage.clone()),
+                    token_input_tokens: Some(entry.input_tokens),
+                    token_output_tokens: Some(entry.output_tokens),
+                    token_cache_creation_input_tokens: Some(entry.cache_creation_input_tokens),
+                    token_cache_read_input_tokens: Some(entry.cache_read_input_tokens),
+                    token_thinking_tokens: Some(entry.thinking_tokens),
+                    token_total_tokens: Some(entry.total_tokens),
+                    token_raw_usage: entry.raw_usage.clone(),
                 };
                 Ok(Some(detail))
             }
@@ -416,6 +379,8 @@ impl LogService {
     }
 
     /// 获取某个会话的所有原始日志内容（含词元用量）
+    ///
+    /// LogRequest 自含词元字段，无需单独查询 token_usage 表。
     pub async fn get_session_contents(
         &self,
         session_id: &str,
@@ -430,24 +395,18 @@ impl LogService {
                 .await
                 .ok()
                 .flatten();
-            let usage = self
-                .token_usage_repo
-                .find_by_log_id(entry.id)
-                .await
-                .ok()
-                .flatten();
 
             if let Some(c) = content {
                 items.push(SessionContentItemResponse {
                     log_id: entry.id,
-                    timestamp: entry.timestamp.with_timezone(&chrono::Utc),
+                    timestamp: entry.timestamp_utc(),
                     conversation_source: entry.conversation_source.clone(),
                     agent_id: entry.agent_id.clone(),
                     api_type: entry.api_type.clone(),
                     request_headers: c.request_headers.unwrap_or(serde_json::Value::Null),
                     request_body: c.request_body.unwrap_or(serde_json::Value::Null),
                     response_body: c.response_body.unwrap_or_default(),
-                    token_usage: usage.as_ref().map(Self::to_token_usage_response),
+                    token_usage: Some(Self::to_token_usage_response(&entry)),
                 });
             }
         }
@@ -509,8 +468,8 @@ impl LogService {
         log_id: Uuid,
     ) -> Result<Option<TokenUsageResponse>, AppError> {
         Ok(self
-            .token_usage_repo
-            .find_by_log_id(log_id)
+            .log_repo
+            .find_by_id(log_id)
             .await?
             .as_ref()
             .map(Self::to_token_usage_response))
@@ -521,8 +480,8 @@ impl LogService {
         &self,
         session_id: &str,
     ) -> Result<Vec<TokenUsageResponse>, AppError> {
-        let usages = self.token_usage_repo.find_by_session_id(session_id).await?;
-        Ok(usages.iter().map(Self::to_token_usage_response).collect())
+        let entries = self.log_repo.find_by_session_id(session_id).await?;
+        Ok(entries.iter().map(Self::to_token_usage_response).collect())
     }
 
     // ─── 审计日志查询 ──────────────────────────────────────────────────

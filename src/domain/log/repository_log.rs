@@ -1,14 +1,15 @@
 //! 日志仓储接口 — domain/log/
 //!
 //! 定义 `LogRepository` trait 及其关联的查询/摘要 DTO，
-//! 提供日志元数据、内容、词元用量的持久化契约。
+//! 提供代理请求、内容的持久化契约。所有查询基于 `log_requests` 单表，
+//! 内容按需 LEFT JOIN `log_contents`。
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::domain::log::{
-    DashboardWindow, HeatmapCell, KpiAggregate, LogContent, LogMetadata, LogTokenUsage,
-    QualityMetrics, SparklineBucket, TopAccessPointRow, TopModelRow, UsageTrendBucket,
+    DashboardWindow, HeatmapCell, KpiAggregate, LogContent, LogRequest, QualityMetrics,
+    SparklineBucket, TopAccessPointRow, TopModelRow, UsageTrendBucket,
 };
 use crate::shared::error::AppError;
 use crate::shared::types::PaginatedResult;
@@ -27,18 +28,6 @@ pub struct LogQuery {
     pub account_id: Option<Uuid>,
     /// 按是否中断过滤
     pub is_interrupted: Option<bool>,
-}
-
-/// 日志条目带词元用量摘要
-#[derive(Debug, Clone)]
-pub struct LogMetadataWithTokenSummary {
-    pub entry: LogMetadata,
-    pub input_tokens: Option<i32>,
-    pub output_tokens: Option<i32>,
-    pub cache_creation_input_tokens: Option<i32>,
-    pub cache_read_input_tokens: Option<i32>,
-    pub thinking_tokens: Option<i32>,
-    pub total_tokens: Option<i32>,
 }
 
 /// 会话摘要数据（统计请求数、各类型词元总量）
@@ -71,22 +60,22 @@ pub struct SessionQuery {
 /// 日志仓储接口
 #[async_trait]
 pub trait LogRepository: Send + Sync {
-    /// 根据 ID 查找日志条目
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<LogMetadata>, AppError>;
+    /// 根据 ID 查找请求记录
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<LogRequest>, AppError>;
 
-    /// 根据会话 ID 查找日志条目
-    async fn find_by_session_id(&self, session_id: &str) -> Result<Vec<LogMetadata>, AppError>;
+    /// 根据会话 ID 查找请求记录
+    async fn find_by_session_id(&self, session_id: &str) -> Result<Vec<LogRequest>, AppError>;
 
-    /// 分页查询日志条目（支持过滤）
+    /// 分页查询请求记录（支持过滤），LogRequest 自含词元字段，无需联表
     async fn find_all_paginated(
         &self,
         page: u64,
         page_size: u64,
         filter: &LogQuery,
-    ) -> Result<PaginatedResult<LogMetadata>, AppError>;
+    ) -> Result<PaginatedResult<LogRequest>, AppError>;
 
-    /// 保存日志条目
-    async fn save(&self, entry: &LogMetadata) -> Result<LogMetadata, AppError>;
+    /// 保存请求记录
+    async fn save(&self, entry: &LogRequest) -> Result<LogRequest, AppError>;
 
     /// 保存日志内容
     async fn save_content(&self, content: &LogContent) -> Result<(), AppError>;
@@ -94,18 +83,10 @@ pub trait LogRepository: Send + Sync {
     /// 根据日志 ID 查找日志内容
     async fn find_content_by_log_id(&self, log_id: Uuid) -> Result<Option<LogContent>, AppError>;
 
-    /// 删除指定 ID 的日志条目及其内容
+    /// 删除指定 ID 的请求记录及其内容
     async fn delete(&self, id: Uuid) -> Result<(), AppError>;
 
     // ─── 联表查询 ───
-
-    /// 分页查询日志条目（含词元用量摘要），使用 LEFT JOIN log_token_usage 联表查询
-    async fn find_all_paginated_with_token_summary(
-        &self,
-        page: u64,
-        page_size: u64,
-        filter: &LogQuery,
-    ) -> Result<PaginatedResult<LogMetadataWithTokenSummary>, AppError>;
 
     /// 分页查询会话摘要列表，使用聚合查询统计各会话的词元用量
     async fn find_sessions_paginated(
@@ -115,18 +96,15 @@ pub trait LogRepository: Send + Sync {
         filter: &SessionQuery,
     ) -> Result<PaginatedResult<SessionSummaryData>, AppError>;
 
-    /// 查询日志完整详情（联表查询 log_metadata + log_contents + log_token_usage）
+    /// 查询请求完整详情（联表查询 log_requests + log_contents）
     async fn find_log_detail_full(
         &self,
         id: Uuid,
-    ) -> Result<Option<(LogMetadata, LogContent, Option<LogTokenUsage>)>, AppError>;
+    ) -> Result<Option<(LogRequest, LogContent)>, AppError>;
 
     // ─── Dashboard 聚合查询 ───
 
-    /// 聚合 KPI 标量值（单次 SQL，5 个聚合列）
-    ///
-    /// 用于个人 Dashboard 顶部 KPI 卡。所有数据按 `user_id` 过滤，覆盖当前登录用户视角。
-    /// 缓存命中率 = `cache_read_tokens / total_input_side_tokens`，分母为 0 时由调用方判定为 None。
+    /// 聚合 KPI 标量值（单次 SQL，按 user_id 过滤，log_requests 单表）
     async fn aggregate_kpi(
         &self,
         user_id: Uuid,
@@ -149,8 +127,8 @@ pub trait LogRepository: Send + Sync {
 
     /// 用户视角用量趋势（日级分桶，自动补齐空桶）
     ///
-    /// 限定 `user_id` 范围，窗口使用闭右开 `[start, end)` 语义。SQL 应用 `usage_by_log`
-    /// 先按日志聚合词元，避免后续 JOIN 放大请求数与词元数。
+    /// 限定 `user_id` 范围，窗口使用闭右开 `[start, end)` 语义。
+    /// log_requests 单表聚合，无需 usage_by_log CTE。
     ///
     /// `tz` 为 IANA 时区名，用于 `date_trunc AT TIME ZONE {tz}` 分桶。
     async fn usage_trends_for_user(
@@ -171,7 +149,7 @@ pub trait LogRepository: Send + Sync {
         timezone: &str,
     ) -> Result<Vec<HeatmapCell>, AppError>;
 
-    /// 用户视角模型 Top N（按 model_mapped 分组，request_count 降序）
+    /// 用户视角模型 Top N（按 model_normalized 分组，request_count 降序）
     async fn top_models_for_user(
         &self,
         user_id: Uuid,

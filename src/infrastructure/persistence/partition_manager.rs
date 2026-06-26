@@ -28,8 +28,8 @@ pub struct PartitionInfo {
     pub row_count_estimate: i64,
 }
 
-/// 受分区管理的表名列表
-const PARTITIONED_TABLES: &[&str] = &["log_metadata", "log_contents"];
+/// 受分区管理的表名列表 — 仅 log_contents（log_requests 为普通表，无需分区）
+const PARTITIONED_TABLES: &[&str] = &["log_contents"];
 
 /// 分区管理器
 ///
@@ -215,7 +215,7 @@ impl PartitionManager {
                    c.reltuples::bigint AS row_count_estimate \
                    FROM pg_inherits \
                    JOIN pg_class c ON c.oid = inhrelid \
-                   WHERE inhparent IN ('log_metadata'::regclass, 'log_contents'::regclass) \
+                   WHERE inhparent = 'log_contents'::regclass \
                    ORDER BY parent_table, partition_name";
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, []);
         let rows = db
@@ -310,11 +310,7 @@ impl PartitionManager {
             if month == &current_ym {
                 continue;
             }
-            // 删除该月的两个分区
-            match self.drop_partition("log_metadata", month).await {
-                Ok(name) => removed.push(name),
-                Err(e) => tracing::warn!(error = %e, month = %month, "删除 log_metadata 分区失败"),
-            }
+            // 删除该月的 log_contents 分区（log_requests 不分片，无需清理）
             match self.drop_partition("log_contents", month).await {
                 Ok(name) => removed.push(name),
                 Err(e) => tracing::warn!(error = %e, month = %month, "删除 log_contents 分区失败"),

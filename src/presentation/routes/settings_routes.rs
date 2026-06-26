@@ -48,7 +48,7 @@ async fn update_settings(
 /// GET /api/settings/log-stats
 ///
 /// 获取日志分区统计信息，包括分区列表、月度汇总和总磁盘占用。
-/// 仅管理 `log_metadata` 和 `log_contents` 的分区数据，不包含 `log_token_usage`。
+/// 仅管理 `log_contents` 的分区数据（log_requests 为普通表，无需分区管理）。
 async fn get_log_stats(
     State(state): State<AppState>,
     CurrentUser(_user_id): CurrentUser,
@@ -59,7 +59,7 @@ async fn get_log_stats(
 
 /// DELETE /api/settings/logs/{year_month}
 ///
-/// 删除指定月份的日志分区数据（log_metadata + log_contents）。
+/// 删除指定月份的日志分区数据（仅 log_contents）。
 /// 需要 JWT 认证，当前月份不可删除。
 async fn delete_month_logs(
     State(state): State<AppState>,

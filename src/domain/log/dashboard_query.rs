@@ -92,7 +92,7 @@ pub struct UsageTrendBucket {
 /// 用于模型消费面积图的数据源，每个 bucket 包含若干模型的词元用量。
 #[derive(Debug, Clone)]
 pub struct ModelTokenUsage {
-    /// 模型名（来自 log_metadata.model_mapped 或 model_original，回落 '(未知)'）
+    /// 模型名（已归一化，来自 log_requests.model_normalized，不区分大小写和分隔符）
     pub model: String,
     /// 该模型在该桶内的总词元数
     pub total_tokens: i64,
