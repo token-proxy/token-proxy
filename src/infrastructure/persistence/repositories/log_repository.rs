@@ -767,6 +767,7 @@ impl LogRepository for SeaOrmLogRepository {
         user_id: Uuid,
         window: &DashboardWindow,
         bucket_count: u32,
+        tz: &str,
     ) -> Result<Vec<SparklineBucket>, AppError> {
         let db = &*self.db;
 
@@ -777,13 +778,13 @@ impl LogRepository for SeaOrmLogRepository {
             r#"
             WITH series AS (
                 SELECT generate_series(
-                    date_trunc('{unit}', $1::timestamptz),
-                    date_trunc('{unit}', $2::timestamptz - interval '1 second'),
+                    date_trunc('{unit}', $1::timestamptz AT TIME ZONE '{tz}'),
+                    date_trunc('{unit}', $2::timestamptz AT TIME ZONE '{tz}' - interval '1 second'),
                     interval '1 {unit}'
-                ) AS bucket_start
+                ) AT TIME ZONE 'UTC' AS bucket_start
             ), data AS (
                 SELECT
-                    date_trunc('{unit}', lm.timestamp) AS bucket_start,
+                    date_trunc('{unit}', lm.timestamp AT TIME ZONE '{tz}') AT TIME ZONE 'UTC' AS bucket_start,
                     COUNT(*)::BIGINT AS request_count,
                     COALESCE(SUM(ltu.total_tokens), 0)::BIGINT AS total_tokens
                 FROM log_metadata lm
@@ -800,7 +801,8 @@ impl LogRepository for SeaOrmLogRepository {
             FROM series s
             LEFT JOIN data d USING (bucket_start)
             ORDER BY s.bucket_start
-            "#
+            "#,
+            tz = tz
         );
 
         let stmt = Statement::from_sql_and_values(
@@ -832,6 +834,7 @@ impl LogRepository for SeaOrmLogRepository {
     /// 2. `data` 仅按当前用户与闭右开窗口过滤，保证个人视角隔离。
     /// 3. `series` 用日级 `generate_series` 补齐空桶，前端无需再补缺口。
     /// 4. `by_model` 按日 + 模型维度聚合总词元，用于模型消费面积图。
+    /// 5. 分桶使用 `AT TIME ZONE '{tz}'` 按用户浏览器时区截断。
     #[tracing::instrument(
         skip(self),
         fields(user_id = %user_id, window.start = %window.start, window.end = %window.end)
@@ -840,17 +843,19 @@ impl LogRepository for SeaOrmLogRepository {
         &self,
         user_id: Uuid,
         window: &DashboardWindow,
+        tz: &str,
     ) -> Result<Vec<UsageTrendBucket>, AppError> {
         let db = &*self.db;
 
         // ─── 主查询：按日聚合请求数与词元分项 ───
-        let sql = r#"
+        let sql = format!(
+            r#"
             WITH series AS (
                 SELECT generate_series(
-                    date_trunc('day', $2::timestamptz),
-                    date_trunc('day', $3::timestamptz - interval '1 second'),
+                    date_trunc('day', $2::timestamptz AT TIME ZONE '{tz}'),
+                    date_trunc('day', $3::timestamptz AT TIME ZONE '{tz}' - interval '1 second'),
                     interval '1 day'
-                ) AS bucket_start
+                ) AT TIME ZONE 'UTC' AS bucket_start
             ), usage_by_log AS (
                 SELECT
                     log_id,
@@ -864,7 +869,7 @@ impl LogRepository for SeaOrmLogRepository {
                 GROUP BY log_id
             ), data AS (
                 SELECT
-                    date_trunc('day', lm.timestamp) AS bucket_start,
+                    date_trunc('day', lm.timestamp AT TIME ZONE '{tz}') AT TIME ZONE 'UTC' AS bucket_start,
                     COUNT(*)::BIGINT AS request_count,
                     COUNT(DISTINCT lm.session_id)::BIGINT AS session_count,
                     COALESCE(SUM(ubl.total_tokens), 0)::BIGINT AS total_tokens,
@@ -893,7 +898,9 @@ impl LogRepository for SeaOrmLogRepository {
             FROM series s
             LEFT JOIN data d USING (bucket_start)
             ORDER BY s.bucket_start
-        "#;
+            "#,
+            tz = tz
+        );
 
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -922,7 +929,8 @@ impl LogRepository for SeaOrmLogRepository {
             .collect::<Result<Vec<_>, AppError>>()?;
 
         // ─── 模型维度查询：按日 + 模型聚合总词元 ───
-        let model_sql = r#"
+        let model_sql = format!(
+            r#"
             WITH usage_by_log AS (
                 SELECT
                     log_id,
@@ -931,7 +939,7 @@ impl LogRepository for SeaOrmLogRepository {
                 GROUP BY log_id
             )
             SELECT
-                date_trunc('day', lm.timestamp) AS bucket_start,
+                date_trunc('day', lm.timestamp AT TIME ZONE '{tz}') AT TIME ZONE 'UTC' AS bucket_start,
                 COALESCE(lm.model_mapped, lm.model_original, '(未知)') AS model,
                 COALESCE(SUM(ubl.total_tokens), 0)::BIGINT AS total_tokens
             FROM log_metadata lm
@@ -941,7 +949,9 @@ impl LogRepository for SeaOrmLogRepository {
               AND lm.timestamp < $3::timestamptz
             GROUP BY 1, 2
             ORDER BY 1, 3 DESC
-        "#;
+            "#,
+            tz = tz
+        );
 
         let model_stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,

@@ -9,7 +9,7 @@ import type {
   HeatmapResponse,
   KpiResponse,
   QualityResponse,
-  TimeRangeQuery,
+  TimeRangeValue,
   TopAccessPointsResponse,
   TopModelsResponse,
   UsageTrendsResponse,
@@ -186,35 +186,37 @@ export default api;
 // ─── Dashboard 数据洞察 API ───
 
 /**
- * 将 `TimeRangeQuery` 序列化为 URL query string。
+ * 将 `TimeRangeValue` 序列化为 URL query string。
  *
- * - `range` 总是包含
- * - 仅 `custom` 模式包含 `start` / `end`（按需附加）
+ * 始终发送 `start` 和 `end` ISO 8601 字符串，后端自行推导桶粒度和对比窗口。
+ * 可选附加 `tz` IANA 时区名，用于后端执行时区感知的分桶（date_trunc AT TIME ZONE）。
  */
-function buildDashboardQuery(q: TimeRangeQuery): string {
-  const params = new URLSearchParams({ range: q.range });
-  if (q.range === 'custom') {
-    if (q.start) params.set('start', q.start);
-    if (q.end) params.set('end', q.end);
-  }
+function buildDashboardQuery(range: TimeRangeValue, tz?: string): string {
+  const params = new URLSearchParams();
+  params.set('start', range.start.toISOString());
+  params.set('end', range.end.toISOString());
+  if (tz) params.set('tz', tz);
   return params.toString();
 }
 
 /**
  * Dashboard 数据洞察 API 集合。
  *
- * 所有方法接受统一的 `TimeRangeQuery`（热力图除外，固定 365 天），对应后端 5 个聚合端点：
+ * 所有方法接受 `TimeRangeValue`（热力图除外，固定 365 天），对应后端 6 个聚合端点：
  * - `/api/getting-started/kpi` — 4 张 KPI 卡（含内嵌 sparkline）
  * - `/api/getting-started/heatmap` — 近 1 年活跃度热力图
  * - `/api/getting-started/top-models` — 用户视角模型 Top 8
  * - `/api/getting-started/top-access-points` — 用户视角接入点 Top 5
  * - `/api/getting-started/quality` — 用户视角调用质量指标
  * - `/api/getting-started/usage-trends` — 用户视角用量趋势
+ *
+ * 含 sparkline/trensd 分桶的端点（kpi / usage-trends）支持可选的 `tz` 参数，
+ * 使后端按浏览器时区做 `date_trunc AT TIME ZONE`，避免 UTC 分桶与用户本地日历错位。
  */
 export const dashboardApi = {
   /** 获取 4 张 KPI 卡数据 + 内嵌 sparkline 时间序列 */
-  getKpi(q: TimeRangeQuery): Promise<KpiResponse> {
-    return api.get<KpiResponse>(`/api/getting-started/kpi?${buildDashboardQuery(q)}`);
+  getKpi(range: TimeRangeValue, tz?: string): Promise<KpiResponse> {
+    return api.get<KpiResponse>(`/api/getting-started/kpi?${buildDashboardQuery(range, tz)}`);
   },
   /**
    * 获取近 1 年用量热力图（固定 365 天，不受时间范围选择器影响）。
@@ -225,23 +227,25 @@ export const dashboardApi = {
     return api.get<HeatmapResponse>(`/api/getting-started/heatmap?tz=${encodeURIComponent(tz)}`);
   },
   /** 获取用户视角模型 Top 8（按 total_tokens 降序） */
-  getTopModels(q: TimeRangeQuery): Promise<TopModelsResponse> {
-    return api.get<TopModelsResponse>(`/api/getting-started/top-models?${buildDashboardQuery(q)}`);
+  getTopModels(range: TimeRangeValue): Promise<TopModelsResponse> {
+    return api.get<TopModelsResponse>(
+      `/api/getting-started/top-models?${buildDashboardQuery(range)}`,
+    );
   },
   /** 获取用户视角接入点 Top 5（按 total_tokens 降序） */
-  getTopAccessPoints(q: TimeRangeQuery): Promise<TopAccessPointsResponse> {
+  getTopAccessPoints(range: TimeRangeValue): Promise<TopAccessPointsResponse> {
     return api.get<TopAccessPointsResponse>(
-      `/api/getting-started/top-access-points?${buildDashboardQuery(q)}`,
+      `/api/getting-started/top-access-points?${buildDashboardQuery(range)}`,
     );
   },
   /** 获取用户视角调用质量指标（成功率 / 错误率 / 中断率 / 平均与 P95 耗时） */
-  getQuality(q: TimeRangeQuery): Promise<QualityResponse> {
-    return api.get<QualityResponse>(`/api/getting-started/quality?${buildDashboardQuery(q)}`);
+  getQuality(range: TimeRangeValue): Promise<QualityResponse> {
+    return api.get<QualityResponse>(`/api/getting-started/quality?${buildDashboardQuery(range)}`);
   },
-  /** 获取用户视角用量趋势（请求数 + 词元 5 维度时间序列） */
-  getUsageTrends(q: TimeRangeQuery): Promise<UsageTrendsResponse> {
+  /** 获取用户视角用量趋势（请求数 + 词元 5 维度时间序列），可选 `tz` 参数做时区感知分桶 */
+  getUsageTrends(range: TimeRangeValue, tz?: string): Promise<UsageTrendsResponse> {
     return api.get<UsageTrendsResponse>(
-      `/api/getting-started/usage-trends?${buildDashboardQuery(q)}`,
+      `/api/getting-started/usage-trends?${buildDashboardQuery(range, tz)}`,
     );
   },
 };

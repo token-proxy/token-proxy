@@ -2,12 +2,14 @@
  * Dashboard 时间范围切换器组件。
  *
  * 整合预设范围（今日 / 7 天 / 30 天）、自定义日期区间和刷新按钮，
- * 挂载在「数据指标」卡片 `headerExtraContent` 内，使用小尺寸控件避免撑开卡片标题。
+ * 挂载在「数据指标」和「用量趋势」卡片 `headerExtraContent` 内。
  *
  * 设计要点：
- * - 主体使用 Semi ButtonGroup 按钮组样式，4 个预设视觉上等宽紧凑，size=small
- * - "自定义"激活时弹出 Popover 内嵌 DatePicker（dateTimeRange 模式），
- *   避免首屏拥挤；触发按钮上回显已选区间
+ * - 组件对外只输出 `TimeRangeValue { start: Date, end: Date }`，不再区分预设/自定义
+ * - 按钮高亮由 `detectPreset` 从日期边界反向推导，是纯视图层行为
+ * - 预设切换到 today/last7/last30 时自动计算日期范围并立即通知父组件
+ * - "自定义"激活时弹出 Popover 内嵌 DatePicker，仅用户选择日期后才通知父组件，
+ *   关闭 popover 未选择则回退到原高亮状态，无副作用
  * - 右侧刷新按钮（IconRefresh + loading spinner）
  * - 整体 flexWrap: wrap，窄屏自动换行
  */
@@ -16,17 +18,17 @@ import { useState } from 'react';
 import { Button, ButtonGroup, DatePicker, Popover } from '@douyinfe/semi-ui';
 import { IconCalendar, IconRefresh } from '@douyinfe/semi-icons';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
-import type { TimeRangePreset, TimeRangeQuery } from '../../types/dashboard';
-import { toIsoString } from '../../utils/query';
+import type { TimeRangePreset, TimeRangeValue } from '../../types/dashboard';
+import { last30Range, last7Range, todayRange } from '../../types/dashboard';
 
 /**
  * TimeRangeSelector 组件属性。
  */
 export interface TimeRangeSelectorProps {
   /** 当前选择的时间范围 */
-  value: TimeRangeQuery;
+  value: TimeRangeValue;
   /** 时间范围切换回调（用户切换预设或选择自定义区间时触发） */
-  onChange: (next: TimeRangeQuery) => void;
+  onChange: (next: TimeRangeValue) => void;
   /** 刷新按钮点击回调 */
   onRefresh: () => void;
   /** 数据加载中（控制刷新按钮 spinner），默认 false */
@@ -43,42 +45,67 @@ const PRESET_LABELS: Record<TimeRangePreset, string> = {
   custom: '自定义',
 };
 
-/** 根据当前预设推导自定义日期范围，保证切换到自定义时继承用户刚才看到的时间窗。 */
-function buildCustomRangeFromPreset(value: TimeRangeQuery): { start: string; end: string } {
-  if (value.range === 'custom' && value.start && value.end) {
-    return { start: value.start, end: value.end };
+// ─── 预设反推 ────────────────────────────────────────────
+
+/** 容差（毫秒），容忍 now 的自然漂移（约 60 秒） */
+const TOLERANCE_MS = 60_000;
+
+/** 判断两个 Date 是否在容差范围内相等 */
+function isWithinTolerance(a: Date, b: Date): boolean {
+  return Math.abs(a.getTime() - b.getTime()) <= TOLERANCE_MS;
+}
+
+/**
+ * 从日期边界反向推导预设。
+ *
+ * 推导优先级：today > last7 > last30 > custom
+ * - today：start 是今天 00:00、end 接近 now
+ * - last7：start 是 7 天前、end 接近 now
+ * - last30：start 是 30 天前、end 接近 now
+ * - custom：其余
+ */
+function detectPreset(range: TimeRangeValue): TimeRangePreset {
+  const now = new Date();
+
+  // today：start 是今天 00:00
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  if (isWithinTolerance(range.start, todayStart) && isWithinTolerance(range.end, now)) {
+    return 'today';
   }
 
-  const end = new Date();
-  const start = new Date(end);
-
-  switch (value.range) {
-    case 'today':
-      start.setHours(0, 0, 0, 0);
-      break;
-    case 'last30':
-      start.setDate(start.getDate() - 30);
-      break;
-    case 'last7':
-    case 'custom':
-      start.setDate(start.getDate() - 7);
-      break;
+  // last7：start 是 7 天前
+  const last7Start = new Date(now);
+  last7Start.setDate(last7Start.getDate() - 7);
+  if (isWithinTolerance(range.start, last7Start) && isWithinTolerance(range.end, now)) {
+    return 'last7';
   }
 
-  return { start: start.toISOString(), end: end.toISOString() };
+  // last30：start 是 30 天前
+  const last30Start = new Date(now);
+  last30Start.setDate(last30Start.getDate() - 30);
+  if (isWithinTolerance(range.start, last30Start) && isWithinTolerance(range.end, now)) {
+    return 'last30';
+  }
+
+  return 'custom';
 }
 
 /**
  * 时间范围切换器 + 刷新按钮。
  *
+ * 这是一个纯粹的时间范围输出组件：对外只输出 `{ start: Date, end: Date }`。
+ * 预设按钮高亮由 `detectPreset` 从日期边界反向推导，是纯视图层逻辑。
+ *
  * 交互逻辑：
- * - 切换到 today / last7 / last30 时，onChange 传入 `{ range }` 不带 start/end
- * - 切换到 custom 时，只初始化为当前预设对应的同等时间窗并展开 Popover，不立即触发 onChange
- * - 自定义日期选完两端后，转换为 ISO 8601 字符串通过 onChange 上报
+ * - 切换到 today / last7 / last30 时，自动计算对应日期范围并通过 onChange 通知父组件
+ * - 切换到 custom 时，打开 DatePicker 供用户调整，**不**触发 onChange
+ * - 用户选完日期后，通过 onChange 上报 `{ start, end }`
+ * - 关闭 Popover 而未选择日期时，无副作用
  *
  * @example
  * ```tsx
- * const [range, setRange] = useState<TimeRangeQuery>({ range: 'last7' });
+ * const [range, setRange] = useState<TimeRangeValue>(last7Range);
  * <TimeRangeSelector
  *   value={range}
  *   onChange={setRange}
@@ -94,41 +121,38 @@ export function TimeRangeSelector({
   loading = false,
   allowedPresets = ['today', 'last7', 'last30', 'custom'],
 }: TimeRangeSelectorProps) {
-  // 自定义日期 Popover 显隐控制（仅 custom 模式下使用）
   const [customPopoverVisible, setCustomPopoverVisible] = useState(false);
-  const [customDraftDates, setCustomDraftDates] = useState<[Date, Date] | undefined>();
 
-  /** 处理预设切换：custom 继承当前时间窗但不立即提交，其它清空 start/end */
+  // DatePicker 的受控值：直接使用 value.start/end 作为初始范围
+  const customDates: [Date, Date] = [new Date(value.start), new Date(value.end)];
+
+  /** 处理预设切换 */
   const handlePresetChange = (next: TimeRangePreset) => {
-    if (next === 'custom') {
-      const customRange = buildCustomRangeFromPreset(value);
-      setCustomDraftDates([new Date(customRange.start), new Date(customRange.end)]);
-      setCustomPopoverVisible(true);
+    if (next === 'today') {
+      onChange(todayRange());
+      setCustomPopoverVisible(false);
+    } else if (next === 'last7') {
+      onChange(last7Range());
+      setCustomPopoverVisible(false);
+    } else if (next === 'last30') {
+      onChange(last30Range());
+      setCustomPopoverVisible(false);
     } else {
-      setCustomDraftDates(undefined);
-      onChange({ range: next });
+      // custom：打开 DatePicker，不调 onChange
+      setCustomPopoverVisible(true);
+    }
+  };
+
+  /** DatePicker 选择回调：将 [Date, Date] 上报给父组件 */
+  const handleCustomDateChange: DatePickerProps['onChange'] = (dates) => {
+    if (Array.isArray(dates) && dates.length === 2 && dates[0] && dates[1]) {
+      onChange({ start: new Date(dates[0]), end: new Date(dates[1]) });
       setCustomPopoverVisible(false);
     }
   };
 
-  /** DatePicker 选择回调：将 [Date, Date] 转换为 ISO 字符串后上报 */
-  const handleCustomDateChange: DatePickerProps['onChange'] = (dates) => {
-    if (Array.isArray(dates) && dates.length === 2 && dates[0] && dates[1]) {
-      const nextDates: [Date, Date] = [new Date(dates[0]), new Date(dates[1])];
-      setCustomDraftDates(nextDates);
-      onChange({
-        range: 'custom',
-        start: toIsoString(nextDates[0]),
-        end: toIsoString(nextDates[1]),
-      });
-    }
-  };
-
-  // 转换 ISO 字符串为 Date 对象（DatePicker 受控 value 接受 Date）
-  const customDates: [Date, Date] | undefined =
-    value.range === 'custom' && value.start && value.end
-      ? [new Date(value.start), new Date(value.end)]
-      : customDraftDates;
+  // 推导当前高亮按钮
+  const activePreset = customPopoverVisible ? 'custom' : detectPreset(value);
 
   return (
     <div
@@ -143,7 +167,7 @@ export function TimeRangeSelector({
         {allowedPresets.map((preset) => (
           <Button
             key={preset}
-            theme={value.range === preset ? 'solid' : 'light'}
+            theme={activePreset === preset ? 'solid' : 'light'}
             type="primary"
             onClick={() => handlePresetChange(preset)}
           >
@@ -152,11 +176,16 @@ export function TimeRangeSelector({
         ))}
       </ButtonGroup>
 
-      {/* 自定义模式：日期选择器折叠在 Popover 内，避免首屏拥挤 */}
-      {value.range === 'custom' && (
+      {/* 自定义日期选择器：始终存在 DOM，仅通过 visible 控制显隐 */}
+      {allowedPresets.includes('custom') && (
         <Popover
           visible={customPopoverVisible}
-          onVisibleChange={setCustomPopoverVisible}
+          onVisibleChange={(v) => {
+            if (!v) {
+              // 关闭 popover（未选择日期），无副作用，高亮由 detectPreset 推导
+              setCustomPopoverVisible(false);
+            }
+          }}
           trigger="click"
           position="bottomLeft"
           content={
@@ -171,7 +200,7 @@ export function TimeRangeSelector({
           }
         >
           <Button icon={<IconCalendar />} size="small">
-            {customDates
+            {activePreset === 'custom'
               ? `${customDates[0].toLocaleDateString('zh-CN')} - ${customDates[1].toLocaleDateString('zh-CN')}`
               : '选择日期'}
           </Button>

@@ -137,21 +137,27 @@ pub trait LogRepository: Send + Sync {
     ///
     /// 限定 `user_id` 范围。自动用 `generate_series` 补齐空桶，确保返回 `bucket_count` 个桶。
     /// `bucket_count = 24` 时按小时分桶（用于"今日"），否则按天分桶。
+    ///
+    /// `tz` 为 IANA 时区名，用于 `date_trunc AT TIME ZONE {tz}` 分桶。
     async fn aggregate_sparkline(
         &self,
         user_id: Uuid,
         window: &DashboardWindow,
         bucket_count: u32,
+        tz: &str,
     ) -> Result<Vec<SparklineBucket>, AppError>;
 
     /// 用户视角用量趋势（日级分桶，自动补齐空桶）
     ///
     /// 限定 `user_id` 范围，窗口使用闭右开 `[start, end)` 语义。SQL 应用 `usage_by_log`
     /// 先按日志聚合词元，避免后续 JOIN 放大请求数与词元数。
+    ///
+    /// `tz` 为 IANA 时区名，用于 `date_trunc AT TIME ZONE {tz}` 分桶。
     async fn usage_trends_for_user(
         &self,
         user_id: Uuid,
         window: &DashboardWindow,
+        tz: &str,
     ) -> Result<Vec<UsageTrendBucket>, AppError>;
 
     /// 用户日级 365 天词元热力图（独立于 DashboardWindow）

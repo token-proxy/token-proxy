@@ -17,13 +17,9 @@ import { dashboardApi } from '../../api';
 import { TimeRangeSelector } from './TimeRangeSelector';
 import { ComparisonArrow } from './ComparisonArrow';
 import { useFetch } from '../../hooks/useFetch';
-import type {
-  CacheHitRate,
-  KpiTrendItem,
-  RateTrendItem,
-  TimeRangeQuery,
-  TrendBadge,
-} from '../../types/dashboard';
+import { browserTimezone } from './heatmapUtils';
+import type { CacheHitRate, KpiTrendItem, RateTrendItem, TrendBadge } from '../../types/dashboard';
+import { last7Range, type TimeRangeValue } from '../../types/dashboard';
 import { formatNumber } from '../../utils/format';
 
 const { Text } = Typography;
@@ -72,17 +68,20 @@ function fmtRate(rate: number | null | undefined): string {
  * 数据指标卡片：两组业务链路 6 项核心指标。
  */
 export function MetricsCard(): ReactNode {
-  const [timeRange, setTimeRange] = useState<TimeRangeQuery>({ range: 'last7' });
+  const [timeRange, setTimeRange] = useState<TimeRangeValue>(last7Range);
+  const tz = useMemo(() => browserTimezone(), []);
 
   const fetchDeps = useMemo(
-    () => [timeRange.range, timeRange.start, timeRange.end],
-    [timeRange.range, timeRange.start, timeRange.end],
+    () => [timeRange.start.getTime(), timeRange.end.getTime()],
+    [timeRange.start, timeRange.end],
   );
 
-  const kpiQuery = useFetch(() => dashboardApi.getKpi(timeRange), fetchDeps);
+  const kpiQuery = useFetch(() => dashboardApi.getKpi(timeRange, tz), fetchDeps);
   const qualityQuery = useFetch(() => dashboardApi.getQuality(timeRange), fetchDeps);
 
-  const isLoading = kpiQuery.loading || qualityQuery.loading;
+  const isFirstLoad =
+    (kpiQuery.loading || qualityQuery.loading) && !kpiQuery.data && !qualityQuery.data;
+  const isRefreshing = (kpiQuery.loading || qualityQuery.loading) && !isFirstLoad;
 
   const handleRefresh = () => {
     kpiQuery.refetch();
@@ -105,12 +104,12 @@ export function MetricsCard(): ReactNode {
           value={timeRange}
           onChange={setTimeRange}
           onRefresh={handleRefresh}
-          loading={isLoading}
+          loading={isRefreshing}
         />
       }
       bodyStyle={{ padding: '16px 20px 20px' }}
     >
-      {kpiQuery.loading || qualityQuery.loading ? (
+      {isFirstLoad ? (
         <Skeleton active placeholder={<Skeleton.Paragraph rows={6} />} loading={true} />
       ) : (
         <div className="metrics-card-content">

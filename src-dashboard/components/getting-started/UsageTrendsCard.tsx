@@ -20,7 +20,8 @@ import {
 } from 'recharts';
 import { dashboardApi } from '../../api';
 import { useFetch } from '../../hooks/useFetch';
-import type { ModelTokenUsage, TimeRangeQuery, UsageTrendBucket } from '../../types/dashboard';
+import type { ModelTokenUsage, UsageTrendBucket } from '../../types/dashboard';
+import { last30Range, type TimeRangeValue } from '../../types/dashboard';
 import { formatNumber } from '../../utils/format';
 import { TimeRangeSelector } from './TimeRangeSelector';
 import {
@@ -31,6 +32,7 @@ import {
   isUsageTrendsEmpty,
   TOKEN_CONFIGS,
 } from './usageTrends';
+import { browserTimezone } from './heatmapUtils';
 import './UsageTrendsCard.css';
 
 /** Recharts tooltip payload 项。 */
@@ -163,9 +165,13 @@ function UsageTrendTooltip({ active, payload, label, mode }: UsageTrendTooltipPr
 
 /** 用量趋势卡片组件。 */
 export function UsageTrendsCard(): ReactNode {
-  const [timeRange, setTimeRange] = useState<TimeRangeQuery>({ range: 'last30' });
+  const [timeRange, setTimeRange] = useState<TimeRangeValue>(last30Range);
+  const tz = useMemo(() => browserTimezone(), []);
 
-  const fetchTrends = useCallback(() => dashboardApi.getUsageTrends(timeRange), [timeRange]);
+  const fetchTrends = useCallback(
+    () => dashboardApi.getUsageTrends(timeRange, tz),
+    [timeRange, tz],
+  );
 
   const { data, loading, error, refetch } = useFetch(fetchTrends, [fetchTrends]);
 
@@ -198,11 +204,11 @@ export function UsageTrendsCard(): ReactNode {
       {
         key: 'session_count',
         label: '会话数',
-        total: buckets.reduce((sum, bucket) => sum + bucket.session_count, 0),
+        total: data?.window_session_count ?? 0,
         color: '#14b8a6',
       },
     ],
-    [buckets],
+    [buckets, data?.window_session_count],
   );
 
   const tokenLegendItems = useMemo<TrendLegendItem[]>(

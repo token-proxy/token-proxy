@@ -2,8 +2,8 @@
 //!
 //! ## 职责
 //!
-//! - 解析 `TimeRangeQuery` 为当窗 + 上一窗（委托 `time_window::resolve_windows`）
-//! - 校验热力图时区参数（委托 `timezone::validate_timezone`）
+//! - 解析 `TimeRangeParams` 为当窗 + 上一窗（委托 `time_window::resolve_windows`）
+//! - 校验时区参数（委托 `timezone::validate_timezone`）
 //! - 调度 `LogRepository` 的用户视角聚合方法
 //! - 计算 KPI 趋势徽章（`compute_trend` 纯函数）和缓存命中率
 //! - 装配 DTO 返回给展示层
@@ -21,9 +21,9 @@ use uuid::Uuid;
 
 use crate::application::dashboard::dto::{
     CacheHitRate, HeatmapCellDto, HeatmapResponse, KpiResponse, KpiTrendItem, ModelTokenUsageDto,
-    QualityResponse, RateTrendItem, SparklineBucketDto, SparklineSeries, TimeRangePreset,
-    TimeRangeQuery, TokenComposition, TopAccessPointItem, TopAccessPointsResponse, TopModelItem,
-    TopModelsResponse, TrendBadge, UsageTrendBucketDto, UsageTrendsResponse,
+    QualityResponse, RateTrendItem, SparklineBucketDto, SparklineSeries, TimeRangeParams,
+    TokenComposition, TopAccessPointItem, TopAccessPointsResponse, TopModelItem, TopModelsResponse,
+    TrendBadge, UsageTrendBucketDto, UsageTrendsResponse,
 };
 use crate::application::dashboard::time_window::resolve_windows;
 use crate::application::dashboard::timezone::validate_timezone;
@@ -57,16 +57,27 @@ impl DashboardService {
     /// 获取 KPI 卡片 + 词元构成 + 缓存命中率 + 内嵌 sparkline
     ///
     /// 数据按 `user_id` 维度过滤，仅展示当前登录用户的请求与词元数据。
-    #[tracing::instrument(skip_all, fields(user_id = %user_id, range = ?q.range))]
-    pub async fn get_kpi(&self, user_id: Uuid, q: TimeRangeQuery) -> Result<KpiResponse, AppError> {
-        let ranges = resolve_windows(&q)?;
+    /// `params.tz` 用于 sparkline 分桶的时区感知。
+    #[tracing::instrument(skip_all, fields(user_id = %user_id, start = %params.start, end = %params.end))]
+    pub async fn get_kpi(
+        &self,
+        user_id: Uuid,
+        params: TimeRangeParams,
+    ) -> Result<KpiResponse, AppError> {
+        // 校验时区
+        let tz = validate_timezone(&params.tz)?;
+        let ranges = resolve_windows(&params)?;
 
         // 1. 并行聚合：当窗 KPI、上一窗 KPI、当窗 sparkline
         let (current, previous, sparkline) = tokio::try_join!(
             self.log_repository.aggregate_kpi(user_id, &ranges.current),
             self.log_repository.aggregate_kpi(user_id, &ranges.previous),
-            self.log_repository
-                .aggregate_sparkline(user_id, &ranges.current, ranges.bucket_count),
+            self.log_repository.aggregate_sparkline(
+                user_id,
+                &ranges.current,
+                ranges.bucket_count,
+                &tz
+            ),
         )?;
 
         // 2. 装配 KPI 标量项
@@ -119,39 +130,32 @@ impl DashboardService {
 
     /// 获取用量趋势（日级请求数与词元分项）
     ///
-    /// 仅支持 `last30` 和 `custom`，避免短窗口与 KPI sparkline 语义重叠。
+    /// `params.tz` 用于趋势分桶的时区感知。
     /// 自定义范围最大跨度为 366 天，防止趋势查询一次扫描过多分区。
-    #[tracing::instrument(skip_all, fields(user_id = %user_id, range = ?q.range))]
+    #[tracing::instrument(skip_all, fields(user_id = %user_id, start = %params.start, end = %params.end))]
     pub async fn get_usage_trends(
         &self,
         user_id: Uuid,
-        q: TimeRangeQuery,
+        params: TimeRangeParams,
     ) -> Result<UsageTrendsResponse, AppError> {
-        match q.range {
-            TimeRangePreset::Last30 | TimeRangePreset::Custom => {}
-            TimeRangePreset::Today | TimeRangePreset::Last7 => {
-                return Err(AppError::Validation(
-                    "用量趋势仅支持 last30 或 custom 时间范围".to_string(),
-                ));
-            }
-        }
-
-        let window = resolve_windows(&q)?.current;
-        if matches!(q.range, TimeRangePreset::Custom)
-            && window.end - window.start > Duration::days(USAGE_TRENDS_CUSTOM_MAX_DAYS)
-        {
+        let tz = validate_timezone(&params.tz)?;
+        let window = resolve_windows(&params)?.current;
+        if window.end - window.start > Duration::days(USAGE_TRENDS_CUSTOM_MAX_DAYS) {
             return Err(AppError::Validation(format!(
                 "用量趋势自定义时间范围不能超过 {} 天",
                 USAGE_TRENDS_CUSTOM_MAX_DAYS
             )));
         }
 
-        let buckets = self
-            .log_repository
-            .usage_trends_for_user(user_id, &window)
-            .await?;
+        // 1. 并行获取：按日趋势桶 + 整窗不重复会话数（复用 aggregate_kpi 的 COUNT(DISTINCT session_id)）
+        let (buckets, kpi) = tokio::try_join!(
+            self.log_repository
+                .usage_trends_for_user(user_id, &window, &tz),
+            self.log_repository.aggregate_kpi(user_id, &window),
+        )?;
 
         Ok(UsageTrendsResponse {
+            window_session_count: kpi.session_count,
             buckets: buckets
                 .into_iter()
                 .map(|b| UsageTrendBucketDto {
@@ -201,13 +205,13 @@ impl DashboardService {
     }
 
     /// 获取模型词元消耗排行 Top 8（用户视角）
-    #[tracing::instrument(skip_all, fields(user_id = %user_id, range = ?q.range))]
+    #[tracing::instrument(skip_all, fields(user_id = %user_id))]
     pub async fn get_top_models(
         &self,
         user_id: Uuid,
-        q: TimeRangeQuery,
+        params: TimeRangeParams,
     ) -> Result<TopModelsResponse, AppError> {
-        let window = resolve_windows(&q)?.current;
+        let window = resolve_windows(&params)?.current;
         let rows = self
             .log_repository
             .top_models_for_user(user_id, &window, RANKING_LIMIT_MODELS)
@@ -225,13 +229,13 @@ impl DashboardService {
     }
 
     /// 获取接入点词元消耗排行 Top 5（用户视角，LEFT JOIN 容忍接入点删除）
-    #[tracing::instrument(skip_all, fields(user_id = %user_id, range = ?q.range))]
+    #[tracing::instrument(skip_all, fields(user_id = %user_id))]
     pub async fn get_top_access_points(
         &self,
         user_id: Uuid,
-        q: TimeRangeQuery,
+        params: TimeRangeParams,
     ) -> Result<TopAccessPointsResponse, AppError> {
-        let window = resolve_windows(&q)?.current;
+        let window = resolve_windows(&params)?.current;
         let rows = self
             .log_repository
             .top_access_points_for_user(user_id, &window, RANKING_LIMIT_ACCESS_POINTS)
@@ -253,13 +257,13 @@ impl DashboardService {
     /// 获取调用质量指标（成功率 / 错误率 / 中断率 / 平均与 p95 时延）
     ///
     /// `total_count == 0` 时所有 `*_rate` 字段返回 None（前端显示 `—`）。
-    #[tracing::instrument(skip_all, fields(user_id = %user_id, range = ?q.range))]
+    #[tracing::instrument(skip_all, fields(user_id = %user_id))]
     pub async fn get_quality(
         &self,
         user_id: Uuid,
-        q: TimeRangeQuery,
+        params: TimeRangeParams,
     ) -> Result<QualityResponse, AppError> {
-        let ranges = resolve_windows(&q)?;
+        let ranges = resolve_windows(&params)?;
         let (current, previous) = tokio::try_join!(
             self.log_repository
                 .quality_metrics_for_user(user_id, &ranges.current),

@@ -45,4 +45,8 @@ pub struct UsageTrendBucketDto {
 pub struct UsageTrendsResponse {
     /// 按日补齐后的趋势桶列表
     pub buckets: Vec<UsageTrendBucketDto>,
+    /// 整个窗口内的不重复会话数（整窗 COUNT(DISTINCT session_id)），
+    /// 与 KPI 卡片的会话数语义一致。前端图例使用此值替代对各桶 session_count 求和，
+    /// 避免跨天 session 被重复计数。
+    pub window_session_count: i64,
 }

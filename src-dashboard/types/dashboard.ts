@@ -7,28 +7,43 @@
 
 // --- 时间范围 ---
 
-/**
- * 时间范围预设。
- *
- * - `today` — 今日（小时桶 + 对比昨日）
- * - `last7` — 近 7 天（日桶 + 对比上 7 天）
- * - `last30` — 近 30 天（日桶 + 对比上 30 天）
- * - `custom` — 自定义起止时间（必须提供 start / end）
- */
+/** 时间范围预设（仅 TimeRangeSelector 内部使用，不对外暴露） */
 export type TimeRangePreset = 'today' | 'last7' | 'last30' | 'custom';
 
 /**
- * Dashboard 时间范围查询参数。
+ * Dashboard 时间范围值。
  *
- * 作为所有 Dashboard 数据源的统一过滤器。
+ * 组件对外只输出具体起止时刻，不再区分"预设"和"自定义"。
+ * 预设的按钮高亮由 TimeRangeSelector 内部根据日期边界反向推导。
  */
-export interface TimeRangeQuery {
-  /** 时间范围预设 */
-  range: TimeRangePreset;
-  /** 自定义起始时间（ISO 8601），仅 custom 模式必填 */
-  start?: string;
-  /** 自定义结束时间（ISO 8601），仅 custom 模式必填 */
-  end?: string;
+export interface TimeRangeValue {
+  /** 起始时刻（Date 对象，含时间） */
+  start: Date;
+  /** 结束时刻（Date 对象，含时间） */
+  end: Date;
+}
+
+/** 获取"今日"时间范围（今天 00:00 ~ 现在） */
+export function todayRange(): TimeRangeValue {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return { start, end: new Date() };
+}
+
+/** 获取"近 7 天"时间范围（7 天前 ~ 现在） */
+export function last7Range(): TimeRangeValue {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 7);
+  return { start, end };
+}
+
+/** 获取"近 30 天"时间范围（30 天前 ~ 现在） */
+export function last30Range(): TimeRangeValue {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 30);
+  return { start, end };
 }
 
 // --- KPI 与趋势 ---
@@ -184,6 +199,8 @@ export interface UsageTrendBucket {
 export interface UsageTrendsResponse {
   /** 趋势桶数组 */
   buckets: UsageTrendBucket[];
+  /** 整个窗口内的不重复会话数（整窗 COUNT(DISTINCT session_id)，与 KPI 卡片的会话数语义一致） */
+  window_session_count: number;
 }
 
 // --- 活跃度热力图 ---
