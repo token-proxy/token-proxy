@@ -83,7 +83,8 @@ export default function useAccessPoints(scope: 'all' | 'mine' = 'all') {
     setAccounts([]);
   }, []);
 
-  // 初始加载：使用内联函数避免 useCallback 在 effect 中被 ESLint 追踪
+  // 初始加载：apUrl 是基于 scope 派生的稳定字符串（值相等即 === 相等），
+  // 加入依赖数组以满足 react-hooks/exhaustive-deps，实际只在 scope 切换时触发
   useEffect(() => {
     const init = async () => {
       try {
@@ -100,7 +101,7 @@ export default function useAccessPoints(scope: 'all' | 'mine' = 'all') {
       }
     };
     init();
-  }, []);
+  }, [apUrl]);
 
   const saveAccessPoint = async (
     formData: AccessPointFormData,

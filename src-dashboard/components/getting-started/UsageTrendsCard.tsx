@@ -181,7 +181,9 @@ export function UsageTrendsCard(): ReactNode {
     }
   }, [error]);
 
-  const buckets = data?.buckets ?? [];
+  // 用 useMemo 缓存 buckets：data?.buckets 为空时复用同一空数组引用，
+  // 避免 ?? [] 每次渲染新建数组导致下游所有 useMemo 依赖失效
+  const buckets = useMemo(() => data?.buckets ?? [], [data?.buckets]);
   const empty = useMemo(() => isUsageTrendsEmpty(buckets), [buckets]);
 
   const chartData = useMemo(
