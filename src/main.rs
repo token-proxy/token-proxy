@@ -4,7 +4,8 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use axum::Router;
-use sea_orm::Database;
+use log::LevelFilter;
+use sea_orm::{ConnectOptions, Database};
 use tokio::signal;
 use tokio::sync::broadcast;
 use tokio::sync::watch;
@@ -54,6 +55,18 @@ use token_proxy::infrastructure::persistence::repositories::SeaOrmUserRepository
 use token_proxy::infrastructure::persistence::PartitionManager;
 use token_proxy::presentation::routes;
 
+/// 构造数据库连接选项，将 sqlx 查询日志级别压低到 `debug`。
+///
+/// sea-orm 默认 `sqlx_logging_level = Info`，会逐条打印执行的 SQL；改为 `Debug`
+/// 后，默认 `LOG_LEVEL=info` 下不再输出，仅在 `LOG_LEVEL=debug` 或显式
+/// `sqlx::query=debug` 时打印，便于按需排查而不污染生产日志。
+fn database_connect_options(url: &str) -> ConnectOptions {
+    let mut opts = ConnectOptions::new(url);
+    opts.sqlx_logging(true)
+        .sqlx_logging_level(LevelFilter::Debug);
+    opts
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // jsonwebtoken 10.x 不再自动选择加密后端，必须在任何 JWT 操作之前显式安装
@@ -81,7 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.len() > 1 && args[1] == "migrate" {
         let subcommand = args.get(2).map(|s| s.as_str()).unwrap_or("up");
 
-        let db = Database::connect(&config.database_url).await?;
+        let db = Database::connect(database_connect_options(&config.database_url)).await?;
         tracing::info!("迁移模式数据库连接成功");
 
         use sea_orm_migration::MigratorTrait;
@@ -114,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("token-proxy 服务正在启动");
 
     // 连接数据库
-    let db = Arc::new(Database::connect(&config.database_url).await?);
+    let db = Arc::new(Database::connect(database_connect_options(&config.database_url)).await?);
     tracing::info!("数据库连接成功");
 
     // 执行数据库迁移

@@ -16,6 +16,8 @@ async-trait = "0.1"
 # ─── Infrastructure 层 ───
 sea-orm = { version = "2.0.0-rc.38", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-chrono", "with-uuid"] }
 sea-orm-migration = { version = "2.0.0-rc.38", features = ["sqlx-postgres", "runtime-tokio-rustls"] }
+# 仅用于向 sea-orm 传递 sqlx 查询日志级别（LevelFilter 枚举值），应用日志统一走 tracing
+log = "0.4"
 aes-gcm = "0.10"
 argon2 = "0.5"
 jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
