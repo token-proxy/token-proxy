@@ -2,7 +2,7 @@
  * 用量趋势卡片。
  *
  * 左侧面积图展示请求数和会话数变化，中间面积图按模型展示消费词元变化，右侧堆叠柱状图展示 5 类词元构成变化。
- * 卡片自管理 30 天 / 自定义时间范围，外部只通过 refreshKey 触发统一刷新。
+ * 卡片自管理 7 天 / 30 天 / 自定义时间范围，外部只通过 refreshKey 触发统一刷新。
  */
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
@@ -293,7 +293,7 @@ export function UsageTrendsCard(): ReactNode {
       onChange={setTimeRange}
       onRefresh={refetch}
       loading={loading}
-      allowedPresets={['last30', 'custom']}
+      allowedPresets={['last7', 'last30', 'custom']}
     />
   );
 

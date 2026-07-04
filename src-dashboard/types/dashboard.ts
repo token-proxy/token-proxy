@@ -23,24 +23,27 @@ export interface TimeRangeValue {
   end: Date;
 }
 
-/** 获取"今日"时间范围（今天 00:00 ~ 现在） */
+/** 获取"今日"时间范围（今天 00:00 ~ 今天 00:00） */
 export function todayRange(): TimeRangeValue {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
-  return { start, end: new Date() };
+  const end = new Date(start);
+  return { start, end };
 }
 
-/** 获取"近 7 天"时间范围（7 天前 ~ 现在） */
+/** 获取"近 7 天"时间范围（7 天前 00:00 ~ 今天 00:00） */
 export function last7Range(): TimeRangeValue {
   const end = new Date();
+  end.setHours(0, 0, 0, 0);
   const start = new Date(end);
   start.setDate(start.getDate() - 7);
   return { start, end };
 }
 
-/** 获取"近 30 天"时间范围（30 天前 ~ 现在） */
+/** 获取"近 30 天"时间范围（30 天前 00:00 ~ 今天 00:00） */
 export function last30Range(): TimeRangeValue {
   const end = new Date();
+  end.setHours(0, 0, 0, 0);
   const start = new Date(end);
   start.setDate(start.getDate() - 30);
   return { start, end };
