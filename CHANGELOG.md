@@ -5,6 +5,29 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.0] - 2026-07-04
+
+### Changed
+
+- 重构时间范围选择器状态管理
+- 将 sqlx 查询日志级别从 info 降为 debug
+
+### Documentation
+
+- Bump the frontend-deps group with 8 updates
+- Bump log from 0.4.29 to 0.4.33 in the cargo-deps group
+
+### Fixed
+
+- 修复 React hooks 依赖与引用稳定性警告
+
+### Miscellaneous
+
+- Bump version to 1.7.0
+- 调整模型消费图色板
+- 升级 GitHub Actions 至 node24 运行时
+- Add CHANGELOG for 1.6.0
+
 ## [1.6.0] - 2026-06-26
 
 ### Changed
