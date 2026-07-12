@@ -18,7 +18,7 @@ COPY src-dashboard/ src-dashboard/
 RUN pnpm run build
 
 # ─── 阶段 2: 构建后端 ─────────────────────────────
-FROM rust:1.96-alpine AS backend-builder
+FROM rust:1.97-alpine AS backend-builder
 
 RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static
 
