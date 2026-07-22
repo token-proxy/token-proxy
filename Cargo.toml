@@ -18,8 +18,10 @@ sea-orm = { version = "2.0.0-rc.38", features = ["sqlx-postgres", "runtime-tokio
 sea-orm-migration = { version = "2.0.0-rc.38", features = ["sqlx-postgres", "runtime-tokio-rustls"] }
 # 仅用于向 sea-orm 传递 sqlx 查询日志级别（LevelFilter 枚举值），应用日志统一走 tracing
 log = "0.4"
-aes-gcm = "0.10"
-argon2 = "0.5"
+aes-gcm = "0.11"
+# std feature 启用 password-hash/std -> rand_core/std -> getrandom，
+# 使 argon2::password_hash::rand_core::OsRng 的 re-export 可用（否则在新依赖图下 E0432）
+argon2 = { version = "0.5", features = ["std"] }
 jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 reqwest = { version = "0.13", features = ["json", "stream", "gzip", "brotli", "deflate"] }
 rand = "0.10"

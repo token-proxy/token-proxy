@@ -27,10 +27,12 @@ impl EncryptionService for Aes256GcmEncryptionService {
             .map_err(|e| AppError::Encryption(format!("无法创建加密器: {}", e)))?;
 
         let nonce_bytes = Self::generate_nonce();
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        // aes-gcm 0.11 起 Nonce::from_slice 被标记 deprecated（推荐 TryFrom）。
+        // nonce_bytes 是固定 [u8; 12]，直接 into() 得到栈上 owned Nonce，零拷贝
+        let nonce = Nonce::from(nonce_bytes);
 
         let ciphertext = cipher
-            .encrypt(nonce, plaintext)
+            .encrypt(&nonce, plaintext)
             .map_err(|e| AppError::Encryption(format!("加密失败: {}", e)))?;
 
         // 拼接: [12-byte nonce][ciphertext]
@@ -52,10 +54,14 @@ impl EncryptionService for Aes256GcmEncryptionService {
             .map_err(|e| AppError::Encryption(format!("无法创建解密器: {}", e)))?;
 
         let (nonce_bytes, ciphertext) = data.split_at(12);
-        let nonce = Nonce::from_slice(nonce_bytes);
+        // split_at(12) 保证 nonce_bytes 恰为 12 字节，try_into 转为 &[u8; 12] 后构造 owned Nonce
+        let nonce_arr: &[u8; 12] = nonce_bytes
+            .try_into()
+            .map_err(|_| AppError::Encryption("nonce 长度异常".to_string()))?;
+        let nonce = Nonce::from(*nonce_arr);
 
         let plaintext = cipher
-            .decrypt(nonce, ciphertext)
+            .decrypt(&nonce, ciphertext)
             .map_err(|e| AppError::Encryption(format!("解密失败: {}", e)))?;
 
         Ok(plaintext)
