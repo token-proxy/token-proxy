@@ -20,6 +20,8 @@ pub struct ProviderResponse {
     pub rate_limit_config: Option<FaultConfig>,
     /// 余额耗尽故障检测配置
     pub balance_exhausted_config: Option<FaultConfig>,
+    /// 上游兼容策略：是否把较新的消息 role 降级为等价旧 role
+    pub normalize_legacy_roles: bool,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

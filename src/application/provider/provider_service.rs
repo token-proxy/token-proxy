@@ -66,6 +66,7 @@ impl ProviderService {
             models: provider.models.clone().into(),
             rate_limit_config: provider.rate_limit_config.clone(),
             balance_exhausted_config: provider.balance_exhausted_config.clone(),
+            normalize_legacy_roles: provider.normalize_legacy_roles,
             status: provider.status.to_string(),
             created_at: provider.created_at.with_timezone(&chrono::Utc),
             updated_at: provider.updated_at.with_timezone(&chrono::Utc),
@@ -149,6 +150,9 @@ impl ProviderService {
         }
         if req.balance_exhausted_config.is_some() {
             provider.balance_exhausted_config = req.balance_exhausted_config;
+        }
+        if let Some(enabled) = req.normalize_legacy_roles {
+            provider.set_normalize_legacy_roles(enabled);
         }
         if let Some(status_str) = req.status {
             let status: Status = status_str

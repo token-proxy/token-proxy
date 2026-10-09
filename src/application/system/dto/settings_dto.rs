@@ -7,7 +7,7 @@ pub struct SettingsResponse {
     pub log_retention_months: i16,
     /// 日志占用上限（GiB），None 表示不限制
     pub log_storage_cap_gb: Option<i16>,
-    /// 当前有日志数据的月份数
+    /// 已保留的日志月份数（排除当前月种子分区）
     pub log_month_count: usize,
     /// 日志总磁盘占用（字节），前端按 1024 进制格式化为 GiB
     pub total_size_bytes: i64,

@@ -21,4 +21,6 @@ pub struct UpdateProviderRequest {
     pub rate_limit_config: Option<FaultConfig>,
     /// 余额耗尽故障检测配置（全量替换）
     pub balance_exhausted_config: Option<FaultConfig>,
+    /// 是否开启上游兼容降级（把较新的消息 role 降级为等价旧 role）
+    pub normalize_legacy_roles: Option<bool>,
 }

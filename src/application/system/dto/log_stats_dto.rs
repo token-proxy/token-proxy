@@ -8,9 +8,9 @@ use serde::Serialize;
 /// 单条分区信息
 #[derive(Debug, Clone, Serialize)]
 pub struct PartitionInfo {
-    /// 分区名称（如 `log_metadata_2026_06`）
+    /// 分区名称（如 `log_contents_2026_06`）
     pub partition_name: String,
-    /// 所属父表（`log_metadata` 或 `log_contents`）
+    /// 所属父表（当前恒为 `log_contents`）
     pub parent_table: String,
     /// 磁盘占用（字节），来自 `pg_total_relation_size`
     pub size_bytes: i64,
@@ -20,8 +20,7 @@ pub struct PartitionInfo {
 
 /// 月度分区汇总信息
 ///
-/// 按月份合并 `log_metadata` 和 `log_contents` 两个分区的磁盘占用，
-/// 聚合为单月总计。
+/// 按月聚合 `log_contents` 各分区的磁盘占用，聚合为单月总计。
 #[derive(Debug, Clone, Serialize)]
 pub struct MonthlySummary {
     /// 月份标识（如 `2026-06`）

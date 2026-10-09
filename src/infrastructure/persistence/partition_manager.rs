@@ -18,9 +18,9 @@ pub struct PartitionResult {
 /// 单条分区统计信息（来自 PostgreSQL 系统表查询）
 #[derive(Debug, Clone)]
 pub struct PartitionInfo {
-    /// 分区名称（如 `log_metadata_2026_06`）
+    /// 分区名称（如 `log_contents_2026_06`）
     pub partition_name: String,
-    /// 所属父表（`log_metadata` 或 `log_contents`）
+    /// 所属父表（当前恒为 `log_contents`）
     pub parent_table: String,
     /// 磁盘占用（字节），来自 `pg_total_relation_size`，前端按 1024 进制格式化为 GiB
     pub size_bytes: i64,
@@ -33,12 +33,13 @@ const PARTITIONED_TABLES: &[&str] = &["log_contents"];
 
 /// 分区管理器
 ///
-/// 负责 `log_metadata` 和 `log_contents` 表的按月分区自动管理：
+/// 负责 `log_contents` 表的按月分区自动管理：
 /// - 自动创建未来月份的分区
 /// - 自动清理过期分区
 /// - 通过 advisory lock 保证多副本部署安全
 ///
-/// `log_token_usage` 不在此管理范围——词元用量数据需永久保留。
+/// `log_requests`（标量字段 + 词元用量）为普通表，**不分区**、永久保留，
+/// 不在本管理器职责范围内。
 pub struct PartitionManager {
     db: Arc<DatabaseConnection>,
     premake_months: u32,
@@ -60,7 +61,7 @@ impl PartitionManager {
     /// 查询指定父表的现有分区名
     ///
     /// 通过 `pg_inherits` 系统表查询指定表的所有直接继承分区。
-    /// `parent` 参数为表名（如 `log_metadata`）。
+    /// `parent` 参数为表名（如 `log_contents`）。
     pub async fn existing_partitions(&self, parent: &str) -> Result<Vec<String>, AppError> {
         let db = &*self.db;
         let sql = format!(
@@ -205,7 +206,7 @@ impl PartitionManager {
     }
     /// 获取所有日志分区的磁盘占用和估算行数
     ///
-    /// 通过 `pg_inherits` 和 `pg_class` 系统表查询 `log_metadata` 和 `log_contents` 的所有分区信息。
+    /// 通过 `pg_inherits` 和 `pg_class` 系统表查询 `log_contents` 的所有分区信息。
     /// `row_count_estimate` 来自 `pg_class.reltuples`，为 PostgreSQL 估算值，非精确计数。
     pub async fn get_partition_stats(&self) -> Result<Vec<PartitionInfo>, AppError> {
         let db = &*self.db;
@@ -273,7 +274,7 @@ impl PartitionManager {
     ///
     /// 获取所有日志分区，按月份聚合大小。若总占用超过 `cap_gb`，
     /// 从最早月份开始逐月删除分区（跳过当前月份），直到占用低于上限。
-    /// 每月同时删除 `log_metadata` 和 `log_contents` 两个分区。
+    /// 每月删除该月的 `log_contents` 分区（`log_requests` 不分区，无需清理）。
     ///
     /// 返回被删除的分区名列表。
     pub async fn run_storage_cap_cleanup(&self, cap_gb: u32) -> Result<Vec<String>, AppError> {
@@ -324,7 +325,7 @@ impl PartitionManager {
 
 /// 从分区名中提取 YYYY-MM 格式的月份标识
 ///
-/// 分区名格式为 `{table}_{YYYY}_{MM}`，如 `log_metadata_2026_06`。
+/// 分区名格式为 `{table}_{YYYY}_{MM}`，如 `log_contents_2026_06`。
 /// 无法解析时返回 None。
 fn extract_year_month(partition_name: &str) -> Option<String> {
     // 从右侧找最后两个下划线分隔的部分

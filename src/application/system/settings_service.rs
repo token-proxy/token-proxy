@@ -49,13 +49,15 @@ impl SettingsService {
     /// 获取系统设置
     ///
     /// 读取当前系统配置，同时尝试获取日志统计以提供 `log_month_count` 和 `total_size_bytes`。
+    ///
+    /// `log_month_count` 排除当前月种子分区（种子不可删除，不反映保留策略成果）。
     /// 若日志统计查询失败，记录 warn 日志并回退为 0/0，确保设置页面仍可正常打开。
     pub async fn get_settings(&self) -> Result<SettingsResponse, AppError> {
         let settings = self.settings_repo.get().await?;
 
         // 尝试获取日志统计，失败时回退
         let (log_month_count, total_size_bytes) = match self.get_log_stats().await {
-            Ok(stats) => (stats.monthly_summary.len(), stats.total_size_bytes),
+            Ok(stats) => (Self::count_retained_months(&stats), stats.total_size_bytes),
             Err(e) => {
                 tracing::warn!(error = %e, "获取日志统计失败，回退为默认值");
                 (0, 0)
@@ -116,7 +118,7 @@ impl SettingsService {
 
         // 尝试获取日志统计，失败时回退
         let (log_month_count, total_size_bytes) = match self.get_log_stats().await {
-            Ok(stats) => (stats.monthly_summary.len(), stats.total_size_bytes),
+            Ok(stats) => (Self::count_retained_months(&stats), stats.total_size_bytes),
             Err(e) => {
                 tracing::warn!(error = %e, "获取日志统计失败，回退为默认值");
                 (0, 0)
@@ -133,7 +135,7 @@ impl SettingsService {
 
     /// 获取日志分区统计信息
     ///
-    /// 返回 `log_metadata` 和 `log_contents` 的所有分区列表、
+    /// 返回 `log_contents` 的所有分区列表、
     /// 按月汇总的磁盘占用（原始字节数），以及总计信息。
     /// 过滤掉未到来月份的预创建空分区。
     pub async fn get_log_stats(&self) -> Result<LogStatsResponse, AppError> {
@@ -268,9 +270,23 @@ impl SettingsService {
             tracing::error!(error = %e, action = %action, entity_type = %entity_type, "审计日志写入失败");
         }
     }
+
+    /// 统计已保留的日志月份数（排除当前月种子分区）
+    ///
+    /// 当前月分区为数据库必需的种子，不可删除（见 `delete_month_logs` 的种子保护），
+    /// 其存在不反映保留策略成果，故「已保留时长」仅统计当月之前仍存在的分区。
+    fn count_retained_months(stats: &LogStatsResponse) -> usize {
+        let now = chrono::Utc::now().naive_utc().date();
+        let current_ym = format!("{:04}-{:02}", now.year(), now.month());
+        stats
+            .monthly_summary
+            .iter()
+            .filter(|m| m.month < current_ym)
+            .count()
+    }
 }
 
-/// 从分区名中提取月份键（如 `log_metadata_2026_06` → `"2026-06"`）
+/// 从分区名中提取月份键（如 `log_contents_2026_06` → `"2026-06"`）
 ///
 /// 分区名格式为 `{table}_{YYYY}_{MM}`，提取最后两部分组合为 `YYYY-MM`。
 /// 若分区名不包含月份信息则返回 `None`。
