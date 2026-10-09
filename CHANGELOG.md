@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.8.1] - 2026-10-09
+
+### Fixed
+
+- 修正 /api/logs 列表与详情的 api_protocol 列索引（31→32）
+
+### Miscellaneous
+
+- Bump version to 1.8.1
+
 ## [1.8.0] - 2026-10-09
 
 ### Added
