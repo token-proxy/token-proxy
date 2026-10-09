@@ -11,6 +11,8 @@ export interface NewLogEvent {
   timestamp: string;
   session_id: string;
   api_type: string;
+  /** 本次请求实际使用的协议（anthropic / openai / openai_response） */
+  api_protocol: string;
   user_id: string;
   access_point_id: string;
 }

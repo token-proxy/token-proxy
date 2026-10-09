@@ -62,6 +62,8 @@ export interface LogSummary {
   client_user_agent?: string | null;
   // API 类型
   api_type?: string;
+  /** 本次请求实际使用的协议（anthropic / openai / openai_response） */
+  api_protocol?: string;
 }
 
 /** 日志原始详情（用于 /api/logs/{id}/raw） */
@@ -144,6 +146,8 @@ export interface LogDetailFull {
   client_user_agent?: string | null;
   // API 类型
   api_type?: string;
+  /** 本次请求实际使用的协议（anthropic / openai / openai_response） */
+  api_protocol?: string;
   // 请求 + 响应原始内容（前端自行解析）
   request_headers: Record<string, unknown> | null;
   response_headers: Record<string, unknown> | null;
@@ -165,8 +169,10 @@ export interface SessionContentItem {
   timestamp: string;
   conversation_source: string;
   agent_id?: string | null;
-  /** API 协议类型（"anthropic" | "openai"），用于按协议分发轮次判定逻辑 */
+  /** 接入点 API 类型（"anthropic" | "openai"） */
   api_type?: string;
+  /** 本次请求实际使用的协议（anthropic / openai / openai_response），用于按协议分发内容解析 */
+  api_protocol?: string;
   request_headers: Record<string, unknown>;
   request_body: Record<string, unknown>;
   response_body: string;

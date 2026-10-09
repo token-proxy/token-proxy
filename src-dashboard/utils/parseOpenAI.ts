@@ -2,7 +2,7 @@
  * OpenAI 协议响应/请求体解析工具。
  *
  * 与 parseLogs.ts 中的 Anthropic 解析器并列，
- * 由 ResponseContentCard / RequestContentCard 按 api_type 调用。
+ * 由 ResponseContentCard / RequestContentCard 按 api_type / api_protocol 调用。
  */
 
 import type { ContentBlockInfo } from './parseLogs.ts';
@@ -514,11 +514,16 @@ function parseResponsesEvents(body: string): ParsedResponseEvent[] {
 /**
  * 解析 OpenAI 请求体为可展示的结构化数据。
  *
- * 自动检测 Chat Completions 和 Responses API 两种格式，
- * 返回联合类型 OpenAIParsedRequest。
+ * api_protocol 明确时按协议直接选择解析器，避免 Chat Completions 与
+ * Responses API 之间的形状误判；缺失时回退到按 input 字段自动检测，
+ * 保持旧数据兼容。
+ *
+ * @param body - 请求体对象或 JSON 字符串
+ * @param api_protocol - 请求级协议（openai / openai_response），可选
  */
 export function parseOpenAIRequestBody(
   body: Record<string, unknown> | string,
+  api_protocol?: string,
 ): OpenAIParsedRequest | null {
   let parsed: Record<string, unknown>;
   if (typeof body === 'string') {
@@ -531,12 +536,22 @@ export function parseOpenAIRequestBody(
     parsed = body;
   }
 
-  // 检测格式：Responses API 有 input 字段
+  // 1. 协议明确为 Responses API：按 input 语义解析
+  if (api_protocol === 'openai_response') {
+    return parseResponsesRequestBody(parsed);
+  }
+
+  // 2. 协议明确为 Chat Completions：按 messages 语义解析
+  if (api_protocol === 'openai') {
+    return parseChatRequestBody(parsed);
+  }
+
+  // 3. 协议缺失：Responses API 有 input 字段，据此自动检测
   if (parsed.input !== undefined) {
     return parseResponsesRequestBody(parsed);
   }
 
-  // 默认为 Chat Completions
+  // 4. 默认为 Chat Completions
   return parseChatRequestBody(parsed);
 }
 
@@ -584,8 +599,7 @@ function parseChatRequestBody(body: Record<string, unknown>): OpenAIChatRequest 
               ? ((tool.function as Record<string, unknown>).description as string)
               : undefined,
           parameters: (tool.function as Record<string, unknown>)?.parameters as
-            | Record<string, unknown>
-            | undefined,
+            Record<string, unknown> | undefined,
         },
       });
     }

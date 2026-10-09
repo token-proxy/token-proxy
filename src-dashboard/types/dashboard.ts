@@ -113,7 +113,7 @@ export interface SparklineBucket {
 /**
  * 词元构成 5 维度绝对值。
  *
- * 与后端 `log_token_usage` 表的 5 个词元列对齐，反映当前窗口内的真实消耗结构，
+ * 与后端 `log_requests` 表的 5 个词元列对齐，反映当前窗口内的真实消耗结构，
  * 用于堆叠条 / 环形图等可视化组件。
  */
 export interface TokenComposition {

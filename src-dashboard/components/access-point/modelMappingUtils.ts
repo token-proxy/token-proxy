@@ -15,7 +15,6 @@ export type MappingMatchType = 'exact' | 'prefix';
 export function matchTypeForSource(value: string): MappingMatchType {
   return (
     (ANTHROPIC_FAMILIES.find((family) => family.value === value)?.matchType as
-      | MappingMatchType
-      | undefined) ?? 'exact'
+      MappingMatchType | undefined) ?? 'exact'
   );
 }

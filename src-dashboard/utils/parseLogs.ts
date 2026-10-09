@@ -36,11 +36,7 @@ export interface ConversationEvent {
   source: string;
   role: 'user' | 'assistant';
   event_type:
-    | 'user_message'
-    | 'assistant_message'
-    | 'assistant_thinking'
-    | 'tool_use'
-    | 'agent_call';
+    'user_message' | 'assistant_message' | 'assistant_thinking' | 'tool_use' | 'agent_call';
   agent_id?: string;
   agent_type?: string;
   tool_use_id?: string;
@@ -1020,8 +1016,7 @@ function buildEventsFromJson(
       if (blockType === 'tool_use' && typeof block.name === 'string') {
         const isAgent = block.name === 'Agent';
         const input = (block.input && typeof block.input === 'object' ? block.input : undefined) as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
 
         events.push({
           id: uid(),
@@ -1228,23 +1223,33 @@ export function buildConversationTurns(
     const { item } = entry;
     const messages = item.request_body.messages as unknown[];
 
-    // 跳过无 messages 的条目（OpenAI 请求需额外检查 input 数组）
+    // api_protocol 存在时以其判定协议族，缺失时回退到 api_type（旧数据兼容）
+    const isOpenAIProtocol =
+      item.api_protocol !== undefined
+        ? item.api_protocol === 'openai' || item.api_protocol === 'openai_response'
+        : item.api_type === 'openai';
+    // Responses 形状（input 数组）仅在协议明确为 openai_response、或协议缺失而 api_type 为 openai 时成立
+    const isResponsesProtocol =
+      item.api_protocol !== undefined
+        ? item.api_protocol === 'openai_response'
+        : item.api_type === 'openai';
+
+    // 跳过无 messages 的条目（OpenAI Responses 请求需额外检查 input 数组）
     const hasMessages = messages && Array.isArray(messages) && messages.length > 0;
     const hasInput =
-      item.api_type === 'openai' &&
-      Array.isArray((item.request_body as Record<string, unknown>).input);
+      isResponsesProtocol && Array.isArray((item.request_body as Record<string, unknown>).input);
     if (!hasMessages && !hasInput) {
       continue;
     }
 
     const isNew =
       currentTurn === null ||
-      (item.api_type === 'openai'
+      (isOpenAIProtocol
         ? isNewTurnStartOpenAI(item, lastOpenAIUserIndex)
         : isNewTurnStart(messages));
 
-    // 更新 OpenAI Responses 的追踪索引
-    if (item.api_type === 'openai') {
+    // 更新 OpenAI 协议族的追踪索引（仅 Responses 请求含 input 数组时生效）
+    if (isOpenAIProtocol) {
       const input = (item.request_body as Record<string, unknown>).input as Array<
         Record<string, unknown>
       >;
@@ -1265,10 +1270,9 @@ export function buildConversationTurns(
       }
 
       // 开启新轮次
-      const userMsg =
-        item.api_type === 'openai'
-          ? extractOpenAIUserMessage(item.request_body as Record<string, unknown>)
-          : extractUserMessage(messages) || '';
+      const userMsg = isOpenAIProtocol
+        ? extractOpenAIUserMessage(item.request_body as Record<string, unknown>)
+        : extractUserMessage(messages) || '';
       currentTurn = {
         items: [entry],
         userMessage: userMsg,

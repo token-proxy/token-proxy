@@ -16,8 +16,7 @@ interface ToolDetailProps {
 export default function ToolDetail({ tool }: ToolDetailProps): ReactNode {
   const description = typeof tool.description === 'string' ? tool.description : '';
   const inputSchema = tool.input_schema as
-    | { properties?: Record<string, unknown>; required?: Array<string> }
-    | undefined;
+    { properties?: Record<string, unknown>; required?: Array<string> } | undefined;
   const props = inputSchema?.properties;
   const required = inputSchema?.required ?? [];
 

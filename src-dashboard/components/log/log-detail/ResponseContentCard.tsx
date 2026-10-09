@@ -21,44 +21,55 @@ interface ResponseContentCardProps {
   responseBody: string | null | undefined;
   /** 响应头，用于通过 Content-Type 检测响应体格式 */
   responseHeaders?: Record<string, unknown> | null;
-  /** API 类型（anthropic / openai），用于选择解析器 */
+  /** API 类型（anthropic / openai），仅在 api_protocol 缺失时用于选择解析器 */
   api_type?: string;
+  /** 请求级协议（anthropic / openai / openai_response），存在时优先于 api_type 选择解析器 */
+  api_protocol?: string;
   style?: React.CSSProperties;
 }
 
 /**
- * 根据 api_type 和 format 选择解析器解析响应体为 ContentBlockInfo[]。
+ * 根据 api_protocol / api_type 和 format 选择解析器解析响应体为 ContentBlockInfo[]。
  *
- * OpenAI 协议分支调用 parseOpenAI.ts 中的专用解析函数，
- * Anthropic 协议分支（或 api_type 为空）保持现有 parseStructuredBlocks 逻辑。
+ * 协议分发优先级：api_protocol（新字段）优先，缺失时回退 api_type（旧数据兼容）。
+ * - openai_response：直接调用 Responses API 解析器，不再试探
+ * - openai：直接调用 Chat Completions 解析器，Responses 解析器仅作安全兜底
+ * - 其余（含 anthropic 或协议字段为空）：保持现有 parseStructuredBlocks 逻辑
  */
 function parseResponseByApiType(
   responseBody: string,
   format: ResponseFormat,
   api_type?: string,
+  api_protocol?: string,
 ): ContentBlockInfo[] {
-  if (api_type === 'openai') {
-    // OpenAI Chat Completions
-    if (format === 'sse') {
-      // 尝试 Chat Completions SSE 解析，失败则尝试 Responses SSE
-      const chatBlocks = parseOpenAIChatSSE(responseBody);
-      if (chatBlocks.length > 0) return chatBlocks;
-      return parseOpenAIResponsesSSE(responseBody);
-    }
-    // 非流式：尝试 Chat Completions，失败则尝试 Responses
-    const chatBlocks = parseOpenAIChatResponse(responseBody);
-    if (chatBlocks.length > 0) return chatBlocks;
-    return parseOpenAIResponsesResponse(responseBody);
+  // api_protocol 缺失时按旧规则回退到 api_type === 'openai'
+  const protocol = api_protocol ?? (api_type === 'openai' ? 'openai' : undefined);
+
+  // 1. Responses API：协议明确，直接调用对应解析器
+  if (protocol === 'openai_response') {
+    return format === 'sse'
+      ? parseOpenAIResponsesSSE(responseBody)
+      : parseOpenAIResponsesResponse(responseBody);
   }
 
-  // Anthropic（默认）
+  // 2. Chat Completions：直接调用 Chat 解析器，解析为空时用 Responses 兜底
+  if (protocol === 'openai') {
+    const chatBlocks =
+      format === 'sse' ? parseOpenAIChatSSE(responseBody) : parseOpenAIChatResponse(responseBody);
+    if (chatBlocks.length > 0) return chatBlocks;
+    return format === 'sse'
+      ? parseOpenAIResponsesSSE(responseBody)
+      : parseOpenAIResponsesResponse(responseBody);
+  }
+
+  // 3. Anthropic（默认）
   return parseStructuredBlocks(responseBody, format).content_blocks;
 }
 
 /**
  * ResponseContentCard - 响应内容展示卡片
  *
- * 支持结构化视图（根据 api_type 和响应体格式选择解析器解析后按类型分组展示）和原始视图，
+ * 支持结构化视图（根据 api_protocol / api_type 和响应体格式选择解析器解析后按类型分组展示）和原始视图，
  * 通过 Switch 切换模式。通过响应头 Content-Type 判定 SSE 或 JSON 格式，
  * OpenAI 和 Anthropic 协议使用各自的解析路径但输出相同的 ContentBlockInfo 结构。
  */
@@ -66,6 +77,7 @@ export default function ResponseContentCard({
   responseBody,
   responseHeaders,
   api_type,
+  api_protocol,
   style,
 }: ResponseContentCardProps): ReactNode {
   const [viewMode, setViewMode] = useState<'formatted' | 'json'>('formatted');
@@ -78,10 +90,11 @@ export default function ResponseContentCard({
     [responseHeaders],
   );
 
-  // 按 api_type 和 format 解析响应体
+  // 按 api_protocol / api_type 和 format 解析响应体
   const contentBlocks: ContentBlockInfo[] = useMemo(
-    () => (responseBody ? parseResponseByApiType(responseBody, format, api_type) : []),
-    [responseBody, format, api_type],
+    () =>
+      responseBody ? parseResponseByApiType(responseBody, format, api_type, api_protocol) : [],
+    [responseBody, format, api_type, api_protocol],
   );
 
   // 默认展开 text 和 tool_use 类型的 block（助手回复和工具调用）

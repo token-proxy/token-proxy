@@ -21,22 +21,25 @@ const { Text } = Typography;
 /** RequestContentCard 组件 Props */
 interface RequestContentCardProps {
   requestBody: Record<string, unknown> | null | undefined;
-  /** API 类型（anthropic / openai），用于选择解析器 */
+  /** API 类型（anthropic / openai），仅在 api_protocol 缺失时用于选择解析器 */
   api_type?: string;
+  /** 请求级协议（anthropic / openai / openai_response），存在时优先于 api_type 选择解析器 */
+  api_protocol?: string;
   style?: React.CSSProperties;
 }
 
 /**
  * RequestContentCard - 请求内容展示卡片
  *
- * 支持结构化视图（按 api_type 分段展示模型配置、系统提示词、消息、工具）和原始 JSON 视图，
+ * 支持结构化视图（按 api_protocol / api_type 分段展示模型配置、系统提示词、消息、工具）和原始 JSON 视图，
  * 通过 Switch 切换模式。
  * - Anthropic：三段式（RequestConfig + SystemPrompt + Messages + Tools）
- * - OpenAI：Chat Completions / Responses API 两种格式自适应
+ * - OpenAI：按 api_protocol 直接选择 Chat Completions / Responses API 解析器，协议缺失时自适应
  */
 export default function RequestContentCard({
   requestBody,
   api_type,
+  api_protocol,
   style,
 }: RequestContentCardProps): ReactNode {
   const [isJsonViewMode, setIsJsonViewMode] = useState(false);
@@ -46,14 +49,20 @@ export default function RequestContentCard({
   // 延迟渲染：大 JSON 文本仅在用户切换到原始视图后才解析（192KB+ 请求体常见）
   const [jsonRendered, setJsonRendered] = useState(false);
 
-  // 解析 OpenAI 请求体（仅当 api_type === 'openai' 时）
+  // api_protocol 存在时以其判定 OpenAI 协议族，缺失时回退 api_type（旧数据兼容）
+  const isOpenAIProtocol =
+    api_protocol !== undefined
+      ? api_protocol === 'openai' || api_protocol === 'openai_response'
+      : api_type === 'openai';
+
+  // 解析 OpenAI 请求体（仅当协议属于 OpenAI 协议族时，按 api_protocol 直接选择解析器）
   const openaiParsed = useMemo(() => {
-    if (api_type !== 'openai' || !requestBody) return null;
-    return parseOpenAIRequestBody(requestBody);
-  }, [api_type, requestBody]);
+    if (!isOpenAIProtocol || !requestBody) return null;
+    return parseOpenAIRequestBody(requestBody, api_protocol);
+  }, [isOpenAIProtocol, api_protocol, requestBody]);
 
   // isOpenAI 判定
-  const isOpenAI = api_type === 'openai' && openaiParsed !== null;
+  const isOpenAI = isOpenAIProtocol && openaiParsed !== null;
 
   // 原始 JSON 视图：延迟渲染，仅在用户切换到 JSON 视图后才执行 JSON.stringify
   const jsonView = useMemo(() => {

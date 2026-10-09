@@ -12,6 +12,7 @@ import {
   Select,
   SideSheet,
   Space,
+  Switch,
   Table,
   Tag,
   TagInput,
@@ -41,6 +42,8 @@ interface Provider {
   available_account_count?: number;
   rate_limit_config?: FaultConfigJson;
   balance_exhausted_config?: FaultConfigJson;
+  /** 是否将较新消息 role（如 developer）降级为语义等价的旧 role（system）以兼容旧版上游；默认关闭 */
+  normalize_legacy_roles?: boolean;
 }
 
 /** 服务商表单数据 */
@@ -405,6 +408,9 @@ export default function ProviderManagement(): ReactNode {
     useState<FaultConfigState>(DEFAULT_RATE_LIMIT_CONFIG);
   const [balanceConfig, setBalanceConfig] = useState<FaultConfigState>(DEFAULT_BALANCE_CONFIG);
 
+  // 旧版上游 role 兼容（normalize_legacy_roles）
+  const [normalizeLegacyRoles, setNormalizeLegacyRoles] = useState(false);
+
   const setOperation = (key: string, operating: boolean) => {
     const next = new Set(operatingIdsRef.current);
     if (operating) {
@@ -423,6 +429,7 @@ export default function ProviderManagement(): ReactNode {
     setProviderModels([]);
     setRateLimitConfig({ ...DEFAULT_RATE_LIMIT_CONFIG });
     setBalanceConfig({ ...DEFAULT_BALANCE_CONFIG });
+    setNormalizeLegacyRoles(false);
     setDrawerVisible(true);
   };
 
@@ -432,6 +439,7 @@ export default function ProviderManagement(): ReactNode {
     setProviderModels(provider.models ?? []);
     setRateLimitConfig(parseFaultConfig(provider.rate_limit_config, DEFAULT_RATE_LIMIT_CONFIG));
     setBalanceConfig(parseFaultConfig(provider.balance_exhausted_config, DEFAULT_BALANCE_CONFIG));
+    setNormalizeLegacyRoles(provider.normalize_legacy_roles ?? false);
     setDrawerVisible(true);
     loadAccounts(provider.id);
   };
@@ -461,6 +469,7 @@ export default function ProviderManagement(): ReactNode {
           models: providerModels,
           rate_limit_config: rateLimit ?? null,
           balance_exhausted_config: balance ?? null,
+          normalize_legacy_roles: normalizeLegacyRoles,
         };
         await api.put(`/api/providers/${editingProvider.id}`, body);
         Toast.success('服务商已更新');
@@ -469,6 +478,7 @@ export default function ProviderManagement(): ReactNode {
           ...values,
           rate_limit_config: rateLimit ?? null,
           balance_exhausted_config: balance ?? null,
+          normalize_legacy_roles: normalizeLegacyRoles,
         });
         Toast.success('服务商已创建');
       }
@@ -739,6 +749,26 @@ export default function ProviderManagement(): ReactNode {
                 />
               </Collapse.Panel>
             </Collapse>
+          </div>
+
+          {/* 请求兼容性 — 仅 OpenAI 系上游生效 */}
+          <div style={{ marginTop: 24 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 6,
+              }}
+            >
+              <Text strong>旧版上游 Role 兼容</Text>
+              <Switch checked={normalizeLegacyRoles} onChange={setNormalizeLegacyRoles} />
+            </div>
+            <Text type="tertiary" size="small">
+              开启后会将对端无法识别的较新消息 role（如 developer）降级为语义等价的旧
+              role（system），以兼容服务端 SDK 较旧的中转；默认关闭，保持完全透明转发。仅对 OpenAI
+              系上游生效。
+            </Text>
           </div>
 
           {editingProvider && (

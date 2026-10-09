@@ -1,8 +1,8 @@
 /** 单条分区信息 */
 export interface PartitionInfo {
-  /** 分区名称（如 `log_metadata_2026_06`） */
+  /** 分区名称（如 `log_contents_2026_06`） */
   partition_name: string;
-  /** 所属父表（`log_metadata` 或 `log_contents`） */
+  /** 所属父表（当前恒为 `log_contents`） */
   parent_table: string;
   /** 磁盘占用（字节），前端按 1024 进制格式化为 GiB */
   size_bytes: number;
@@ -10,7 +10,7 @@ export interface PartitionInfo {
   row_count_estimate: number;
 }
 
-/** 月度分区汇总（按月份聚合 log_metadata + log_contents） */
+/** 月度分区汇总（按月聚合 log_contents 各分区） */
 export interface MonthlySummary {
   /** 月份标识（如 `2026-06`） */
   month: string;
@@ -38,7 +38,7 @@ export interface Settings {
   log_retention_months: number;
   /** 日志占用上限（GiB），null 表示不限制 */
   log_storage_cap_gb: number | null;
-  /** 当前有日志数据的月份数 */
+  /** 已保留的日志月份数（排除当前月种子分区） */
   log_month_count: number;
   /** 日志总磁盘占用（字节），前端按 1024 进制格式化为 GiB */
   total_size_bytes: number;

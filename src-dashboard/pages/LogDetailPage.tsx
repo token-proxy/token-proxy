@@ -104,6 +104,7 @@ export default function LogDetailPage(): ReactNode {
       <RequestContentCard
         requestBody={data.request_body}
         api_type={data.api_type}
+        api_protocol={data.api_protocol}
         style={{ marginBottom: 16 }}
       />
 
@@ -119,6 +120,7 @@ export default function LogDetailPage(): ReactNode {
         responseBody={data.response_body}
         responseHeaders={data.response_headers as Record<string, unknown> | null}
         api_type={data.api_type}
+        api_protocol={data.api_protocol}
       />
     </div>
   );
