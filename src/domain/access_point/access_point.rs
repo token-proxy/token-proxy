@@ -204,8 +204,15 @@ impl AccessPointEx {
     /// 1. 从 Provider 选取与当前接入点 api_type 匹配的 base_url，与 remainder 拼接得到目标 URL
     /// 2. 通过模型路由网格将入站模型名解析为该 Provider 上的目标模型
     /// 3. 若发生模型映射，调用协议方法将新模型写回 body
-    /// 4. 复制入站 headers 并过滤 hop-by-hop 头
-    /// 5. 调用协议方法注入 API key
+    /// 4. 按 Provider 的上游兼容策略做能力降级（默认透明；见 `UpstreamCompat`）
+    /// 5. 复制入站 headers 并过滤 hop-by-hop 头
+    /// 6. 调用协议方法注入 API key
+    ///
+    /// 协议取自 `inbound.protocol`（请求级值对象，管道已按入站路径解析并做过家族校验），
+    /// 聚合根本处不再重复推导，避免"同一事实两处判断"。
+    ///
+    /// 返回值中的 `normalized_roles` 是本次被降级的 role 数量（0 表示请求体未因兼容策略改动），
+    /// 供调用方记日志与审计——降级必须是可观测的，不能静默发生。
     pub fn build_upstream_request(
         &self,
         inbound: &InboundRequest,
@@ -220,13 +227,21 @@ impl AccessPointEx {
         // 模型路由
         let mapped_model = self.resolve_model(&inbound.model, &provider.id);
 
-        // body 变换（仅 model 变更时才克隆并替换）
-        let body = if mapped_model != inbound.model {
-            self.access_point
-                .api_type
+        // body 变换（仅在确有变换需要时才克隆）
+        let mut body = if mapped_model != inbound.model {
+            inbound
+                .protocol
                 .replace_model_in_body(&inbound.body, &mapped_model)
         } else {
             inbound.body.clone()
+        };
+
+        // 上游能力降级：默认透明；仅在服务商显式开启时才改写（白名单式）
+        let compat = provider.upstream_compat();
+        let normalized_roles = if compat.normalize_legacy_roles {
+            inbound.protocol.normalize_legacy_roles(&mut body)
+        } else {
+            0
         };
 
         // headers 变换：过滤 hop-by-hop + 注入 API key
@@ -238,15 +253,14 @@ impl AccessPointEx {
             }
             headers.insert(k.clone(), v.clone());
         }
-        self.access_point
-            .api_type
-            .inject_api_key(&mut headers, upstream_key);
+        inbound.protocol.inject_api_key(&mut headers, upstream_key);
 
         Ok(UpstreamRequest {
             url,
             headers,
             body,
             mapped_model,
+            normalized_roles,
         })
     }
 
@@ -269,6 +283,7 @@ impl AccessPointEx {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::ApiProtocol;
 
     fn test_access_point() -> Model {
         Model::new(
@@ -403,6 +418,135 @@ mod tests {
         assert!(ap.access_point.model_routing_grid.rows[0]
             .targets
             .contains_key(&pid));
+    }
+
+    // ── 上游兼容策略（UpstreamCompat）集成 ──
+
+    /// 构造一个启用 OpenAI base_url 的服务商
+    fn openai_provider(normalize_legacy_roles: bool) -> Provider {
+        let mut provider = Provider::new(
+            "compat-test".to_string(),
+            Some("https://relay.example.com".to_string()),
+            None,
+        )
+        .expect("服务商构造应成功");
+        provider.set_normalize_legacy_roles(normalize_legacy_roles);
+        provider
+    }
+
+    /// 构造 OpenAI Chat 入站请求（body 含 developer role）
+    fn openai_chat_inbound() -> InboundRequest {
+        let body: serde_json::Value = serde_json::from_str(
+            r#"{"model":"gpt-4o","messages":[{"role":"developer","content":"be terse"},{"role":"user","content":"hi"}]}"#,
+        )
+        .unwrap();
+        InboundRequest {
+            protocol: ApiProtocol::OpenAi,
+            headers: axum::http::HeaderMap::new(),
+            body,
+            model: "gpt-4o".to_string(),
+        }
+    }
+
+    #[test]
+    fn compat_disabled_keeps_developer_role_transparent() {
+        let ap = AccessPointEx::from_model(
+            Model::new(
+                "openai-ap".to_string(),
+                AccessPointType::OpenAi,
+                ShortCode::generate(),
+                Uuid::new_v4(),
+            ),
+            vec![],
+        );
+        let provider = openai_provider(false);
+        let inbound = openai_chat_inbound();
+
+        let upstream = ap
+            .build_upstream_request(&inbound, &provider, "sk-x", "v1/chat/completions")
+            .expect("构造上游请求应成功");
+
+        assert_eq!(upstream.normalized_roles, 0);
+        assert_eq!(
+            upstream.body["messages"][0]["role"],
+            serde_json::Value::String("developer".into())
+        );
+    }
+
+    #[test]
+    fn compat_enabled_rewrites_developer_to_system() {
+        let ap = AccessPointEx::from_model(
+            Model::new(
+                "openai-ap".to_string(),
+                AccessPointType::OpenAi,
+                ShortCode::generate(),
+                Uuid::new_v4(),
+            ),
+            vec![],
+        );
+        let provider = openai_provider(true);
+        let inbound = openai_chat_inbound();
+
+        let upstream = ap
+            .build_upstream_request(&inbound, &provider, "sk-x", "v1/chat/completions")
+            .expect("构造上游请求应成功");
+
+        assert_eq!(upstream.normalized_roles, 1);
+        assert_eq!(
+            upstream.body["messages"][0]["role"],
+            serde_json::Value::String("system".into())
+        );
+        // 其余消息不受影响
+        assert_eq!(
+            upstream.body["messages"][1]["role"],
+            serde_json::Value::String("user".into())
+        );
+        // URL 与鉴权仍正确注入
+        assert_eq!(
+            upstream.url,
+            "https://relay.example.com/v1/chat/completions"
+        );
+        assert_eq!(
+            upstream
+                .headers
+                .get(axum::http::header::AUTHORIZATION)
+                .unwrap(),
+            "Bearer sk-x"
+        );
+    }
+
+    #[test]
+    fn compat_enabled_is_noop_for_anthropic_protocol() {
+        // Anthropic 协议没有 role 落差，即便开关打开也不应改写请求体
+        let ap = make_access_point_ex();
+        let mut provider = Provider::new(
+            "compat-anthropic".to_string(),
+            None,
+            Some("https://api.anthropic.com".to_string()),
+        )
+        .expect("服务商构造应成功");
+        provider.set_normalize_legacy_roles(true);
+
+        let body: serde_json::Value = serde_json::from_str(
+            r#"{"model":"claude-sonnet-4-20250514","messages":[{"role":"developer","content":"x"}]}"#,
+        )
+        .unwrap();
+        let inbound = InboundRequest {
+            protocol: ApiProtocol::Anthropic,
+            headers: axum::http::HeaderMap::new(),
+            body,
+            model: "claude-sonnet-4-20250514".to_string(),
+        };
+
+        let upstream = ap
+            .build_upstream_request(&inbound, &provider, "sk-a", "v1/messages")
+            .expect("构造上游请求应成功");
+
+        assert_eq!(upstream.normalized_roles, 0);
+        assert_eq!(
+            upstream.body["messages"][0]["role"],
+            serde_json::Value::String("developer".into())
+        );
     }
 
     #[test]

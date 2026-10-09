@@ -1,17 +1,21 @@
 //! 接入点 API 类型枚举 — domain/shared/
 //!
-//! 定义 `AccessPointType` 枚举（目前仅 Anthropic）以及挂载在其上的协议方法。
-//! 协议方法（`parse_inbound` / `extract_session_id` / `inject_api_key` /
-//! `replace_model_in_body` / `is_sse_response`）通过 match 分发到
-//! `src/domain/shared/protocols/<name>.rs` 中的具体实现。
+//! 定义 `AccessPointType`（接入点类型，落库 + 前端 Select 使用）以及
+//! 它与请求级协议值对象 [`ApiProtocol`] 的关系。
 //!
-//! 新增协议类型需同步修改：本枚举 + 数据库列约束 + 前端 Select；
+//! 职责边界：
+//! - `AccessPointType` 回答「这个接入点属于哪个协议家族」——是实体字段，
+//!   决定 Provider 上取哪个 base_url、前端新建接入点时选哪一项
+//! - [`ApiProtocol`] 回答「这一次请求实际走哪个上游协议」——是请求级值对象，
+//!   由入站路径推导，承载全部协议行为（解析 / 变换 / 判定）
+//!
+//! OpenAI 家族含两条线协议（Chat Completions / Responses），二者共用
+//! `openai` 接入点与同一 base_url，因此**不需要**为 Responses 新建接入点类型，
+//! 协议由 [`AccessPointType::resolve_protocol`] 按入站路径推导。
+//!
+//! 新增协议家族需同步修改：本枚举 + 数据库列约束（VARCHAR）+ 前端 Select；
 //! Rust 端编译器会自动指出所有 match 分支需要补充的位置。
 
-use axum::http::HeaderMap;
-use serde_json::Value;
-
-use crate::shared::error::AppError;
 use sea_orm::prelude::StringLen;
 use sea_orm::DeriveActiveEnum;
 use sea_orm::EnumIter;
@@ -19,86 +23,62 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-use super::inbound_request::InboundRequest;
-use super::protocols::anthropic;
-use super::protocols::openai;
+use crate::shared::error::AppError;
 
-/// 接入点 API 类型
+use super::api_protocol::ApiProtocol;
+
+/// 接入点 API 类型（协议家族）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
 pub enum AccessPointType {
     #[sea_orm(string_value = "anthropic")]
     Anthropic,
-    /// OpenAI 协议（Chat Completions `/v1/chat/completions` 和 Responses `/v1/responses`）
+    /// OpenAI 协议家族（Chat Completions + Responses 两条线协议）
     #[sea_orm(string_value = "openai")]
     OpenAi,
 }
 
 impl AccessPointType {
+    /// 全部类型变体
     pub fn all_variants() -> Vec<AccessPointType> {
         vec![AccessPointType::Anthropic, AccessPointType::OpenAi]
     }
-}
 
-// ─── 协议适配方法 ──────────────────────────────────────────────────
-//
-// 每个方法 match self 后调用对应协议模块的 pub(super) fn。
-// 加新协议时只需补充 match 分支（编译器会指出所有需要补的位置）。
+    /// 该接入点家族允许的请求级协议集合
+    ///
+    /// 用于管道第 1 步的家族校验：`anthropic` 接入点收到 `/v1/responses` 路径时
+    /// 应被明确拒绝，而不是把 Anthropic body 发去 OpenAI 端点。
+    pub fn allowed_protocols(&self) -> &'static [ApiProtocol] {
+        match self {
+            AccessPointType::Anthropic => &[ApiProtocol::Anthropic],
+            AccessPointType::OpenAi => &[ApiProtocol::OpenAi, ApiProtocol::OpenAiResponse],
+        }
+    }
 
-impl AccessPointType {
-    /// 解析入站请求（JSON body 解析 + 协议特定的 model 字段提取）
-    pub fn parse_inbound(
-        &self,
-        headers: HeaderMap,
-        body: String,
-        remainder: &str,
-    ) -> Result<InboundRequest, AppError> {
+    /// 按入站路径推导本次请求的请求级协议
+    ///
+    /// Anthropic 家族只有一种协议，直接返回；OpenAI 家族按路径区分
+    /// Responses 与 Chat Completions（见 [`ApiProtocol::detect_openai`]）。
+    ///
+    /// 返回 `None` 表示路径明显属于**另一个协议家族**（如 `anthropic` 接入点收到
+    /// `/v1/responses`）——此时不应回落成本家族协议把请求发去错误的端点，
+    /// 而应由调用方明确拒绝。判定依据是路径中的 OpenAI 专属端点标记。
+    pub fn resolve_protocol(&self, remainder: &str) -> Option<ApiProtocol> {
         match self {
             AccessPointType::Anthropic => {
-                anthropic::parse_inbound(self.clone(), headers, body, remainder)
+                if is_openai_only_endpoint(remainder) {
+                    None
+                } else {
+                    Some(ApiProtocol::Anthropic)
+                }
             }
-            AccessPointType::OpenAi => {
-                openai::parse_inbound(self.clone(), headers, body, remainder)
-            }
+            AccessPointType::OpenAi => Some(ApiProtocol::detect_openai(remainder)),
         }
     }
 
-    /// 提取客户端会话标识（不同协议读取不同 header 名）
-    ///
-    /// 返回 `None` 表示请求未携带会话标识；类型化的 Option 取代了之前的 "unknown" sentinel。
-    pub fn extract_session_id(&self, inbound: &InboundRequest) -> Option<String> {
-        match self {
-            AccessPointType::Anthropic => anthropic::extract_session_id(&inbound.headers),
-            AccessPointType::OpenAi => inbound
-                .headers
-                .get("thread-id")
-                .and_then(|v| v.to_str().ok())
-                .map(String::from),
-        }
-    }
-
-    /// 向上游请求头注入 API key（不同协议用不同 header 名/格式）
-    pub fn inject_api_key(&self, headers: &mut HeaderMap, key: &str) {
-        match self {
-            AccessPointType::Anthropic => anthropic::inject_api_key(headers, key),
-            AccessPointType::OpenAi => openai::inject_api_key(headers, key),
-        }
-    }
-
-    /// 替换请求体中的 model 字段（用于模型路由网格的映射）
-    pub fn replace_model_in_body(&self, body: &Value, new_model: &str) -> Value {
-        match self {
-            AccessPointType::Anthropic => anthropic::replace_model_in_body(body, new_model),
-            AccessPointType::OpenAi => openai::replace_model_in_body(body, new_model),
-        }
-    }
-
-    /// 判断上游响应是否为 SSE 流式响应（基于 Content-Type）
-    pub fn is_sse_response(&self, resp_headers: &HeaderMap) -> bool {
-        match self {
-            AccessPointType::Anthropic => anthropic::is_sse_response(resp_headers),
-            AccessPointType::OpenAi => openai::is_sse_response(resp_headers),
-        }
+    /// 校验该接入点是否接受指定请求级协议
+    pub fn allows(&self, protocol: ApiProtocol) -> bool {
+        self.allowed_protocols().contains(&protocol)
     }
 }
 
@@ -111,6 +91,15 @@ impl fmt::Display for AccessPointType {
     }
 }
 
+/// 判断路径是否命中 OpenAI 专属端点
+///
+/// 用于 Anthropic 接入点的家族守卫：`/v1/responses`、`/v1/chat/completions`
+/// 这类路径只可能属于 OpenAI 家族，不应被当成 Anthropic 协议转发。
+fn is_openai_only_endpoint(remainder: &str) -> bool {
+    let path = remainder.to_lowercase();
+    path.contains("responses") || path.contains("chat/completions")
+}
+
 impl FromStr for AccessPointType {
     type Err = AppError;
 
@@ -119,6 +108,80 @@ impl FromStr for AccessPointType {
             "anthropic" => Ok(AccessPointType::Anthropic),
             "openai" => Ok(AccessPointType::OpenAi),
             _ => Err(AppError::Validation(format!("不支持的接入点类型: {}", s))),
+        }
+    }
+}
+
+// ─── 单元测试 ──────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anthropic_resolves_to_anthropic_protocol() {
+        assert_eq!(
+            AccessPointType::Anthropic.resolve_protocol("v1/messages"),
+            Some(ApiProtocol::Anthropic)
+        );
+    }
+
+    #[test]
+    fn openai_resolves_responses_path() {
+        assert_eq!(
+            AccessPointType::OpenAi.resolve_protocol("v1/responses"),
+            Some(ApiProtocol::OpenAiResponse)
+        );
+    }
+
+    #[test]
+    fn openai_resolves_chat_path() {
+        assert_eq!(
+            AccessPointType::OpenAi.resolve_protocol("v1/chat/completions"),
+            Some(ApiProtocol::OpenAi)
+        );
+    }
+
+    #[test]
+    fn anthropic_rejects_openai_only_endpoints() {
+        // 家族守卫：Anthropic 接入点收到 OpenAI 专属路径应不可解析
+        assert_eq!(
+            AccessPointType::Anthropic.resolve_protocol("v1/responses"),
+            None
+        );
+        assert_eq!(
+            AccessPointType::Anthropic.resolve_protocol("v1/chat/completions"),
+            None
+        );
+    }
+
+    #[test]
+    fn openai_accepts_unknown_path_as_chat() {
+        // OpenAI 家族对未知路径兜底为 Chat Completions（保持既有行为）
+        assert_eq!(
+            AccessPointType::OpenAi.resolve_protocol("v1/models"),
+            Some(ApiProtocol::OpenAi)
+        );
+    }
+
+    #[test]
+    fn family_guard_rejects_cross_family_protocol() {
+        assert!(AccessPointType::Anthropic.allows(ApiProtocol::Anthropic));
+        assert!(!AccessPointType::Anthropic.allows(ApiProtocol::OpenAi));
+        assert!(!AccessPointType::Anthropic.allows(ApiProtocol::OpenAiResponse));
+    }
+
+    #[test]
+    fn openai_family_allows_both_wire_protocols() {
+        assert!(AccessPointType::OpenAi.allows(ApiProtocol::OpenAi));
+        assert!(AccessPointType::OpenAi.allows(ApiProtocol::OpenAiResponse));
+        assert!(!AccessPointType::OpenAi.allows(ApiProtocol::Anthropic));
+    }
+
+    #[test]
+    fn from_str_roundtrip() {
+        for t in AccessPointType::all_variants() {
+            assert_eq!(AccessPointType::from_str(&t.to_string()).unwrap(), t);
         }
     }
 }

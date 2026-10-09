@@ -1,8 +1,9 @@
 # Token Proxy 架构文档
 
 此工程使用 Rust + axum 框架，在后端采用领域驱动设计四层架构（Domain / Application / Infrastructure / Presentation），前端使用
-React + TypeScript + Vite + Semi Design 构建 SPA，数据库使用 PostgreSQL 17，log_metadata 表通过 PostgreSQL
-原生分区语法（PARTITION BY RANGE）按月分区，由应用层 PartitionManager 自动管理分区生命周期。接入点采用账户池架构，通过
+React + TypeScript + Vite + Semi Design 构建 SPA，数据库使用 PostgreSQL 17，log_contents 表（原始请求/响应体）
+通过 PostgreSQL 原生分区语法（PARTITION BY RANGE）按月分区，由应用层 PartitionManager 自动管理分区生命周期；
+log_requests 表（标量字段 + 词元用量）为普通表，长期保留。接入点采用账户池架构，通过
 access_point_accounts 多对多关联实现多账号故障转移和负载分发，模型路由从线性列表升级为二维路由网格（source_model x
 provider_id）。
 
@@ -51,7 +52,7 @@ src/
 │   ├── user/               # User 聚合 (认证)
 │   ├── log/                # Log 聚合 (事件数据 + 审计日志; 含 operator_type、client_type、AuditAction 和 AuditEntityType 枚举)
 │   ├── system/             # System 聚合 (系统设置)
-│   └── shared/             # 跨聚合共享 (Status, ApiKey, AccessPointType + 协议方法, ClientType, EncryptionService, InboundRequest, UpstreamRequest, protocols/)
+│   └── shared/             # 跨聚合共享 (Status, ApiKey, AccessPointType 协议家族, ApiProtocol 请求级协议 + 5 个协议方法, ClientType, EncryptionService, InboundRequest, UpstreamRequest, protocols/)
 ├── application/            # 应用层 (用例编排, 依赖注入, 按聚合组织)
 │   ├── access_point/       # AccessPoint 聚合用例 (含账户池 + 路由网格 DTO)
 │   ├── auth/               # 跨聚合认证用例
@@ -131,12 +132,13 @@ domain/
 ├── shared/                 # 跨聚合共享
 │   ├── status.rs           # 启用/禁用状态枚举
 │   ├── api_key.rs          # API Key (掩码展示)
-│   ├── api_type.rs         # AccessPointType 枚举 (Anthropic/OpenAi) + 5 个协议适配方法 (parse_inbound/extract_session_id/inject_api_key/replace_model_in_body/is_sse_response)
-│   ├── client_type.rs      # ClientType 枚举 (ClaudeCode/Codex/Other/Unknown), 与 AccessPointType 正交
+│   ├── api_protocol.rs     # ApiProtocol 值对象 (Anthropic/OpenAi/OpenAiResponse) + 5 个协议适配方法 (parse_inbound/extract_session_id/inject_api_key/replace_model_in_body/is_sse_response) + detect_openai 路径推导
+│   ├── api_type.rs         # AccessPointType 枚举 (Anthropic/OpenAi 两个协议家族) + allowed_protocols/resolve_protocol/allows
+│   ├── client_type.rs      # ClientType 枚举 (ClaudeCode/Codex/Other/Unknown), 与 AccessPointType / ApiProtocol 均正交
 │   ├── encryption.rs       # EncryptionService trait (encrypt/decrypt)
-│   ├── inbound_request.rs  # InboundRequest struct (入站请求纯数据, 含 client_type 字段)
+│   ├── inbound_request.rs  # InboundRequest struct (入站请求纯数据, 含 protocol: ApiProtocol 字段)
 │   ├── upstream_request.rs # UpstreamRequest struct (上游请求纯数据, 无方法)
-│   ├── protocols/          # 协议适配实现 (每协议一文件, 由 AccessPointType 方法 match 分发)
+│   ├── protocols/          # 协议适配实现 (每协议一文件, 由 ApiProtocol 方法 match 分发)
 │   │   ├── anthropic.rs    # Anthropic 协议实现 (pub(in crate::domain::shared) fn)
 │   │   ├── openai.rs       # OpenAI 协议实现 (Chat Completions + Responses API 双端点)
 │   │   └── mod.rs
@@ -203,7 +205,7 @@ application/
 │   └── dto/                # Provider/Account 增改查 DTO
 ├── proxy/                  # 跨聚合代理转发用例 (调度骨架 + 编排子组件)
 │   ├── mod.rs
-│   ├── proxy_pipeline.rs       # 核心代理转发管道 (60 行 execute 调度骨架 + try_one_account 子方法; 0 步关闭短路 + 协议解析含 ClientType 识别 + 排序粘滞 + 候选迭代)
+│   ├── proxy_pipeline.rs       # 核心代理转发管道 (60 行 execute 调度骨架 + try_one_account 子方法; 0 步关闭短路 + 协议推导/家族校验 + 解析含 ClientType 识别 + 排序粘滞 + 候选迭代)
 │   ├── proxy_call_record.rs    # 代理调用记录器 (start → attach_response → append/set_body → finish; Drop 兜底 SSE 中断标记 is_interrupted)
 │   ├── tracked_spawner.rs      # 后台写入调度器 (fetch_add + try_current 守卫 + spawn + fetch_sub; 归一代理日志和会话粘滞两处 spawn 模板)
 │   ├── account_selector.rs     # 候选账号异步迭代器 (AccountSelector + AccountCandidate; 封装加载 Account → 跳过不可用 → 加载 Provider → 解密 API Key 四步)
@@ -226,8 +228,8 @@ application/
 - 每个聚合目录内聚 service 和 dto，通过 `super::dto::` 相对路径引用同目录 DTO
 - 外部引用使用绝对路径 `crate::application::<聚合>::dto::*`
 - auth/、proxy/、dashboard/ 和 system/ 是跨聚合编排服务，不归属于单一聚合
-- dashboard/ 虽属跨聚合视图，但仅依赖 `LogRepository`——事实表为 `log_metadata` / `log_token_usage`
-  ，users/accounts/providers 仅作展示数据 LEFT JOIN 进同一聚合 SQL，不构成跨聚合读模型
+- dashboard/ 虽属跨聚合视图，但仅依赖 `LogRepository`——事实表为 `log_requests`（自含标量字段与词元列），
+  users/accounts/providers 仅作展示数据 LEFT JOIN 进同一聚合 SQL，不构成跨聚合读模型
 - system/ 除依赖 `SystemSettingsRepository` 和 `AuditLogRepository` 外，新增 `Arc<PartitionManager>` 直接注入
   （遵循 JwtService/ProxyClient 相同的具体类型注入模式），提供 `get_log_stats()` 方法查询分区统计
 - `ProxyCallRecord` 置于 `application/proxy/` 而非基础设施层——它直接接受领域聚合（`InboundRequest` / `UpstreamRequest` /
@@ -244,7 +246,7 @@ start(请求侧已知, 启动计时)
 ```
 
 构造时 `start` 从 `InboundRequest`、`UpstreamRequest`、`AccessPointEx` 提取请求侧字段（model_original / model_mapped /
-api_type / session_id / user_id / provider_id / account_id 等），上游响应头到达后通过 `attach_response` 登记状态码和响应头，SSE
+api_type / api_protocol / session_id / user_id / provider_id / account_id 等），上游响应头到达后通过 `attach_response` 登记状态码和响应头，SSE
 流通过 `append_body` 逐段累积、非流式通过 `set_body` 一次性写入。`finish` 计算 `duration_ms` 并构造 `ProxyLogInput`（
 `application/log/dto/proxy_log_input.rs`，仅作 LogService 一次性入参契约，不再是双重职责 DTO）后通过 `TrackedSpawner` 异步交给
 `LogService::record_proxy_log` 落库。
@@ -282,8 +284,7 @@ infrastructure/
 │       ├── access_point_account_repository.rs         # access_point_accounts 表 SeaORM 实体定义
 │       ├── session_affinity_repository.rs # session_affinity 表 SeaORM 实体定义
 │       ├── refresh_token_repository.rs   # SeaOrmRefreshTokenRepository
-│       ├── log_repository.rs             # SeaOrmLogRepository
-│       ├── log_token_usage_repository.rs # SeaOrmLogTokenUsageRepository
+│       ├── log_repository.rs             # SeaOrmLogRepository（log_requests + log_contents 两表）
 │       ├── audit_log_repository.rs       # SeaOrmAuditLogRepository
 │       ├── user_api_key_repository.rs    # SeaOrmUserApiKeyRepository
 │       └── system_settings_repository.rs # SeaOrmSystemSettingsRepository
@@ -563,31 +564,34 @@ src/migrations/
 ├── mod.rs
 ├── m20260519_000001_initial.rs              # 初始 Schema (含所有基础表)
 ├── m20260618_000002_account_pool.rs          # 接入点账户池重构: 创建 access_point_accounts + session_affinity 表, access_points 列变更, accounts 列新增, providers 列变更, audit_logs 列变更
-└── m20260623_000003_client_type.rs           # ClientType 支持: log_metadata + log_token_usage 添加 client_type VARCHAR(32) 列
+├── m20260623_000003_client_type.rs           # ClientType 支持: 日志表添加 client_type VARCHAR(32) 列
+├── m20260626_000004_storage_cap.rs           # 日志存储上限: system_settings 新增 log_storage_cap_gb 列
+├── m20260628_000005_log_requests.rs          # 日志表架构重构: log_metadata + log_token_usage 合并为 log_requests, 大体积 JSON/TEXT 留在 log_contents
+├── m20261009_000006_api_protocol.rs          # 请求级协议: log_requests 新增 api_protocol VARCHAR(32) NOT NULL DEFAULT 'anthropic' + 索引, 回填存量 openai 行
+└── m20261009_000007_provider_compat.rs       # 上游兼容策略: providers 新增 normalize_legacy_roles BOOLEAN NOT NULL DEFAULT FALSE
 ```
 
 ### 数据库表
 
-| 表                    | 说明                            | 关键字段                                                                                                       |
-| --------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| providers             | LLM 提供商                      | name, openai_base_url, anthropic_base_url, models, rate_limit_config (JSONB), balance_exhausted_config (JSONB) |
-| accounts              | API 账号                        | encrypted_key, key_tail (末 6 位), provider_id (FK), disabled_reason, available_at                             |
-| users                 | 管理员用户                      | username, password_hash                                                                                        |
-| access_points         | 接入点                          | short_code (唯一), api_type, routing_strategy, model_routing_grid (JSONB)                                      |
-| access_point_accounts | 接入点账号 (多对多)             | access_point_id (FK), account_id (FK), weight, priority                                                        |
-| session_affinity      | 会话粘滞                        | access_point_id (FK), session_id, account_id (FK)                                                              |
-| refresh_tokens        | JWT 刷新令牌                    | user_id (FK), token_hash, expires_at, revoked; 过期记录由 tokio 后台任务每小时物理清理                         |
-| log_metadata          | 代理日志元数据 (按月分区)       | session_id, model_original, model_mapped, status_code, duration_ms, client_type                                |
-| log_contents          | 代理日志内容 (按月分区)         | log_id, timestamp, request_headers, request_body, response_body                                                |
-| log_token_usage       | 词元用量详情 (永久保留)         | log_id, timestamp, input_tokens, output_tokens, cache_creation, cache_read, usage_type, client_type            |
-| audit_logs            | 操作审计日志                    | operator_id, operator_type, action, entity_type, entity_id, details                                            |
-| user_api_keys         | 用户 API key (SHA-256 哈希存储) | user_id (FK), key_hash (唯一), key_prefix, description, last_used_at, status, created_at                       |
-| system_settings       | 系统设置                        | key, value                                                                                                     |
+| 表                    | 说明                            | 关键字段                                                                                                                                          |
+| --------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| providers             | LLM 提供商                      | name, openai_base_url, anthropic_base_url, models, rate_limit_config (JSONB), balance_exhausted_config (JSONB), normalize_legacy_roles (上游兼容) |
+| accounts              | API 账号                        | encrypted_key, key_tail (末 6 位), provider_id (FK), disabled_reason, available_at                                                                |
+| users                 | 管理员用户                      | username, password_hash                                                                                                                           |
+| access_points         | 接入点                          | short_code (唯一), api_type, routing_strategy, model_routing_grid (JSONB)                                                                         |
+| access_point_accounts | 接入点账号 (多对多)             | access_point_id (FK), account_id (FK), weight, priority                                                                                           |
+| session_affinity      | 会话粘滞                        | access_point_id (FK), session_id, account_id (FK)                                                                                                 |
+| refresh_tokens        | JWT 刷新令牌                    | user_id (FK), token_hash, expires_at, revoked; 过期记录由 tokio 后台任务每小时物理清理                                                            |
+| log_requests          | 代理请求标量 + 词元 (永久保留)  | session_id, model_original, model_mapped, model_normalized, status_code, duration_ms, api_type, api_protocol, input/output/cache/thinking tokens  |
+| log_contents          | 代理日志原始内容 (按月分区)     | log_id, timestamp, request_headers, request_body, response_body, response_headers                                                                 |
+| audit_logs            | 操作审计日志                    | operator_id, operator_type, action, entity_type, entity_id, details                                                                               |
+| user_api_keys         | 用户 API key (SHA-256 哈希存储) | user_id (FK), key_hash (唯一), key_prefix, description, last_used_at, status, created_at                                                          |
+| system_settings       | 系统设置                        | key, value                                                                                                                                        |
 
-**分区策略**: `log_metadata` 和 `log_contents` 表按月 `RANGE (timestamp)` 分区，由应用层 `PartitionManager`
-自动管理（创建 / 清理），通过 `pg_try_advisory_xact_lock` 保证多副本安全。`PartitionManager` 同时提供 `get_partition_stats()`
-方法，通过 PostgreSQL 系统表（`pg_inherits` + `pg_class`）查询所有分区的磁盘占用和估算行数，供系统设置页面展示。
-`log_token_usage` 不做分区，永久保留用于分析。
+**分区策略**: 仅 `log_contents` 表按月 `RANGE (timestamp)` 分区（见 `PARTITIONED_TABLES` 常量），由应用层
+`PartitionManager` 自动管理（创建 / 清理），通过 `pg_try_advisory_xact_lock` 保证多副本安全。`PartitionManager` 同时提供
+`get_partition_stats()` 方法，通过 PostgreSQL 系统表（`pg_inherits` + `pg_class`）查询各分区的磁盘占用和估算行数，
+供系统设置页面展示。`log_requests` 为普通表，不分区、长期保留，词元用量分析直接查询该表。
 
 ## 代理转发流程
 
@@ -602,14 +606,17 @@ POST /ap/{short_code}/v1/messages  (Authorization: Bearer <user_api_key>)
          │
          ├── 1. 加载并准备聚合根: find_by_short_code → AccessPointEx → validate_usable / has_available_accounts
          │
-         ├── 2. 协议解析: access_point.api_type.parse_inbound(headers, body) → InboundRequest
-         │     access_point.api_type.extract_session_id(&inbound) → Option<String>
-         │     ClientType::from_user_agent(user_agent, &path) → client_type (客户端类型识别)
-         │     (协议方法 match 分发到 domain/shared/protocols/<name>.rs)
+         ├── 2. 请求级协议推导 + 家族校验: access_point.api_type.resolve_protocol(remainder) → ApiProtocol
+         │     !access_point.api_type.allows(protocol) → AppError::Validation (跨家族请求被明确拒绝)
          │
-         ├── 3. 排序 + 粘滞: sort_accounts() → 若有 session_id 则 apply_session_affinity
+         ├── 3. 协议解析 + 客户端识别: protocol.parse_inbound(headers, body, remainder) → InboundRequest
+         │     ClientType::from_request(&inbound.headers) → client_type (客户端类型识别)
+         │     client_type.extract_session_id(&inbound.headers) → Option<String>
+         │     (协议方法在 ApiProtocol 上 match 分发到 domain/shared/protocols/<name>.rs)
          │
-         └── 4. 重试循环 (AccountSelector 异步迭代):
+         ├── 4. 排序 + 粘滞: sort_accounts() → 若有 session_id 则 apply_session_affinity
+         │
+         └── 5. 重试循环 (AccountSelector 异步迭代):
          │
          ├── selector.next() → AccountCandidate { account, account_id, provider, upstream_key }
          │   (内部自动完成: 加载 Account → 跳过 is_available=false → 加载 Provider → 解密 API Key)
@@ -618,13 +625,13 @@ POST /ap/{short_code}/v1/messages  (Authorization: Bearer <user_api_key>)
               │
               ├── a. AccessPointEx::build_upstream_request(&inbound, &provider, &upstream_key, remainder)
               │       → UpstreamRequest { url, headers, body, mapped_model }
-              │       (聚合根编排: URL 拼接 + 模型路由网格查表 + 协议方法 inject_api_key/replace_model_in_body)
+              │       (聚合根编排: URL 拼接 + 模型路由网格查表 + inbound.protocol 的协议方法 inject_api_key/replace_model_in_body)
               │
               ├── b. ProxyCallRecord::start(请求侧已知, 启动计时)
               │
               ├── c. UpstreamDispatcher::forward(&upstream) → reqwest::Response
               │       record.attach_response(status, &resp_headers)
-              │       is_sse = access_point.api_type.is_sse_response(&resp_headers)
+              │       is_sse = inbound.protocol.is_sse_response(&resp_headers)
               │
               └── d. UpstreamOutcome::classify(provider, status, &resp_headers, resp_body, is_sse):
                       ├── Success / ClientError / ServerError → 透传给客户端 → RetryDecision::Return
@@ -648,31 +655,86 @@ POST /ap/{short_code}/v1/messages  (Authorization: Bearer <user_api_key>)
 
 ### 协议适配层（domain/shared/protocols/）
 
-LLM API 协议的差异点（请求头格式、session 标识 header 名、API key 注入方式、body 字段约定）由 `AccessPointType` 枚举挂载的 5
-个协议方法（`parse_inbound` / `extract_session_id` / `inject_api_key` / `replace_model_in_body` / `is_sse_response`
-）封装。每个协议方法内部 `match self` 后调用对应协议模块（`protocols/<name>.rs`）中的 `pub(in crate::domain::shared) fn`。
+LLM API 协议的差异点（请求头格式、session 标识 header 名、API key 注入方式、body 字段约定）由**请求级值对象**
+`ApiProtocol`（`src/domain/shared/api_protocol.rs`）挂载的 5 个协议方法（`parse_inbound` / `extract_session_id` /
+`inject_api_key` / `replace_model_in_body` / `is_sse_response`）封装。每个协议方法内部 `match self` 后调用对应协议模块
+（`protocols/<name>.rs`）中的 `pub(in crate::domain::shared) fn`。
 
 **已支持的协议**：
 
-| 协议      | AccessPointType 变体 | 协议文件               | 端点                                                                        |
-| --------- | -------------------- | ---------------------- | --------------------------------------------------------------------------- |
-| Anthropic | Anthropic            | protocols/anthropic.rs | `/v1/messages`                                                              |
-| OpenAI    | OpenAi               | protocols/openai.rs    | Chat Completions (`/v1/chat/completions`) + Responses API (`/v1/responses`) |
+| 请求协议 (ApiProtocol) | 协议家族 (AccessPointType) | 协议文件               | 端点                                       |
+| ---------------------- | -------------------------- | ---------------------- | ------------------------------------------ |
+| `anthropic`            | Anthropic                  | protocols/anthropic.rs | `/v1/messages`                             |
+| `openai`               | OpenAi                     | protocols/openai.rs    | `/v1/chat/completions`（Chat Completions） |
+| `openai_response`      | OpenAi                     | protocols/openai.rs    | `/v1/responses`（Responses API）           |
 
-**为什么挂在 AccessPointType 而非新建 ApiProtocol 枚举**：`AccessPointType` 本来就是协议类型的抽象（数据库列约束、
-`Provider::base_url_for` 已用它分发），让现有概念长出本该属于它的行为，避免并行枚举的概念膨胀。
+**「协议家族」与「请求级协议」是两个正交概念**，这是本层最关键的设计决策：
 
-**新增协议的工作量**：
+- `AccessPointType`（2 个 variant：`Anthropic` / `OpenAi`）回答"这个接入点属于哪个协议家族"，是**实体字段**：决定
+  `Provider::base_url_for` 取哪个 base_url、前端新建接入点时选哪一项，仍落库到 `access_points.api_type` 列
+- `ApiProtocol`（3 个 variant：`Anthropic` / `OpenAi` / `OpenAiResponse`）回答"这一次请求实际走哪个上游协议"，是**请求级
+  值对象**，由入站路径在管道中运行期推导（`AccessPointType::resolve_protocol` → `ApiProtocol::detect_openai`）
 
-1. `AccessPointType` 加新变体 + 数据库列约束 + 前端 Select
-2. 新建 `protocols/<name>.rs` 实现 5 个 `pub(in crate::domain::shared) fn`
-3. **编译器自动指出所有需要补 match 分支的位置**（5 个协议方法 + `Provider::base_url_for`）
+OpenAI 家族有两条线协议（Chat Completions / Responses）共用同一服务商 base_url 与同一 `openai` 接入点——二者请求体形状、
+流式事件族、usage 字段族都不同，但它们是同一个接入点的两种调用方式，不应迫使运维建两个接入点。因此**不需要**为 Responses
+新建接入点类型，也**没有**对应的数据库枚举变体或前端 Select 选项；协议在每次请求到达时按路径推导：
+
+1. `access_point.api_type.resolve_protocol(remainder)` 得到本次请求的 `ApiProtocol`
+2. `access_point.api_type.allows(protocol)` 做家族守卫，跨家族请求（如 `anthropic` 接入点收到 `/v1/responses`）以
+   `AppError::Validation` 明确拒绝，而不是把 Anthropic body 发去 OpenAI 端点
+3. `protocol.parse_inbound(...)` 按协议解析入站请求，`InboundRequest.protocol` 字段承载该事实供后续步骤复用
+
+**请求级协议落库**：迁移 `m20261009_000006_api_protocol` 为 `log_requests` 表新增
+`api_protocol VARCHAR(32) NOT NULL DEFAULT 'anthropic'` 列及 `idx_log_requests_api_protocol` 索引，并把存量
+`api_type = 'openai'` 的行回填为 `'openai'`（旧版本无法区分两条线协议，保守取值）。`LogRequest` 实体同时保留
+`api_type`（家族）与 `api_protocol`（请求协议）两列，`ProxyLogInput` 与各日志 DTO（`log_summary_response` /
+`log_detail_full_response` / `session_content_item_response` / `new_log_event`）均暴露 `api_protocol`。
+
+**新增协议的工作量**（全新协议家族）：
+
+1. `ApiProtocol` 加新 variant（`as_str` / `FromStr` / `Display` / 5 个协议方法的 match 分支由编译器指出）+ 新建
+   `protocols/<name>.rs`
+2. `AccessPointType` 加新家族变体 + 数据库列约束（VARCHAR）+ 前端 Select（只有家族才需要三处同步）
+3. **编译器自动指出所有需要补 match 分支的位置**（5 个协议方法 + `Provider::base_url_for` 等）
 4. `InboundRequest`、`UpstreamRequest`、`ProxyCallRecord`、`ProxyPipeline` 等组件零改动 —— 开放性由架构原生保证
 
-**ClientType 正交概念**：`ClientType` 枚举（`ClaudeCode` / `Codex` / `Other` / `Unknown`）与 `AccessPointType`
-正交——前者描述"哪个客户端在调用"，后者描述"上游走什么协议"。ClientType 由 `ProxyPipeline` 在协议解析阶段从 User-Agent
-和请求路径中识别，随 `InboundRequest` 流入日志管线，最终记录到 `log_metadata.client_type` 和 `log_token_usage.client_type`
-列，供日志查询和后续按客户端分群的分析使用。
+**成熟 SDK 的使用边界（async-openai 0.41.1）**：`Cargo.toml` 引入 `async-openai 0.41.1`（`default-features = false,
+features = ["chat-completion", "responses"]`），但**刻意不用于出站转发**，仅用于"类型化正确性有价值且安全"的位置：
+
+- `protocols/openai.rs::parse_responses_inbound`：对 Responses 请求体做一次 best-effort 结构探测
+  （`async_openai::types::responses::CreateResponse`），失败仅记 `debug!` 日志、**不阻断转发**
+- `parsers/parsed_token_usage.rs`：Responses 的 usage 对象走
+  `async_openai::types::responses::ResponseUsage` 类型化解析后归一化，`input_tokens_details.cached_tokens` 现在能正确
+  拆到 `cache_read_input_tokens`（此前该字段硬编码为 0）；SDK 反序列化失败时回退原始 JSON 字段提取，日志能力不退化
+
+**词元解析按协议路由（修复了一个静默缺陷）**：入口为
+`parsed_token_usage::parse_usage_for_protocol(protocol, body)`，由 `LogService` 传入 `ProxyLogInput.api_protocol`。
+原因是 Anthropic 与 OpenAI Responses 的**非流式**响应都使用顶层 `usage.input_tokens`，形状无法区分：
+旧的纯形状探测链会让 Responses 响应命中 OpenAI Chat 解析器（按 `prompt_tokens`/`completion_tokens` 读字段），
+导致 `input/output/thinking/cache_read` **全部归 0 且不报错**。按协议直接路由后，
+`reasoning_tokens` 扣减与 `cached_tokens` 拆分才真正生效；`parse_usage_from_response` 退居为兜底探测链
+（容忍上游返回与请求协议不一致的形态）。回归测试见 `test_protocol_routing_responses_non_streaming_splits_reasoning`
+
+**上游兼容降级（`UpstreamCompat`）**：服务商级值对象 `domain/shared/upstream_compat.rs` 描述上游端点与最新规范的落差。
+默认全透明（`normalize_legacy_roles = false`），请求体一字不改；仅当服务商显式开启时才把 OpenAI 系上游无法识别的
+`developer` role 降级为语义等价的 `system`。降级在 `AccessPointEx::build_upstream_request` 内完成，
+结果通过 `UpstreamRequest.normalized_roles` 回传，管道对非零值 `warn!` 记录并参与日志。这样既解决了
+"上游服务端 SDK 过旧导致 400" 的现实问题，又保证代理默认仍是透明转发、且任何改写都可观测可审计。
+
+**为什么 SDK 不承担转发**（经实测验证的架构约束）：
+
+- SDK 的类型化请求类型会**丢弃未知字段**（对未知顶层参数做 round-trip 会丢失该参数），也会**拒绝未知的
+  discriminated-union item 类型**（如 Responses `input` 中 SDK 尚未建模的新 item 类型直接反序列化失败）
+- SDK 的原始请求原语（`post` / `post_raw` / `post_stream`）为 `pub(crate)`，crate 外部无法用于字节级透传
+- `byot` feature 的 `*_byot` 泛型方法**已实测可原样透传请求体**（未知字段、`developer` role、键序全部保留），
+  但流式 `create_stream_byot` 只产出**已解析的 JSON 事件值**、不保留原始 SSE 分帧（`event:` 行 / `[DONE]` / 空行边界）；
+  用 SDK 转发流式响应须自行重分帧，一旦与原上游有差异会以"客户端静默卡住"形式故障，故默认不启用
+- 因此代理的转发契约仍是**字节保真的原始 body 透传**，由现有基于 `reqwest` 的 `ProxyClient` / `UpstreamDispatcher`
+  承担；`reqwest` 安装在 `ProxyClient` 这一适配器边界上，将来若有 SDK 暴露原始转发能力，该边界即替换点
+
+**ClientType 正交概念**：`ClientType` 枚举（`ClaudeCode` / `Codex` / `Other` / `Unknown`）与 `AccessPointType`、
+`ApiProtocol` 均正交——它描述"哪个客户端在调用"。ClientType 由 `ProxyPipeline` 在协议解析阶段从请求头中识别，最终记录到
+`log_requests.client_type` 列，供日志查询和按客户端分群的分析使用。
 
 ### 代理转发领域决策（domain/proxy/）
 
@@ -945,25 +1007,26 @@ Dockerfile 分三阶段构建，`.dockerignore` 排除 `target/`、`node_modules
 
 ## 项目状态
 
-| 维度        | 状态                                                                          |
-| ----------- | ----------------------------------------------------------------------------- |
-| Phase 1 MVP | 已完成                                                                        |
-| 后端        | ~170 个 .rs 文件, cargo check 零错误零警告                                    |
-| 前端        | ~77 个 .ts/.tsx 源文件, tsc --noEmit 零错误                                   |
-| Schema 迁移 | 3 个迁移文件 (初始表 + 账户池 + client_type)                                  |
-| Docker 构建 | 多阶段构建就绪 (含 .dockerignore + HEALTHCHECK)                               |
-| 镜像分发    | GitHub Container Registry (`ghcr.io/your-org/token-proxy`)                    |
-| CI          | GitHub Actions 3 并行 job (后端检查 + 前端检查 + 集成测试)                    |
-| 依赖更新    | Dependabot 每周自动检查 cargo、pnpm 前端依赖和 Docker 基础镜像                |
-| 代码格式化  | Prettier (前端) + rustfmt (后端), pre-commit hook 自动执行                    |
-| 变更日志    | git-cliff 基于约定式提交生成 CHANGELOG                                        |
-| 工具链固定  | rust-toolchain.toml 锁定 Rust 1.96                                            |
-| 发布流程    | `/release` Claude Code 技能 + release/\* 分支 + cherry-pick CHANGELOG 回 main |
+| 维度        | 状态                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------- |
+| Phase 1 MVP | 已完成                                                                                |
+| 后端        | ~170 个 .rs 文件, cargo check 零错误零警告                                            |
+| 前端        | ~77 个 .ts/.tsx 源文件, tsc --noEmit 零错误                                           |
+| Schema 迁移 | 6 个迁移文件 (初始表 + 账户池 + client_type + 存储上限 + log_requests + api_protocol) |
+| Docker 构建 | 多阶段构建就绪 (含 .dockerignore + HEALTHCHECK)                                       |
+| 镜像分发    | GitHub Container Registry (`ghcr.io/your-org/token-proxy`)                            |
+| CI          | GitHub Actions 3 并行 job (后端检查 + 前端检查 + 集成测试)                            |
+| 依赖更新    | Dependabot 每周自动检查 cargo、pnpm 前端依赖和 Docker 基础镜像                        |
+| 代码格式化  | Prettier (前端) + rustfmt (后端), pre-commit hook 自动执行                            |
+| 变更日志    | git-cliff 基于约定式提交生成 CHANGELOG                                                |
+| 工具链固定  | rust-toolchain.toml 锁定 Rust 1.96                                                    |
+| 发布流程    | `/release` Claude Code 技能 + release/\* 分支 + cherry-pick CHANGELOG 回 main         |
 
 ## 变更记录
 
 | 日期             | 变更说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-10-09       | 协议层领域重建模（家族 vs 请求协议正交）: 新增请求级值对象 `ApiProtocol`（`domain/shared/api_protocol.rs`，3 个 variant: `Anthropic` / `OpenAi` / `OpenAiResponse`，`as_str`/`Display`/`FromStr`/serde 输出 `anthropic`/`openai`/`openai_response`），承载原先挂在 `AccessPointType` 上的 5 个协议方法（`parse_inbound` / `extract_session_id` / `inject_api_key` / `replace_model_in_body` / `is_sse_response`，`match self` 分发到 `protocols/*.rs`）。`AccessPointType`（`domain/shared/api_type.rs`）收窄为 2 个协议家族 variant，新增 `allowed_protocols()` / `resolve_protocol(remainder)` / `allows(protocol)`，不再携带协议行为。`ProxyPipeline::execute` 新增第 2 步请求级协议推导 + 家族守卫（`resolve_protocol` → `allows` → `AppError::Validation`），`InboundRequest` 的 `api_type` 字段替换为 `protocol: ApiProtocol`。日志侧新增迁移 `m20261009_000006_api_protocol`（`log_requests.api_protocol VARCHAR(32) NOT NULL DEFAULT 'anthropic'` + 索引，回填存量 `openai` 行），`LogRequest` 实体、`ProxyLogInput` 及各日志 DTO 同步暴露 `api_protocol`。引入成熟 SDK `async-openai 0.41.1`（`default-features = false`, features `chat-completion`+`responses`）用于 Responses 请求体结构探测与 `ResponseUsage` 类型化解析（正确拆出 `input_tokens_details.cached_tokens` → `cache_read_input_tokens`），但**不承担出站转发**——SDK 类型化请求会丢弃未知字段、拒绝未知 union item，且 `post`/`post_raw`/`post_stream` 为 `pub(crate)`，字节保真透传仍由 `reqwest` 的 `ProxyClient`/`UpstreamDispatcher` 负责                                                                                                                               |
 | 2026-06-25       | 系统设置日志管理模块: `PartitionManager` 新增 `PartitionInfo` 结构体（partition_name / parent_table / size_bytes / size_pretty / row_count_estimate）和 `get_partition_stats()` 公开方法（通过 PostgreSQL 系统表 pg_inherits + pg_class 查询分区磁盘占用和估算行数），`existing_partitions()` 从私有改为公开。应用层：`SettingsService` 新增 `partition_manager: Arc<PartitionManager>` 字段（遵循 JwtService/ProxyClient 相同的具体类型注入模式），新增 `get_log_stats()` 方法（委托 PartitionManager 查询 → 映射 DTO → 按月聚合 → 格式化）和 `format_bytes()` 辅助函数；`dto/log_stats_dto.rs` 新增 `PartitionInfo` / `MonthlySummary` / `LogStatsResponse` 三个 DTO；`AppState` 新增 `pub partition_manager: Arc<PartitionManager>` 字段。展示层：`settings_routes.rs` 新增 `GET /api/settings/log-stats` JWT 认证端点。前端：新增 `types/settings.ts`（PartitionInfo / MonthlySummary / LogStatsResponse / Settings 接口）；`api.ts` 新增 `settingsApi` 对象（getLogStats / getSettings / updateSettings）；`SettingsPage` 重写为环形饼图（Recharts PieChart + Semi Design CSS 变量色板）+ 分区列表 Table（4 列）+ 汇总统计 + 保留月数 InputNumber 表单（两个并行 useFetch）。分区查询从 infrastructure 层直接通过 PostgreSQL 系统表执行，不通过领域层 Repository                                                                                                                                                                                                                                                                                                                                                                                |
 | 2026-06-25       | Dashboard 时间选择器自定义范围继承规则: 两个 `TimeRangeSelector`（数据指标与用量趋势）切换到 `custom` 时继承当前已选预设范围，`today` 映射为当天 00:00 到当前时间，`last7` 映射为最近 7 天，`last30` 映射为最近 30 天；已有 custom start/end 时保留原自定义范围。该规则保持时间维度解耦原则不变，补充前端交互契约，避免自定义范围固定回退到最近 7 天                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | 2026-06-25       | Dashboard 用量趋势卡片追加契约: `usage-trends` 后端响应日桶新增 `session_count`，与 `request_count` 一起描述请求量和会话量；前端 `UsageTrendsCard` 左侧面积图同时展示请求数和会话数，右侧每日 token 堆叠柱状图使用明确的非黑色色板区分 5 类词元。该变更保持个人视角、`user_id` 过滤和时间维度解耦原则不变，仅扩展 Dashboard 读模型和图表展示契约                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |

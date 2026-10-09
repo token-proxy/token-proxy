@@ -11,7 +11,7 @@
 use axum::http::HeaderMap;
 use serde_json::Value;
 
-use crate::domain::shared::AccessPointType;
+use crate::domain::shared::ApiProtocol;
 use crate::shared::error::AppError;
 
 use super::super::inbound_request::InboundRequest;
@@ -20,10 +20,9 @@ use super::super::inbound_request::InboundRequest;
 ///
 /// body 必须是合法 JSON 对象，必须包含 `model` 字段。
 pub(in crate::domain::shared) fn parse_inbound(
-    api_type: AccessPointType,
+    protocol: ApiProtocol,
     headers: HeaderMap,
     body: String,
-    _remainder: &str,
 ) -> Result<InboundRequest, AppError> {
     let body_json: Value = serde_json::from_str(&body)
         .map_err(|e| AppError::Validation(format!("请求体 JSON 解析失败: {}", e)))?;
@@ -33,7 +32,7 @@ pub(in crate::domain::shared) fn parse_inbound(
         .ok_or_else(|| AppError::Validation("请求体缺少 model 字段".to_string()))?
         .to_string();
     Ok(InboundRequest {
-        api_type,
+        protocol,
         headers,
         body: body_json,
         model,
@@ -104,26 +103,21 @@ mod tests {
     #[test]
     fn parse_inbound_extracts_model() {
         let body = r#"{"model":"claude-sonnet-4-20250514","messages":[]}"#.to_string();
-        let result = parse_inbound(AccessPointType::Anthropic, HeaderMap::new(), body, "");
+        let result = parse_inbound(ApiProtocol::Anthropic, HeaderMap::new(), body);
         let inbound = result.expect("解析应成功");
         assert_eq!(inbound.model, "claude-sonnet-4-20250514");
     }
 
     #[test]
     fn parse_inbound_rejects_invalid_json() {
-        let result = parse_inbound(
-            AccessPointType::Anthropic,
-            HeaderMap::new(),
-            "{".to_string(),
-            "",
-        );
+        let result = parse_inbound(ApiProtocol::Anthropic, HeaderMap::new(), "{".to_string());
         assert!(result.is_err());
     }
 
     #[test]
     fn parse_inbound_rejects_missing_model() {
         let body = r#"{"messages":[]}"#.to_string();
-        let result = parse_inbound(AccessPointType::Anthropic, HeaderMap::new(), body, "");
+        let result = parse_inbound(ApiProtocol::Anthropic, HeaderMap::new(), body);
         assert!(result.is_err());
     }
 

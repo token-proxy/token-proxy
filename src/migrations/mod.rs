@@ -8,6 +8,8 @@ mod m20260618_000002_account_pool;
 mod m20260623_000003_client_type;
 mod m20260626_000004_storage_cap;
 mod m20260628_000005_log_requests;
+mod m20261009_000006_api_protocol;
+mod m20261009_000007_provider_compat;
 
 use sea_orm_migration::prelude::*;
 
@@ -22,6 +24,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260623_000003_client_type::Migration),
             Box::new(m20260626_000004_storage_cap::Migration),
             Box::new(m20260628_000005_log_requests::Migration),
+            Box::new(m20261009_000006_api_protocol::Migration),
+            Box::new(m20261009_000007_provider_compat::Migration),
         ]
     }
 }

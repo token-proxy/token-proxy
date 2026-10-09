@@ -12,6 +12,7 @@ use crate::domain::provider::fault_config::FaultConfig;
 use crate::domain::provider::model_list::ModelList;
 use crate::domain::shared::status::Status;
 use crate::domain::shared::AccessPointType;
+use crate::domain::shared::UpstreamCompat;
 use crate::shared::error::AppError;
 
 /// SeaORM 实体映射 providers 表
@@ -27,6 +28,8 @@ pub struct Model {
     pub models: ModelList,
     pub rate_limit_config: Option<FaultConfig>,
     pub balance_exhausted_config: Option<FaultConfig>,
+    /// 上游兼容策略：是否把较新的消息 role 降级为等价旧 role（默认关闭，保持透明）
+    pub normalize_legacy_roles: bool,
     pub status: Status,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
@@ -78,6 +81,7 @@ impl Model {
             models: ModelList::default(),
             rate_limit_config: None,
             balance_exhausted_config: None,
+            normalize_legacy_roles: false,
             status: Status::Enabled,
             created_at: now,
             updated_at: now,
@@ -106,6 +110,19 @@ impl Model {
                 .as_deref()
                 .ok_or_else(|| AppError::Validation("该服务商未配置 OpenAI base URL".into())),
         }
+    }
+
+    /// 该服务商的上游兼容策略
+    ///
+    /// 由服务商级配置列决定，供代理管道在构造上游请求时决定是否做能力降级。
+    pub fn upstream_compat(&self) -> UpstreamCompat {
+        UpstreamCompat::from_db(self.normalize_legacy_roles)
+    }
+
+    /// 设置是否启用旧 role 降级（服务商级兼容开关）
+    pub fn set_normalize_legacy_roles(&mut self, enabled: bool) {
+        self.normalize_legacy_roles = enabled;
+        self.touch();
     }
 
     /// 重命名，名称不可为空

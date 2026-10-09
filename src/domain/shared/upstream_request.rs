@@ -22,4 +22,6 @@ pub struct UpstreamRequest {
     pub body: Value,
     /// 模型路由后的目标模型名
     pub mapped_model: String,
+    /// 因上游兼容策略被降级的消息 role 数量（0 表示请求体未因兼容策略改动）
+    pub normalized_roles: usize,
 }
