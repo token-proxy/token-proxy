@@ -232,7 +232,8 @@ impl LogRepository for SeaOrmLogRepository {
                     server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(28)?,
                     cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(29)?,
                     agent_type: row.try_get_by_index::<Option<String>>(30)?,
-                    api_protocol: row.try_get_by_index::<String>(31)?,
+                    // 列序对齐：SELECT 中 31=created_at、32=api_protocol（两者不可共用同一索引）
+                    api_protocol: row.try_get_by_index::<String>(32)?,
                     created_at: created_at_col,
                 })
             })
@@ -512,7 +513,8 @@ impl LogRepository for SeaOrmLogRepository {
                     server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(28)?,
                     cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(29)?,
                     agent_type: row.try_get_by_index::<Option<String>>(30)?,
-                    api_protocol: row.try_get_by_index::<String>(31)?,
+                    // 列序对齐：SELECT 中 31=created_at、32=api_protocol（两者不可共用同一索引）
+                    api_protocol: row.try_get_by_index::<String>(32)?,
                     created_at: created_at_col,
                 };
 
