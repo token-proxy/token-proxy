@@ -11,8 +11,10 @@ pub struct SessionContentItemResponse {
     pub timestamp: DateTime<Utc>,
     pub conversation_source: String,
     pub agent_id: Option<String>,
-    /// API 协议类型（"anthropic" | "openai"），用于按协议分发轮次判定逻辑
+    /// 接入点类型（"anthropic" | "openai"）
     pub api_type: String,
+    /// 本次请求实际使用的协议（anthropic / openai / openai_response），用于按协议分发内容解析
+    pub api_protocol: String,
     pub request_headers: serde_json::Value,
     pub request_body: serde_json::Value,
     pub response_body: String,

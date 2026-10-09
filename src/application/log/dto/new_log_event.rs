@@ -21,6 +21,8 @@ pub struct NewLogEvent {
     pub session_id: String,
     /// API 类型（如 "anthropic"、"openai"）
     pub api_type: String,
+    /// 本次请求实际使用的协议（anthropic / openai / openai_response）
+    pub api_protocol: String,
     /// 用户 ID
     pub user_id: Uuid,
     /// 接入点 ID

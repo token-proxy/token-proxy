@@ -21,7 +21,10 @@ pub struct ProxyLogInput {
     pub account_id: Uuid,
     pub model_original: String,
     pub model_mapped: String,
+    /// 接入点类型（协议家族）：anthropic / openai
     pub api_type: String,
+    /// 本次请求实际使用的协议：anthropic / openai / openai_response
+    pub api_protocol: String,
     /// 客户端类型（如 claude_code、codex 等）
     pub client_type: String,
     pub status_code: u16,

@@ -1,6 +1,6 @@
 //! 词元用量解析器（基础设施层）
 //!
-//! 从上游响应中解析词元用量信息，支持 4 种协议格式。
+//! 从上游响应中解析词元用量信息，支持 3 条线协议（4 种响应形态）。
 //!
 //! ## 归一化策略
 //!
@@ -12,16 +12,49 @@
 //! | Anthropic               | 5 个字段互斥，天然符合           | 无需处理                          |
 //! | OpenAI Chat Completions | `cached_tokens` ⊆ `prompt_tokens` | `input = prompt - cached`         |
 //! | OpenAI Responses API    | `reasoning_tokens` ⊆ `output_tokens` | `output = output - reasoning` |
+//!
+//! ## 协议感知解析（为什么必须按协议分发）
+//!
+//! Anthropic 与 OpenAI Responses 的**非流式**响应都使用顶层 `usage.input_tokens`，
+//! 结构上无法区分。若只按字段形状探测，Responses 的 `usage` 会被 Anthropic 解析器
+//! 先接走，导致 `reasoning_tokens` 扣减规则**静默失效**。
+//! 因此入口 [`parse_usage_for_protocol`] 以请求级协议为准直接路由；
+//! 仅在对应解析器返回空时才回退到全协议探测链。
 
 use serde_json::Value;
 
-/// 从响应中解析词元用量
+use crate::domain::shared::ApiProtocol;
+
+/// 按请求级协议解析词元用量
+///
+/// 协议由代理管道在请求路径上确定（`ApiProtocol`），此处直接路由，
+/// 避免 Anthropic 与 OpenAI Responses 的非流式响应被互相误解析。
+///
+/// 对应解析器返回空时回退 [`parse_usage_from_response`]（全协议探测链），
+/// 以容忍上游返回了与请求协议不一致的响应体形态。
+pub(crate) fn parse_usage_for_protocol(
+    protocol: ApiProtocol,
+    response_body: &str,
+) -> Option<ParsedTokenUsage> {
+    let by_protocol = match protocol {
+        ApiProtocol::Anthropic => parse_anthropic_usage(response_body),
+        ApiProtocol::OpenAi => extract_openai_chat_usage(response_body),
+        ApiProtocol::OpenAiResponse => extract_openai_responses_usage(response_body),
+    };
+
+    by_protocol.or_else(|| parse_usage_from_response(response_body))
+}
+
+/// 从响应中解析词元用量（全协议探测链，无法确定协议时的兜底）
 ///
 /// 按优先级依次尝试：
 /// 1. Anthropic SSE（`event:` / `data:` 行 + `message_delta` 事件）
 /// 2. Anthropic 非流式（顶层 `usage` 对象，`input_tokens` 字段族）
 /// 3. OpenAI Chat Completions（SSE 或非流式，`prompt_tokens` 字段族）
-/// 4. OpenAI Responses API（SSE 或非流式，`input_tokens` 字段族 + `output_tokens_details.reasoning_tokens`）
+/// 4. OpenAI Responses API（`response.completed` 事件或顶层 `usage` + `output_tokens_details`）
+///
+/// 注意：第 2 步会吞掉 Responses 的非流式响应。已知协议时应优先调用
+/// [`parse_usage_for_protocol`]。
 pub(crate) fn parse_usage_from_response(response_body: &str) -> Option<ParsedTokenUsage> {
     // 先尝试 Anthropic SSE 格式
     if let Some(usage) = parse_sse_usage(response_body) {
@@ -44,6 +77,11 @@ pub(crate) fn parse_usage_from_response(response_body: &str) -> Option<ParsedTok
     }
 
     None
+}
+
+/// Anthropic 协议解析链：SSE `message_delta` 优先，其次非流式顶层 `usage`
+fn parse_anthropic_usage(response_body: &str) -> Option<ParsedTokenUsage> {
+    parse_sse_usage(response_body).or_else(|| parse_non_streaming_usage(response_body))
 }
 
 // ─── Anthropic 格式解析 ───
@@ -252,15 +290,65 @@ fn extract_openai_responses_usage(body: &str) -> Option<ParsedTokenUsage> {
 
 /// 解析 OpenAI Responses API 的 `usage` 对象字段
 ///
-/// 字段映射（OpenAI Responses API 与 Anthropic 语义不同，需归一化）：
-/// - `input_tokens` → `input_tokens`（Responses API 无缓存概念，直接使用）
-/// - `output_tokens` **包含** `reasoning_tokens`，需扣除后存入 `output_tokens`
+/// 优先走成熟 SDK（`async-openai`）的类型化解析：SDK 的 `ResponseUsage`
+/// 完整建模了 `input_tokens_details.cached_tokens` 与
+/// `output_tokens_details.reasoning_tokens` 两个细节字段，
+/// 能把缓存命中输入与思考词元正确拆出来。
+///
+/// 字段映射（Responses API 与 Anthropic 语义不同，需归一化）：
+/// - `input_tokens`（含缓存命中）→ 扣除 `cached_tokens` 后存入 `input_tokens`
+/// - `input_tokens_details.cached_tokens` → `cache_read_input_tokens`
+/// - `output_tokens`（含 reasoning）→ 扣除 `reasoning_tokens` 后存入 `output_tokens`
 /// - `output_tokens_details.reasoning_tokens` → `thinking_tokens`
 /// - `total_tokens` → 直接使用 API 返回的总量
 ///
-/// 归一化后 `output + thinking = output_tokens`（与 Anthropic 的互斥语义对齐）。
+/// 归一化后 `output + thinking = 原始 output_tokens`，
+/// `input + cache_read = 原始 input_tokens`（与 Anthropic 的互斥语义对齐）。
+///
+/// SDK 反序列化失败（如上游返回了 SDK 尚未建模的字段组合）时回退到
+/// 原始 JSON 字段提取，保证日志能力不因 SDK 版本滞后而退化。
 fn parse_openai_responses_usage_fields(usage: &Value) -> Option<ParsedTokenUsage> {
-    let input_tokens = usage
+    match serde_json::from_value::<async_openai::types::responses::ResponseUsage>(usage.clone()) {
+        Ok(typed) => Some(normalize_sdk_response_usage(&typed, usage)),
+        Err(e) => {
+            tracing::debug!(
+                error = %e,
+                "Responses usage 未通过 SDK 类型化解析，回退原始 JSON 提取"
+            );
+            parse_openai_responses_usage_fallback(usage)
+        }
+    }
+}
+
+/// 把 SDK 的 `ResponseUsage` 归一化为互斥语义的 [`ParsedTokenUsage`]
+fn normalize_sdk_response_usage(
+    typed: &async_openai::types::responses::ResponseUsage,
+    raw: &Value,
+) -> ParsedTokenUsage {
+    let cached = typed.input_tokens_details.cached_tokens as i32;
+    let reasoning = typed.output_tokens_details.reasoning_tokens as i32;
+
+    // 1. 输入扣除缓存命中部分（缓存命中单独计列）
+    let input = (typed.input_tokens as i32 - cached).max(0);
+    // 2. 输出扣除推理词元（推理词元单独计列）
+    let output = (typed.output_tokens as i32 - reasoning).max(0);
+
+    ParsedTokenUsage {
+        input_tokens: input,
+        output_tokens: output,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: cached,
+        thinking_tokens: reasoning,
+        total_tokens: typed.total_tokens as i32,
+        raw_usage: raw.clone(),
+    }
+}
+
+/// 原始 JSON 字段提取（SDK 类型化解析失败时的兜底）
+///
+/// 与 [`normalize_sdk_response_usage`] 语义一致，仅字段获取方式不同。
+fn parse_openai_responses_usage_fallback(usage: &Value) -> Option<ParsedTokenUsage> {
+    let input_tokens_raw = usage
         .get("input_tokens")
         .and_then(Value::as_i64)
         .unwrap_or(0) as i32;
@@ -277,16 +365,22 @@ fn parse_openai_responses_usage_fields(usage: &Value) -> Option<ParsedTokenUsage
         .and_then(|v| v.get("reasoning_tokens"))
         .and_then(Value::as_i64)
         .unwrap_or(0) as i32;
+    let cached_tokens = usage
+        .get("input_tokens_details")
+        .and_then(|v| v.get("cached_tokens"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0) as i32;
 
-    // OpenAI 的 reasoning_tokens 是 output_tokens 的子集；归一化为互斥语义后
-    // output_tokens = 不含思考的输出，thinking = 推理词元
+    // OpenAI 的 reasoning_tokens 是 output_tokens 的子集、cached_tokens 是 input_tokens 的子集；
+    // 归一化为互斥语义后各自独立计列
+    let input = (input_tokens_raw - cached_tokens).max(0);
     let output = (output_tokens_raw - reasoning_tokens).max(0);
 
     Some(ParsedTokenUsage {
-        input_tokens,
+        input_tokens: input,
         output_tokens: output,
         cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0, // Responses API 暂未有 cached_tokens
+        cache_read_input_tokens: cached_tokens,
         thinking_tokens: reasoning_tokens,
         total_tokens,
         raw_usage: usage.clone(),
@@ -492,6 +586,46 @@ data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input
         assert_eq!(result.output_tokens, 99);
     }
 
+    /// SDK 类型化路径：完整 details 形状应拆出缓存命中输入与思考词元
+    #[test]
+    fn test_responses_usage_sdk_typed_path_splits_cached_and_reasoning() {
+        let usage: Value = serde_json::from_str(
+            r#"{
+                "input_tokens": 1000,
+                "input_tokens_details": { "cached_tokens": 400 },
+                "output_tokens": 200,
+                "output_tokens_details": { "reasoning_tokens": 50 },
+                "total_tokens": 1200
+            }"#,
+        )
+        .unwrap();
+
+        let result = parse_openai_responses_usage_fields(&usage).unwrap();
+        // 输入扣除缓存命中：1000 - 400
+        assert_eq!(result.input_tokens, 600);
+        assert_eq!(result.cache_read_input_tokens, 400);
+        // 输出扣除推理：200 - 50
+        assert_eq!(result.output_tokens, 150);
+        assert_eq!(result.thinking_tokens, 50);
+        assert_eq!(result.total_tokens, 1200);
+    }
+
+    /// SDK 类型化路径失败（缺 details）时回退原始 JSON 提取，不丢数据
+    #[test]
+    fn test_responses_usage_falls_back_when_details_missing() {
+        let usage: Value = serde_json::from_str(
+            r#"{"input_tokens":10,"output_tokens":20,"output_tokens_details":{"reasoning_tokens":5},"total_tokens":30}"#,
+        )
+        .unwrap();
+
+        let result = parse_openai_responses_usage_fields(&usage).unwrap();
+        assert_eq!(result.input_tokens, 10);
+        assert_eq!(result.output_tokens, 15);
+        assert_eq!(result.thinking_tokens, 5);
+        assert_eq!(result.cache_read_input_tokens, 0);
+        assert_eq!(result.total_tokens, 30);
+    }
+
     /// 验证带 `prompt_tokens_details.cached_tokens` 的非流式响应仍正确解析
     #[test]
     fn test_openai_chat_without_cached_tokens() {
@@ -514,5 +648,73 @@ data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input
         assert_eq!(result.output_tokens, 20);
         assert_eq!(result.thinking_tokens, 0);
         assert_eq!(result.total_tokens, 30);
+    }
+
+    // ── 协议感知路由测试 ──
+
+    /// 回归：Responses **非流式**响应使用顶层 `usage.input_tokens`，
+    /// 与 Anthropic 形状无法区分。探测链会把它交给后续解析器并读错字段族
+    /// （`prompt_tokens`/`completion_tokens` 缺失 → 全部归 0），
+    /// 使 `reasoning_tokens` 扣减与 `cached_tokens` 拆分**静默失效**。
+    /// 按协议路由后必须走 Responses 解析器拿到正确数值。
+    #[test]
+    fn test_protocol_routing_responses_non_streaming_splits_reasoning() {
+        let body = r#"{"id":"r","object":"response","usage":{
+            "input_tokens":100,
+            "input_tokens_details":{"cached_tokens":40},
+            "output_tokens":50,
+            "output_tokens_details":{"reasoning_tokens":20},
+            "total_tokens":150
+        }}"#;
+
+        // 对照：探测链读不到 prompt_tokens/completion_tokens，词元被静默归 0
+        let guessed = parse_usage_from_response(body).unwrap();
+        assert_eq!(guessed.input_tokens, 0);
+        assert_eq!(guessed.output_tokens, 0);
+        assert_eq!(guessed.thinking_tokens, 0);
+        assert_eq!(guessed.cache_read_input_tokens, 0);
+
+        // 按协议路由：走 Responses 解析器，正确拆出思考词元与缓存命中
+        let routed = parse_usage_for_protocol(ApiProtocol::OpenAiResponse, body).unwrap();
+        assert_eq!(routed.input_tokens, 60);
+        assert_eq!(routed.cache_read_input_tokens, 40);
+        assert_eq!(routed.output_tokens, 30);
+        assert_eq!(routed.thinking_tokens, 20);
+        assert_eq!(routed.total_tokens, 150);
+    }
+
+    /// 按协议路由对 Anthropic 响应仍走 Anthropic 解析链
+    #[test]
+    fn test_protocol_routing_anthropic_non_streaming() {
+        let body = r#"{"usage":{"input_tokens":7,"output_tokens":9,"cache_read_input_tokens":3,"total_tokens":19}}"#;
+
+        let routed = parse_usage_for_protocol(ApiProtocol::Anthropic, body).unwrap();
+        assert_eq!(routed.input_tokens, 7);
+        assert_eq!(routed.output_tokens, 9);
+        assert_eq!(routed.cache_read_input_tokens, 3);
+    }
+
+    /// 按协议路由对 Chat Completions 响应走 Chat 解析器
+    #[test]
+    fn test_protocol_routing_chat_completions() {
+        let body = r#"{"id":"c","object":"chat.completion","usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"prompt_tokens_details":{"cached_tokens":30}}}"#;
+
+        let routed = parse_usage_for_protocol(ApiProtocol::OpenAi, body).unwrap();
+        assert_eq!(routed.input_tokens, 70);
+        assert_eq!(routed.cache_read_input_tokens, 30);
+        assert_eq!(routed.output_tokens, 20);
+        assert_eq!(routed.total_tokens, 120);
+    }
+
+    /// 协议解析器返回空时回退全协议探测链（容忍上游响应形态与请求协议不符）
+    #[test]
+    fn test_protocol_routing_falls_back_to_probe_chain() {
+        // 请求按 Responses 协议发出，上游却回了 Anthropic 形态
+        let body = r#"{"usage":{"input_tokens":5,"output_tokens":6,"total_tokens":11}}"#;
+
+        let routed = parse_usage_for_protocol(ApiProtocol::OpenAiResponse, body).unwrap();
+        assert_eq!(routed.input_tokens, 5);
+        assert_eq!(routed.output_tokens, 6);
+        assert_eq!(routed.total_tokens, 11);
     }
 }

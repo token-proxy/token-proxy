@@ -9,7 +9,7 @@ use serde::Serialize;
 /// 单日单模型词元用量
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelTokenUsageDto {
-    /// 模型名（来自 log_metadata.model_mapped 或 model_original，回落 '(未知)'）
+    /// 模型名（来自 log_requests.model_mapped 或 model_original，回落 '(未知)'）
     pub model: String,
     /// 该模型在该桶内的总词元数
     pub total_tokens: i64,

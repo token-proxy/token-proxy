@@ -3,6 +3,7 @@
 //! 编排代理日志的二阶段写入（请求记录 → 原始内容），
 //! 以及日志查询、会话摘要、日志详情、审计日志查询等功能。
 
+use std::str::FromStr;
 use std::sync::Arc;
 
 use tokio::sync::broadcast;
@@ -22,6 +23,7 @@ use crate::domain::log::repository_audit_log::{
 use crate::domain::log::LogRequest;
 use crate::domain::log::{LogContent, LogQuery, LogRepository, SessionQuery};
 use crate::domain::shared::model_name::normalize_model_name;
+use crate::domain::shared::ApiProtocol;
 use crate::domain::user::UserRepository;
 use crate::infrastructure::parsers::{claude_code_context, parsed_token_usage};
 use crate::shared::error::AppError;
@@ -109,7 +111,11 @@ impl LogService {
             .unwrap_or_else(|| "unknown".to_string());
 
         // ── 词元用量解析（前置，失败不阻塞）──
-        let usage_data = parsed_token_usage::parse_usage_from_response(&data.response_body);
+        // 以请求级协议路由解析器：Anthropic 与 OpenAI Responses 的非流式响应
+        // 都含顶层 usage.input_tokens，仅靠字段形状探测会把 Responses 误判为 Anthropic。
+        let protocol = ApiProtocol::from_str(&data.api_protocol).unwrap_or(ApiProtocol::Anthropic);
+        let usage_data =
+            parsed_token_usage::parse_usage_for_protocol(protocol, &data.response_body);
 
         // ── 模型名称规范化 ──
         let model_normalized = normalize_model_name(&data.model_mapped);
@@ -127,6 +133,7 @@ impl LogService {
             model_mapped: Some(data.model_mapped.clone()),
             model_normalized,
             api_type: data.api_type.clone(),
+            api_protocol: data.api_protocol.clone(),
             client_type: data.client_type.clone(),
             status_code: Some(data.status_code as i16),
             duration_ms: Some(data.duration_ms),
@@ -208,6 +215,7 @@ impl LogService {
             timestamp: saved.timestamp_utc(),
             session_id: saved.session_id.clone(),
             api_type: saved.api_type.clone(),
+            api_protocol: saved.api_protocol.clone(),
             user_id: data.user_id,
             access_point_id: data.access_point_id,
         };
@@ -261,6 +269,7 @@ impl LogService {
                 agent_id: lr.agent_id.clone(),
                 client_version: lr.client_version.clone(),
                 api_type: lr.api_type.clone(),
+                api_protocol: lr.api_protocol.clone(),
                 token_input_tokens: Some(lr.input_tokens),
                 token_output_tokens: Some(lr.output_tokens),
                 token_cache_creation_input_tokens: Some(lr.cache_creation_input_tokens),
@@ -360,6 +369,7 @@ impl LogService {
                     agent_id: entry.agent_id,
                     client_version: entry.client_version,
                     api_type: Some(entry.api_type.clone()),
+                    api_protocol: Some(entry.api_protocol.clone()),
                     request_headers: content.request_headers.unwrap_or(serde_json::Value::Null),
                     response_headers: content.response_headers.unwrap_or(serde_json::Value::Null),
                     request_body: content.request_body.unwrap_or(serde_json::Value::Null),
@@ -403,6 +413,7 @@ impl LogService {
                     conversation_source: entry.conversation_source.clone(),
                     agent_id: entry.agent_id.clone(),
                     api_type: entry.api_type.clone(),
+                    api_protocol: entry.api_protocol.clone(),
                     request_headers: c.request_headers.unwrap_or(serde_json::Value::Null),
                     request_body: c.request_body.unwrap_or(serde_json::Value::Null),
                     response_body: c.response_body.unwrap_or_default(),

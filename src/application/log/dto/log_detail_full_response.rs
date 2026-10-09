@@ -24,6 +24,8 @@ pub struct LogDetailFullResponse {
     /// 客户端版本号（从 User-Agent 解析的版本号段）
     pub client_version: Option<String>,
     pub api_type: Option<String>,
+    /// 本次请求实际使用的协议（anthropic / openai / openai_response）
+    pub api_protocol: Option<String>,
     pub request_headers: serde_json::Value,
     pub response_headers: serde_json::Value,
     pub request_body: serde_json::Value,

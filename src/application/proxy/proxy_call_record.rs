@@ -27,7 +27,7 @@ use uuid::Uuid;
 use crate::application::log::dto::ProxyLogInput;
 use crate::application::log::LogService;
 use crate::domain::access_point::AccessPointEx;
-use crate::domain::shared::{InboundRequest, UpstreamRequest};
+use crate::domain::shared::{ApiProtocol, InboundRequest, UpstreamRequest};
 
 use super::tracked_spawner::TrackedSpawner;
 
@@ -53,7 +53,10 @@ pub struct ProxyCallRecord {
     access_point_id: Uuid,
     provider_id: Uuid,
     account_id: Uuid,
-    api_type: String,
+    /// 接入点类型（协议家族）：anthropic / openai
+    access_point_api_type: String,
+    /// 本次请求实际使用的上游 API 协议（请求级值对象，非接入点类型）
+    api_protocol: ApiProtocol,
     client_type: String,
     model_original: String,
     model_mapped: String,
@@ -99,7 +102,8 @@ impl ProxyCallRecord {
             access_point_id: access_point.id,
             provider_id,
             account_id,
-            api_type: access_point.api_type.to_string(),
+            access_point_api_type: access_point.api_type.to_string(),
+            api_protocol: inbound.protocol,
             model_original: inbound.model.clone(),
             model_mapped: upstream.mapped_model.clone(),
             request_headers: inbound.headers.clone(),
@@ -171,7 +175,8 @@ impl ProxyCallRecord {
             account_id: self.account_id,
             model_original: std::mem::take(&mut self.model_original),
             model_mapped: std::mem::take(&mut self.model_mapped),
-            api_type: std::mem::take(&mut self.api_type),
+            api_type: self.access_point_api_type.clone(),
+            api_protocol: self.api_protocol.as_str().to_string(),
             status_code,
             request_headers: std::mem::take(&mut self.request_headers),
             request_body: std::mem::take(&mut self.request_body),

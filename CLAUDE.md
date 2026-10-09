@@ -7,6 +7,7 @@
 ## 技术栈
 
 - **后端**: Rust (edition 2021) + axum 0.8 + SeaORM 2 + tokio
+- **OpenAI SDK**: async-openai 0.41.1（`default-features = false`, features `chat-completion` + `responses`；仅用于类型化探测与 usage 解析，不承担上游转发）
 - **前端**: React 19 + TypeScript + Vite + Semi Design 2.97（pnpm 管理依赖）
 - **数据库**: PostgreSQL 17（应用层按月分区管理）
 - **代码质量**: Prettier + lint-staged + simple-git-hooks（pre-commit 自动格式化）、cargo fmt/clippy
@@ -45,33 +46,34 @@ DDD 四层：领域层（`domain/`）→ 应用层（`application/`）→ 基础
 
 ## 术语表
 
-| 中文           | 英文原文                     | 说明                                                                                                             |
-| -------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| 接入点         | Access Point                 | 对外暴露的 API 调用入口，通过短码 URL 提供服务                                                                   |
-| 服务商         | Provider                     | 上游 LLM API 服务商（如 Anthropic、OpenAI）                                                                      |
-| 账号           | Account                      | 服务商下的具体 API 账号                                                                                          |
-| 短码           | Short Code                   | 接入点的 URL 标识，用户指定或自动生成 16 位随机码                                                                |
-| 词元           | Token                        | LLM 用量度量单位                                                                                                 |
-| 未命中缓存输入 | Input Tokens (cache miss)    | 全新提交到模型处理的输入词元，不走缓存（`input_tokens` 列）                                                      |
-| 缓存命中输入   | Cache Read Input Tokens      | 从上下文缓存直接读取的输入词元，可享受计费折扣（`cache_read_input_tokens` 列）                                   |
-| 缓存创建输入   | Cache Creation Input Tokens  | 首次写入上下文缓存的输入词元，全价计费（`cache_creation_input_tokens` 列）                                       |
-| 输出词元       | Output Tokens                | 模型生成的输出词元，不含思考过程词元（`output_tokens` 列）                                                       |
-| 思考词元       | Thinking Tokens              | 模型内部推理过程产生的词元，Anthropic 为 `thinking_tokens`，OpenAI 为 `reasoning_tokens`（`thinking_tokens` 列） |
-| 路由策略       | Routing Strategy             | 账户池排序策略：Priority（按优先级）/ Weighted（权重随机）                                                       |
-| 模型路由网格   | Model Routing Grid           | 二维表格（source_model × provider_id），精确匹配 > 前缀匹配 > `__unmatched__` 兜底                               |
-| 会话粘滞       | Session Affinity             | 同一会话复用同一账号                                                                                             |
-| 客户端类型     | Client Type                  | ClaudeCode / Codex / Other / Unknown，与协议类型正交                                                             |
-| 协议类型       | API Type / Access Point Type | Anthropic / OpenAi，挂载 5 个协议适配方法                                                                        |
-| 代理管道       | Proxy Pipeline               | 核心转发调度骨架                                                                                                 |
-| 审计日志       | Audit Log                    | 记录所有管理操作的审计轨迹                                                                                       |
-| 故障检测       | Fault Detection              | 上游响应自动归类并触发账号禁用                                                                                   |
-| 重试决策       | Retry Decision               | `Return(Response)` 终止 / `Continue(AppError)` 切换下一候选                                                      |
-| 优雅关闭       | Graceful Shutdown            | 关闭期间新请求短路，等待在途请求完成                                                                             |
-| 即发即忘       | Fire-and-Forget              | 异步写入不阻塞主业务，失败仅记录日志                                                                             |
-| 聚合根         | Aggregate Root               | 聚合的唯一入口（如 `AccessPointEx`）                                                                             |
-| 值对象         | Value Object                 | 无独立标识的领域概念（如 `RoutingStrategy`、`ShortCode`）                                                        |
-| 领域服务       | Domain Service               | 跨实体的领域逻辑（如 `FaultService`）                                                                            |
-| 仓储           | Repository                   | 持久化抽象（trait 在领域层、实现在基础设施层）                                                                   |
+| 中文           | 英文原文                    | 说明                                                                                                             |
+| -------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 接入点         | Access Point                | 对外暴露的 API 调用入口，通过短码 URL 提供服务                                                                   |
+| 服务商         | Provider                    | 上游 LLM API 服务商（如 Anthropic、OpenAI）                                                                      |
+| 账号           | Account                     | 服务商下的具体 API 账号                                                                                          |
+| 短码           | Short Code                  | 接入点的 URL 标识，用户指定或自动生成 16 位随机码                                                                |
+| 词元           | Token                       | LLM 用量度量单位                                                                                                 |
+| 未命中缓存输入 | Input Tokens (cache miss)   | 全新提交到模型处理的输入词元，不走缓存（`input_tokens` 列）                                                      |
+| 缓存命中输入   | Cache Read Input Tokens     | 从上下文缓存直接读取的输入词元，可享受计费折扣（`cache_read_input_tokens` 列）                                   |
+| 缓存创建输入   | Cache Creation Input Tokens | 首次写入上下文缓存的输入词元，全价计费（`cache_creation_input_tokens` 列）                                       |
+| 输出词元       | Output Tokens               | 模型生成的输出词元，不含思考过程词元（`output_tokens` 列）                                                       |
+| 思考词元       | Thinking Tokens             | 模型内部推理过程产生的词元，Anthropic 为 `thinking_tokens`，OpenAI 为 `reasoning_tokens`（`thinking_tokens` 列） |
+| 路由策略       | Routing Strategy            | 账户池排序策略：Priority（按优先级）/ Weighted（权重随机）                                                       |
+| 模型路由网格   | Model Routing Grid          | 二维表格（source_model × provider_id），精确匹配 > 前缀匹配 > `__unmatched__` 兜底                               |
+| 会话粘滞       | Session Affinity            | 同一会话复用同一账号                                                                                             |
+| 客户端类型     | Client Type                 | ClaudeCode / Codex / Other / Unknown，与协议家族 / 请求协议均正交                                                |
+| 接入点类型     | Access Point Type           | Anthropic / OpenAi 两个协议家族，落库 `access_points.api_type` 列 + 前端 Select                                  |
+| 请求协议       | API Protocol                | Anthropic / OpenAi / OpenAiResponse，请求级值对象，挂载 5 个协议适配方法                                         |
+| 代理管道       | Proxy Pipeline              | 核心转发调度骨架                                                                                                 |
+| 审计日志       | Audit Log                   | 记录所有管理操作的审计轨迹                                                                                       |
+| 故障检测       | Fault Detection             | 上游响应自动归类并触发账号禁用                                                                                   |
+| 重试决策       | Retry Decision              | `Return(Response)` 终止 / `Continue(AppError)` 切换下一候选                                                      |
+| 优雅关闭       | Graceful Shutdown           | 关闭期间新请求短路，等待在途请求完成                                                                             |
+| 即发即忘       | Fire-and-Forget             | 异步写入不阻塞主业务，失败仅记录日志                                                                             |
+| 聚合根         | Aggregate Root              | 聚合的唯一入口（如 `AccessPointEx`）                                                                             |
+| 值对象         | Value Object                | 无独立标识的领域概念（如 `RoutingStrategy`、`ShortCode`）                                                        |
+| 领域服务       | Domain Service              | 跨实体的领域逻辑（如 `FaultService`）                                                                            |
+| 仓储           | Repository                  | 持久化抽象（trait 在领域层、实现在基础设施层）                                                                   |
 
 ## 架构决策与约束
 
@@ -79,11 +81,13 @@ DDD 四层：领域层（`domain/`）→ 应用层（`application/`）→ 基础
 
 - **接入 URL**: `/ap/<short_code>`，用户指定或自动生成 16 位随机短码
 - **入站认证隔离**: 入站 `Authorization` 仅用于用户 API key 认证；上游请求独立构建，API key 注入由
-  `AccessPointType::inject_api_key` 协议方法负责
+  `ApiProtocol::inject_api_key` 协议方法负责
+- **请求级协议推导**: 管道第 2 步 `access_point.api_type.resolve_protocol(remainder)` 推导本次请求的 `ApiProtocol`，再以
+  `access_point.api_type.allows(protocol)` 做家族守卫，跨家族请求返回 `AppError::Validation`
 - **Header 透传规则**: 仅透传 `x-*`、`accept`、`content-type` 等业务头；响应端过滤逐跳头（`transfer-encoding`、`connection`、
   `keep-alive` 等），其余透明转发
-- **流式判断**: 由 `AccessPointType::is_sse_response(&resp_headers)` 依据上游 `Content-Type: text/event-stream`
-  判定，非基于请求特征预设
+- **流式判断**: 由 `inbound.protocol.is_sse_response(&resp_headers)`（`ApiProtocol` 方法）依据上游
+  `Content-Type: text/event-stream` 判定，非基于请求特征预设
 - **响应分类**: `UpstreamOutcome` enum（`Success` / `ClientError` / `Fault` / `ServerError`），`classify` 是唯一入口；SSE
   错误路径 `resp_body=None`，body-based 故障规则静默忽略
 - **重试决策**: `RetryDecision` enum（`Return(Response)` / `Continue(AppError)`），类型系统强制重试携带错误原因
@@ -91,19 +95,41 @@ DDD 四层：领域层（`domain/`）→ 应用层（`application/`）→ 基础
 - **会话粘滞**: `session_affinity` 表（`access_point_id` + `session_id`），首次创建、后续复用；写入通过 `TrackedSpawner` 即发即忘
 - **优雅关闭短路**: `ProxyPipeline::execute` 第 0 步检查关闭信号，关闭期间新请求立即返回 `AppError::Upstream`
 - **模型路由网格**: 匹配优先级：精确匹配 > 前缀匹配 > `__unmatched__` 兜底 > 原始模型值；`__unmatched__` 行为兜底规则，每个接入点自动生成
+- **上游兼容降级（默认透明）**: `UpstreamCompat` 值对象描述服务商上游与最新规范的落差。默认 `normalize_legacy_roles = false`，请求体**一字不改**；
+  仅当服务商显式开启（`providers.normalize_legacy_roles`，迁移 `m20261009_000007`）时，才把 OpenAI 系上游无法识别的
+  `developer` role 降级为语义等价的 `system`（白名单式，未知 role 原样保留）。降级在
+  `AccessPointEx::build_upstream_request` 内执行并回填 `UpstreamRequest.normalized_roles`，
+  管道对非零结果 `warn!` 记录——兼容改写必须可观测，不得静默发生
 
 ### 协议适配
 
-- **协议方法挂在 `AccessPointType` 枚举上**: `parse_inbound` / `extract_session_id` / `inject_api_key` /
-  `replace_model_in_body` / `is_sse_response`，具体实现位于 `domain/shared/protocols/<name>.rs`
-- **新增协议只需补 enum variant + 新建协议文件**，编译器会自动指出所有需要补 match 的位置
-- **`ClientType` 与 `AccessPointType` 正交**: 同一 OpenAI 接入点可被 Claude Code 和 Codex 同时访问；
+- **协议方法挂在 `ApiProtocol` 值对象上**: `parse_inbound` / `extract_session_id` / `inject_api_key` /
+  `replace_model_in_body` / `is_sse_response`，具体实现位于 `domain/shared/protocols/<name>.rs`，由 `match self` 分发
+- **协议家族与请求协议正交**: `AccessPointType`（`anthropic` / `openai`，落库 + 前端 Select）只回答"接入点属于哪个协议家族"；
+  `ApiProtocol`（`anthropic` / `openai` / `openai_response`，仅代码、不是 DB 枚举列）回答"本次请求走哪条线协议"
+- **OpenAI 一个接入点两条协议**: `openai` 接入点同时服务 Chat Completions（`/v1/chat/completions`）与 Responses
+  （`/v1/responses`），协议由 `AccessPointType::resolve_protocol(remainder)` 按入站路径推导、`allows()` 做家族守卫；
+  **没有**为 Responses 新增接入点类型或 DB 枚举变体
+- **新增协议**: `ApiProtocol` 补 variant + 新建 `protocols/<name>.rs`；只有新增**协议家族**才需要同步 `AccessPointType`
+  变体、数据库列约束与前端 Select，编译器会自动指出所有需要补 match 的位置
+- **`ClientType` 与 `AccessPointType` / `ApiProtocol` 正交**: 同一 OpenAI 接入点可被 Claude Code 和 Codex 同时访问；
   `ClientType::from_request` 按品牌 header → UA 关键词 → 可识别特征 → Unknown 四级降级识别
 - **`session_id` 解析由 `ClientType` 驱动**（ClaudeCode → `x-claude-code-session-id`，Codex → `thread-id`），
-  `AccessPointType::extract_session_id` 仅作协议层兜底。`session_id` 在请求路径上是 `Option<String>`（`None` 表示未携带），写入
-  `log_metadata.session_id`（NOT NULL）时回落 `"unknown"`
+  `ApiProtocol::extract_session_id` 仅作协议层兜底。`session_id` 在请求路径上是 `Option<String>`（`None` 表示未携带），写入
+  `log_requests.session_id`（NOT NULL）时回落 `"unknown"`
 - **OpenAI 词元归一化**: Chat Completions（`prompt_tokens`/`completion_tokens`）和 Responses API（`input_tokens`/
-  `output_tokens`）统一映射到 `log_token_usage` 列
+  `output_tokens`）统一映射到 `log_requests` 词元列；Responses 的 usage 优先走 `async-openai` 的 `ResponseUsage`
+  类型化解析（正确拆出 `input_tokens_details.cached_tokens` → `cache_read_input_tokens`），失败回退原始 JSON 提取
+- **词元解析按协议路由（勿改回形状探测）**: 入口是 `parsed_token_usage::parse_usage_for_protocol(protocol, body)`，
+  由 `LogService` 传入 `ProxyLogInput.api_protocol`。**不要**退回只按字段形状猜测的
+  `parse_usage_from_response`：Anthropic 与 OpenAI Responses 的**非流式**响应都用顶层 `usage.input_tokens`，
+  探测链会让 Responses 命中 OpenAI Chat 解析器（读 `prompt_tokens`）而把词元**静默归零**。
+  `parse_usage_from_response` 仅作为协议解析器返回空时的兜底
+- **SDK 不承担上游转发**: `async-openai` 仅用于 Responses 请求体结构探测与 usage 类型化解析——其类型化请求会丢弃未知字段、
+  拒绝未知 union item，且 `post`/`post_raw`/`post_stream` 为 `pub(crate)`；字节保真透传仍由基于 `reqwest` 的
+  `ProxyClient` / `UpstreamDispatcher` 负责。注：`byot` feature 的 `*_byot` 泛型方法**已实测可原样透传请求体**
+  （未知字段/role/键序均保留），但流式 `create_stream_byot` 只产出已解析 JSON 事件、丢掉原始 SSE 分帧，
+  故默认仍不启用；若未来启用需配套 SSE 重分帧与对照测试
 
 ### 安全与认证
 
@@ -117,12 +143,16 @@ DDD 四层：领域层（`domain/`）→ 应用层（`application/`）→ 基础
 
 ### 数据库与分区
 
-- **分区策略**: `log_metadata` / `log_contents` 按月 RANGE 分区（`PartitionManager` 自动管理，advisory lock 防冲突）；
-  `log_token_usage` 永久保留不分
+- **分区策略**: 仅 `log_contents` 按月 RANGE 分区（`PARTITIONED_TABLES` 常量即唯一事实来源，`PartitionManager` 自动管理，
+  advisory lock 防冲突）；`log_requests` 为普通表，不分区、长期保留
 - **分区统计**: `PartitionManager::get_partition_stats()` 通过 `pg_inherits` + `pg_class` 查询各分区磁盘占用与估算行数，
   返回 `PartitionInfo` 列表，由 `SettingsService::get_log_stats()` 按月聚合为 `MonthlySummary`
 - **迁移文件**: `src/migrations/` 下，使用 `sea-orm-migration`
-- **`log_metadata` 分区表 PRIMARY KEY 必须包含 `timestamp`**
+- **请求级协议列**: `log_requests.api_protocol VARCHAR(32) NOT NULL DEFAULT 'anthropic'`（迁移 `m20261009_000006`），取值
+  `anthropic` / `openai` / `openai_response`，与 `api_type`（协议家族）正交
+- **`log_contents` 分区表 PRIMARY KEY 必须包含 `timestamp`**
+- **上游兼容列**: `providers.normalize_legacy_roles BOOLEAN NOT NULL DEFAULT FALSE`（迁移 `m20261009_000007`），
+  默认关闭即完全透明转发
 
 ### 审计日志
 
@@ -137,7 +167,9 @@ DDD 四层：领域层（`domain/`）→ 应用层（`application/`）→ 基础
 
 以下枚举新增 variant 需同步修改三处：Rust 枚举定义 + 数据库列约束（VARCHAR）+ 前端展示/Select
 
-- `AccessPointType`（协议类型）、`DisabledReason`（禁用原因）、`AuditAction`（审计操作）、`AuditEntityType`（审计实体）
+- `AccessPointType`（接入点类型 / 协议家族）、`DisabledReason`（禁用原因）、`AuditAction`（审计操作）、`AuditEntityType`（审计实体）
+- **例外**: `ApiProtocol`（请求协议）是纯代码值对象，**不是** DB 枚举列，也无前端 Select——新增 variant 只需补 Rust 枚举、
+  协议实现与家族守卫，不需要数据库约束或前端改动（为 Responses 新建协议正属此列）
 
 ### 日志记录
 
@@ -145,7 +177,7 @@ DDD 四层：领域层（`domain/`）→ 应用层（`application/`）→ 基础
 - **记录器位置**: `ProxyCallRecord` 位于 `application/proxy/`（直接接受领域聚合根），API 反映业务时序：
   `start → attach_response → append_body/set_body → finish`，`Drop` 兜底 SSE 中断
 - **Drop 兜底不可移除**: SSE 客户端中断时唯一可靠的落库机制
-- **列表默认不依赖 `log_contents`**：优先用 `log_metadata`，原始内容按需加载（`/api/logs/{id}/raw`）
+- **列表默认不依赖 `log_contents`**：优先读 `log_requests`（自含标量字段与词元列），原始内容按需加载（`/api/logs/{id}/raw`）
 
 ### Dashboard 个人用量报告
 
@@ -291,51 +323,53 @@ token/key/密码到控制台；提取 `X-Request-ID` 在 Toast 中展示。
 
 ## 核心文件速查
 
-| 文件                                                  | 说明                                                                                    |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `src/main.rs`                                         | 启动入口（依赖组装 + 路由 + 分区 + 后台任务）                                           |
-| `src/application/proxy/proxy_pipeline.rs`             | 代理管道（60 行调度骨架 + try_one_account）                                             |
-| `src/application/proxy/proxy_call_record.rs`          | 代理调用记录器（start → attach → append/set → finish；Drop 兜底）                       |
-| `src/application/proxy/tracked_spawner.rs`            | 后台写入调度器（统一 spawn 模板）                                                       |
-| `src/application/proxy/account_selector.rs`           | 候选账号迭代器（加载 → 跳过 → 解密四步）                                                |
-| `src/application/proxy/upstream_dispatcher.rs`        | 上游转发执行器（forward + 120s 超时）                                                   |
-| `src/application/proxy/response_builder.rs`           | 响应构造（streaming / buffered + 逐跳头过滤）                                           |
-| `src/domain/access_point/access_point.rs`             | AccessPointEx 聚合根（sort_accounts + apply_session_affinity + build_upstream_request） |
-| `src/domain/access_point/routing_strategy.rs`         | 路由策略值对象                                                                          |
-| `src/domain/access_point/model_routing_grid.rs`       | 模型路由网格值对象（二维匹配）                                                          |
-| `src/domain/shared/api_type.rs`                       | AccessPointType 枚举 + 5 个协议方法                                                     |
-| `src/domain/shared/client_type.rs`                    | ClientType 枚举（from_request + extract_session_id）                                    |
-| `src/domain/shared/protocols/anthropic.rs`            | Anthropic 协议适配                                                                      |
-| `src/domain/shared/protocols/openai.rs`               | OpenAI 协议适配（Chat Completions + Responses API）                                     |
-| `src/domain/proxy/upstream_outcome.rs`                | UpstreamOutcome（Success/ClientError/Fault/ServerError）+ classify                      |
-| `src/domain/proxy/retry_decision.rs`                  | RetryDecision（Return/Continue）                                                        |
-| `src/domain/provider/fault_service.rs`                | 故障检测领域服务                                                                        |
-| `src/domain/log/audit_action.rs`                      | 审计操作类型枚举（18 variant）                                                          |
-| `src/domain/log/audit_entity_type.rs`                 | 审计实体类型枚举（8 variant）                                                           |
-| `src/domain/log/repository_audit_log.rs`              | AuditLogQuery 筛选条件 + AuditLogWithUsername 读模型 + AuditLogRepository trait         |
-| `src/domain/log/dashboard_query.rs`                   | Dashboard 领域查询类型                                                                  |
-| `src/infrastructure/persistence/partition_manager.rs` | 分区自动管理器（创建/清理/统计 + advisory lock）                                        |
-| `src/application/system/settings_service.rs`          | 系统设置服务（日志分区统计 + 系统配置）                                                 |
-| `src/application/system/dto/log_stats_dto.rs`         | 日志分区统计 DTO（PartitionInfo + MonthlySummary + LogStatsResponse）                   |
-| `src/presentation/routes/settings_routes.rs`          | settings 路由（`GET /api/settings/log-stats` 日志分区统计）                             |
-| `src/application/mod.rs`                              | AppState 依赖组装（含 `partition_manager: Arc<PartitionManager>`）                      |
-| `src/application/log/dto/audit_log_filter_params.rs`  | 审计日志筛选参数 DTO                                                                    |
-| `src/application/log/dto/audit_log_response.rs`       | 审计日志列表响应项 DTO                                                                  |
-| `src/application/dashboard/dashboard_service.rs`      | Dashboard 聚合服务（5 个个人视角方法）                                                  |
-| `src/application/dashboard/timezone.rs`               | IANA 时区白名单校验                                                                     |
-| `src/presentation/middleware/jwt_auth.rs`             | JWT 认证中间件 + CurrentUser extractor                                                  |
-| `src/presentation/middleware/user_api_key_auth.rs`    | 用户 API key 认证中间件                                                                 |
-| `src/presentation/routes/log_routes.rs`               | log 路由（含 `/api/audit-logs` 审计日志查询端点）                                       |
-| `src-dashboard/api.ts`                                | 前端 API 封装（JWT 自动刷新 + auditLogApi）                                             |
-| `src-dashboard/hooks/useFetch.ts`                     | 通用数据获取 Hook                                                                       |
-| `src-dashboard/hooks/useLogEvents.ts`                 | SSE 实时事件消费 Hook                                                                   |
-| `src-dashboard/pages/SettingsPage.tsx`                | 系统设置页（日志分区统计环形饼图 + 分区表格 + 保留月数配置）                            |
-| `src-dashboard/types/settings.ts`                     | 前端 settings 类型（PartitionInfo + MonthlySummary + LogStatsResponse + Settings）      |
-| `src-dashboard/pages/AuditLogPage.tsx`                | 审计日志查看页（筛选 + 分页 + JSON 详情展开）                                           |
-| `src-dashboard/types/auditLog.ts`                     | AuditLogItem、AuditLogFilters 接口                                                      |
-| `src-dashboard/utils/parseLogs.ts`                    | 日志/会话解析（buildConversationEvents + buildConversationTurns）                       |
-| `src-dashboard/utils/parseOpenAI.ts`                  | OpenAI 响应/请求体解析                                                                  |
-| `src-dashboard/utils/auditLog.ts`                     | 审计日志中文映射（ACTION_LABELS、ENTITY_TYPE_LABELS 等）                                |
+| 文件                                                  | 说明                                                                                             |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `src/main.rs`                                         | 启动入口（依赖组装 + 路由 + 分区 + 后台任务）                                                    |
+| `src/application/proxy/proxy_pipeline.rs`             | 代理管道（60 行调度骨架 + try_one_account）                                                      |
+| `src/application/proxy/proxy_call_record.rs`          | 代理调用记录器（start → attach → append/set → finish；Drop 兜底）                                |
+| `src/application/proxy/tracked_spawner.rs`            | 后台写入调度器（统一 spawn 模板）                                                                |
+| `src/application/proxy/account_selector.rs`           | 候选账号迭代器（加载 → 跳过 → 解密四步）                                                         |
+| `src/application/proxy/upstream_dispatcher.rs`        | 上游转发执行器（forward + 120s 超时）                                                            |
+| `src/application/proxy/response_builder.rs`           | 响应构造（streaming / buffered + 逐跳头过滤）                                                    |
+| `src/domain/access_point/access_point.rs`             | AccessPointEx 聚合根（sort_accounts + apply_session_affinity + build_upstream_request）          |
+| `src/domain/access_point/routing_strategy.rs`         | 路由策略值对象                                                                                   |
+| `src/domain/access_point/model_routing_grid.rs`       | 模型路由网格值对象（二维匹配）                                                                   |
+| `src/domain/shared/api_protocol.rs`                   | ApiProtocol 值对象（Anthropic/OpenAi/OpenAiResponse + 5 个协议方法 + detect_openai 路径推导）    |
+| `src/domain/shared/api_type.rs`                       | AccessPointType 枚举（Anthropic/OpenAi 两个协议家族）+ allowed_protocols/resolve_protocol/allows |
+| `src/domain/shared/upstream_compat.rs`                | UpstreamCompat 值对象（上游能力落差 → 是否降级；默认透明）                                       |
+| `src/domain/shared/client_type.rs`                    | ClientType 枚举（from_request + extract_session_id）                                             |
+| `src/domain/shared/protocols/anthropic.rs`            | Anthropic 协议适配                                                                               |
+| `src/domain/shared/protocols/openai.rs`               | OpenAI 协议适配（Chat Completions + Responses API）                                              |
+| `src/domain/proxy/upstream_outcome.rs`                | UpstreamOutcome（Success/ClientError/Fault/ServerError）+ classify                               |
+| `src/domain/proxy/retry_decision.rs`                  | RetryDecision（Return/Continue）                                                                 |
+| `src/domain/provider/fault_service.rs`                | 故障检测领域服务                                                                                 |
+| `src/domain/log/audit_action.rs`                      | 审计操作类型枚举（18 variant）                                                                   |
+| `src/domain/log/audit_entity_type.rs`                 | 审计实体类型枚举（8 variant）                                                                    |
+| `src/domain/log/repository_audit_log.rs`              | AuditLogQuery 筛选条件 + AuditLogWithUsername 读模型 + AuditLogRepository trait                  |
+| `src/domain/log/dashboard_query.rs`                   | Dashboard 领域查询类型                                                                           |
+| `src/infrastructure/persistence/partition_manager.rs` | 分区自动管理器（创建/清理/统计 + advisory lock）                                                 |
+| `src/application/system/settings_service.rs`          | 系统设置服务（日志分区统计 + 系统配置）                                                          |
+| `src/application/system/dto/log_stats_dto.rs`         | 日志分区统计 DTO（PartitionInfo + MonthlySummary + LogStatsResponse）                            |
+| `src/presentation/routes/settings_routes.rs`          | settings 路由（`GET /api/settings/log-stats` 日志分区统计）                                      |
+| `src/application/mod.rs`                              | AppState 依赖组装（含 `partition_manager: Arc<PartitionManager>`）                               |
+| `src/application/log/dto/audit_log_filter_params.rs`  | 审计日志筛选参数 DTO                                                                             |
+| `src/application/log/dto/audit_log_response.rs`       | 审计日志列表响应项 DTO                                                                           |
+| `src/application/dashboard/dashboard_service.rs`      | Dashboard 聚合服务（5 个个人视角方法）                                                           |
+| `src/application/dashboard/timezone.rs`               | IANA 时区白名单校验                                                                              |
+| `src/presentation/middleware/jwt_auth.rs`             | JWT 认证中间件 + CurrentUser extractor                                                           |
+| `src/presentation/middleware/user_api_key_auth.rs`    | 用户 API key 认证中间件                                                                          |
+| `src/presentation/routes/log_routes.rs`               | log 路由（含 `/api/audit-logs` 审计日志查询端点）                                                |
+| `src-dashboard/api.ts`                                | 前端 API 封装（JWT 自动刷新 + auditLogApi）                                                      |
+| `src-dashboard/hooks/useFetch.ts`                     | 通用数据获取 Hook                                                                                |
+| `src-dashboard/hooks/useLogEvents.ts`                 | SSE 实时事件消费 Hook                                                                            |
+| `src-dashboard/pages/SettingsPage.tsx`                | 系统设置页（日志分区统计环形饼图 + 分区表格 + 保留月数配置）                                     |
+| `src-dashboard/types/settings.ts`                     | 前端 settings 类型（PartitionInfo + MonthlySummary + LogStatsResponse + Settings）               |
+| `src-dashboard/pages/AuditLogPage.tsx`                | 审计日志查看页（筛选 + 分页 + JSON 详情展开）                                                    |
+| `src-dashboard/types/auditLog.ts`                     | AuditLogItem、AuditLogFilters 接口                                                               |
+| `src-dashboard/utils/parseLogs.ts`                    | 日志/会话解析（buildConversationEvents + buildConversationTurns）                                |
+| `src-dashboard/utils/parseOpenAI.ts`                  | OpenAI 响应/请求体解析                                                                           |
+| `src-dashboard/utils/auditLog.ts`                     | 审计日志中文映射（ACTION_LABELS、ENTITY_TYPE_LABELS 等）                                         |
 
 ## Makefile 任务
 
@@ -402,7 +436,10 @@ token/key/密码到控制台；提取 `X-Request-ID` 在 Toast 中展示。
 - Dashboard 所有聚合方法首参为 `user_id: Uuid`，SQL 必含 `WHERE user_id = ?`；不要恢复 `top_users`/`top_accounts` 等跨用户聚合
 - Dashboard sparkline 空桶补齐由 SQL `generate_series` 完成，新增时间粒度需同步扩展 `DashboardWindow` 与步长
 - `ProxyCallRecord` 持有 `ProxyLogInput` 入参（LogService 一次性入参契约），`LogService::record_proxy_log()` 内部构造
-  `LogMetadata`
-- `log_metadata.account_id` 记录实际使用的账号
+  `LogRequest` 实体
+- `log_requests.account_id` 记录实际使用的账号；历史表 `log_metadata` / `log_token_usage` 已在迁移 `m20260628_000005` 中合并删除，
+  文档/注释中不应再将其描述为现存表
 - 响应体格式检测优先通过 `response_headers` 的 `Content-Type` 判定，`isJsonFormat` 作 JSON.parse 试探兜底
 - `AccessPointService::new()` 和 `AuthService::new()` 需注入 `Arc<dyn AuditLogRepository>`
+- 上游兼容降级默认关闭：不要擅自把 `normalize_legacy_roles` 默认值改为 true，也不要在服务商未开启时改写请求体
+- Provider 实体新增列后，`Provider::new()` 与 `provider_service::to_response` 均需同步（编译器会指出遗漏）

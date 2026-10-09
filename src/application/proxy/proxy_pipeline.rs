@@ -98,14 +98,31 @@ impl ProxyPipeline {
             return Err(AppError::Forbidden("接入点无可用账号".to_string()));
         }
 
-        // ── 2. 协议解析入站请求 + 识别客户端类型 + 提取会话标识 ──
-        let inbound = access_point
+        // ── 2. 由入站路径推导请求级协议 + 家族校验 ──
+        // OpenAI 家族含 Chat Completions / Responses 两条线协议，共用同一接入点；
+        // 协议在这里确定一次，后续解析、URL、日志全部复用该事实。
+        let protocol = access_point
             .api_type
-            .parse_inbound(headers, body, remainder)?;
+            .resolve_protocol(remainder)
+            .ok_or_else(|| {
+                AppError::Validation(format!(
+                    "接入点类型 {} 不接受路径 '{}' 对应的协议请求",
+                    access_point.api_type, remainder
+                ))
+            })?;
+        if !access_point.api_type.allows(protocol) {
+            return Err(AppError::Validation(format!(
+                "接入点类型 {} 不接受 {} 协议请求",
+                access_point.api_type, protocol
+            )));
+        }
+
+        // ── 3. 协议解析入站请求 + 识别客户端类型 + 提取会话标识 ──
+        let inbound = protocol.parse_inbound(headers, body, remainder)?;
         let client_type = ClientType::from_request(&inbound.headers);
         let session_id = client_type.extract_session_id(&inbound.headers);
 
-        // ── 3. 账号排序（按路由策略）+ 会话粘滞 ──
+        // ── 4. 账号排序（按路由策略）+ 会话粘滞 ──
         access_point.sort_accounts();
         if let Some(sid) = &session_id {
             if let Some(affinity) = self
@@ -117,7 +134,7 @@ impl ProxyPipeline {
             }
         }
 
-        // ── 4. 重试循环 ──
+        // ── 5. 重试循环 ──
         let mut last_error = None;
         let mut selector = AccountSelector::new(
             &access_point,
@@ -170,9 +187,20 @@ impl ProxyPipeline {
             upstream_key,
         } = candidate;
 
-        // 构造上游请求（领域行为：URL 拼接 + 模型路由 + 协议适配）
+        // 构造上游请求（领域行为：URL 拼接 + 模型路由 + 协议适配 + 上游能力降级）
         let upstream =
             access_point.build_upstream_request(inbound, &provider, &upstream_key, remainder)?;
+
+        // 兼容降级必须可观测：非零时记录被改写的 role 数量
+        if upstream.normalized_roles > 0 {
+            tracing::warn!(
+                provider_id = %provider.id,
+                access_point_id = %access_point.id,
+                protocol = %inbound.protocol,
+                normalized_roles = upstream.normalized_roles,
+                "上游兼容策略已改写消息 role（developer → system）",
+            );
+        }
 
         // 启动调用记录器（请求侧已知，启动计时）
         let mut record = ProxyCallRecord::start(
@@ -192,7 +220,8 @@ impl ProxyPipeline {
         let upstream_resp = self.dispatcher.forward(&upstream).await?;
         let status = upstream_resp.status();
         let resp_headers = upstream_resp.headers().clone();
-        let is_sse = access_point.api_type.is_sse_response(&resp_headers);
+        // 流式判定走请求级协议（Responses 与 Chat 同为 text/event-stream，但协议归属需正确记录）
+        let is_sse = inbound.protocol.is_sse_response(&resp_headers);
         record.attach_response(status, &resp_headers);
 
         // SSE 路径：分类时 body 未读，传 None；后续在 stream 中边消费边累积日志

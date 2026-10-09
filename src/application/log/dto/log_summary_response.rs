@@ -29,6 +29,8 @@ pub struct LogSummaryResponse {
     /// 客户端版本号（从 User-Agent 解析的版本号段）
     pub client_version: Option<String>,
     pub api_type: String,
+    /// 本次请求实际使用的协议（anthropic / openai / openai_response）
+    pub api_protocol: String,
     /// 词元用量汇总
     pub token_input_tokens: Option<i32>,
     pub token_output_tokens: Option<i32>,

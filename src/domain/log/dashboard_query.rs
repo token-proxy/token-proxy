@@ -31,7 +31,7 @@ pub struct KpiAggregate {
     pub request_count: i64,
     /// 不重复会话数（COUNT(DISTINCT session_id)）
     pub session_count: i64,
-    /// 总词元数（来自 log_token_usage）
+    /// 总词元数（来自 log_requests 的 total_tokens 列）
     pub total_tokens: i64,
     /// 未命中缓存输入词元数（input_tokens 列之和，不含缓存和思考）
     pub input_tokens: i64,
@@ -116,7 +116,7 @@ pub struct HeatmapCell {
 /// 按模型名维度聚合窗口内的请求与词元消耗。
 #[derive(Debug, Clone)]
 pub struct TopModelRow {
-    /// 模型名（来自 log_metadata.model）
+    /// 模型名（来自 log_requests.model_mapped，回落 model_original）
     pub model: String,
     /// 窗口内请求数
     pub request_count: i64,

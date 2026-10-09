@@ -182,7 +182,7 @@ impl LogRepository for SeaOrmLogRepository {
                 lr.cache_creation_input_tokens, lr.cache_read_input_tokens,
                 lr.thinking_tokens, lr.total_tokens,
                 lr.raw_usage, lr.server_tool_usage, lr.cache_creation,
-                lr.agent_type, lr.created_at
+                lr.agent_type, lr.created_at, lr.api_protocol
             FROM log_requests lr
             {}
             ORDER BY lr.timestamp DESC
@@ -232,6 +232,7 @@ impl LogRepository for SeaOrmLogRepository {
                     server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(28)?,
                     cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(29)?,
                     agent_type: row.try_get_by_index::<Option<String>>(30)?,
+                    api_protocol: row.try_get_by_index::<String>(31)?,
                     created_at: created_at_col,
                 })
             })
@@ -464,7 +465,7 @@ impl LogRepository for SeaOrmLogRepository {
                 lr.cache_creation_input_tokens, lr.cache_read_input_tokens,
                 lr.thinking_tokens, lr.total_tokens,
                 lr.raw_usage, lr.server_tool_usage, lr.cache_creation,
-                lr.agent_type, lr.created_at,
+                lr.agent_type, lr.created_at, lr.api_protocol,
                 lc.request_headers, lc.request_body, lc.response_body, lc.response_headers
             FROM log_requests lr
             LEFT JOIN log_contents lc ON lc.log_id = lr.id
@@ -511,16 +512,17 @@ impl LogRepository for SeaOrmLogRepository {
                     server_tool_usage: row.try_get_by_index::<Option<serde_json::Value>>(28)?,
                     cache_creation: row.try_get_by_index::<Option<serde_json::Value>>(29)?,
                     agent_type: row.try_get_by_index::<Option<String>>(30)?,
+                    api_protocol: row.try_get_by_index::<String>(31)?,
                     created_at: created_at_col,
                 };
 
                 let content = LogContent {
                     log_id: entry.id,
                     timestamp: entry.timestamp,
-                    request_headers: row.try_get_by_index::<Option<serde_json::Value>>(32)?,
-                    request_body: row.try_get_by_index::<Option<serde_json::Value>>(33)?,
-                    response_body: row.try_get_by_index::<Option<String>>(34)?,
-                    response_headers: row.try_get_by_index::<Option<serde_json::Value>>(35)?,
+                    request_headers: row.try_get_by_index::<Option<serde_json::Value>>(33)?,
+                    request_body: row.try_get_by_index::<Option<serde_json::Value>>(34)?,
+                    response_body: row.try_get_by_index::<Option<String>>(35)?,
+                    response_headers: row.try_get_by_index::<Option<serde_json::Value>>(36)?,
                 };
 
                 Ok(Some((entry, content)))

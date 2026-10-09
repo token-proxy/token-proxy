@@ -1,9 +1,9 @@
 //! 代理请求实体 — domain/log/
 //!
 //! 定义 `LogRequest`（SeaORM 实体映射 `log_requests` 表），
-//! 合并旧 `log_metadata` 和 `log_token_usage` 的所有标量字段，
-//! 一行对应一次完整的代理转发事件。作为 Dashboard / 列表 /
-//! 详情 / 会话查询的唯一数据源，不再需要 LEFT JOIN。
+//! 承载一次完整代理转发事件的全部标量字段与词元用量，
+//! 一行对应一次转发。作为 Dashboard / 列表 / 详情 / 会话查询的
+//! 唯一数据源，无需 LEFT JOIN（历史表已在迁移 `m20260628_000005` 中合并删除）。
 //!
 //! 数据分表原则：标量字段在此表（永久保留），大体积 JSON/TEXT
 //! 放在 `log_contents` 表（按月分区、按 GB 上限清理）。
@@ -14,7 +14,8 @@ use uuid::Uuid;
 
 /// SeaORM 实体映射 log_requests 表
 ///
-/// 合并了旧 `log_metadata`（21 列）和 `log_token_usage`（25 列）的去重并集。
+/// 由历史表（已于 `m20260628_000005` 合并删除）的去重并集演化而来，
+/// 是标量字段与词元用量的唯一落库位置。
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "log_requests")]
 pub struct Model {
@@ -41,7 +42,10 @@ pub struct Model {
     pub has_error: bool,
 
     // ─── 协议与客户端（来自旧 metadata）───
+    /// 接入点类型（协议家族）：anthropic / openai
     pub api_type: String,
+    /// 本次请求实际使用的协议：anthropic / openai / openai_response
+    pub api_protocol: String,
     pub client_type: String,
     pub client_user_agent: Option<String>,
     pub client_version: Option<String>,
