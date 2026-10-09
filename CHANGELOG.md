@@ -5,6 +5,36 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.8.0] - 2026-10-09
+
+### Added
+
+- 前端按 api_protocol 显式分发，新增上游兼容开关
+- 新增上游 role 兼容降级开关，引入 async-openai SDK
+- 新增 OpenAI Responses 协议支持，协议判定去隐式化
+
+### Changed
+
+- 引入请求级协议值对象 ApiProtocol，协议家族与请求协议正交
+
+### Documentation
+
+- Bump the cargo-deps group across 1 directory with 6 updates
+- Bump the cargo-deps group with 3 updates
+- Bump the cargo-deps group with 7 updates (#21)
+- Bump the cargo-deps group across 1 directory with 12 updates (#20)
+- Bump rust in the docker-images group
+- Bump the frontend-deps group with 8 updates
+
+### Fixed
+
+- 词元解析改为按协议路由，修复 Responses 非流式词元被静默归零
+
+### Miscellaneous
+
+- Bump version to 1.8.0
+- Add CHANGELOG for 1.7.0
+
 ## [1.7.0] - 2026-07-04
 
 ### Changed
