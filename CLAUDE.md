@@ -388,16 +388,17 @@ token/key/密码到控制台；提取 `X-Request-ID` 在 Toast 中展示。
 
 ## 环境变量
 
-| 变量                            | 说明                    | 默认值   |
-| ------------------------------- | ----------------------- | -------- |
-| `DATABASE_URL`                  | PostgreSQL 连接串       | **必填** |
-| `JWT_SECRET`                    | JWT 签名密钥            | **必填** |
-| `ENCRYPTION_KEY`                | 64 hex chars（32 字节） | **必填** |
-| `SERVER_PORT`                   | 监听端口                | 3000     |
-| `LOG_LEVEL`                     | 日志级别                | info     |
-| `PARTITION_CHECK_INTERVAL_SECS` | 分区检查间隔（秒）      | 3600     |
-| `PARTITION_PREMAKE_MONTHS`      | 提前创建未来分区月数    | 3        |
-| `PARTITION_RETENTION_MONTHS`    | 分区保留月数            | 12       |
+| 变量                            | 说明                                         | 默认值   |
+| ------------------------------- | -------------------------------------------- | -------- |
+| `DATABASE_URL`                  | PostgreSQL 连接串                            | **必填** |
+| `JWT_SECRET`                    | JWT 签名密钥                                 | **必填** |
+| `ENCRYPTION_KEY`                | 64 hex chars（32 字节）                      | **必填** |
+| `SERVER_PORT`                   | 监听端口                                     | 3000     |
+| `LOG_LEVEL`                     | 日志级别                                     | info     |
+| `PARTITION_CHECK_INTERVAL_SECS` | 分区检查间隔（秒）                           | 3600     |
+| `PARTITION_PREMAKE_MONTHS`      | 提前创建未来分区月数                         | 3        |
+| `PARTITION_RETENTION_MONTHS`    | 分区保留月数                                 | 12       |
+| `PROXY_MAX_BODY_BYTES`          | 代理入站请求体上限（字节，多模态图片需调大） | 67108864 |
 
 ## 发布流程
 

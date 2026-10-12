@@ -119,16 +119,17 @@ curl https://your-domain/ap/my-team/v1/messages \
 
 ## 环境变量
 
-| 变量                            | 说明                                            | 默认值 |
-| ------------------------------- | ----------------------------------------------- | ------ |
-| `DATABASE_URL`                  | PostgreSQL 连接串                               | 必填   |
-| `JWT_SECRET`                    | JWT 签名密钥                                    | 必填   |
-| `ENCRYPTION_KEY`                | API Key 加密密钥（64 位十六进制）               | 必填   |
-| `SERVER_PORT`                   | 监听端口                                        | `3000` |
-| `LOG_LEVEL`                     | 日志级别（trace / debug / info / warn / error） | `info` |
-| `PARTITION_CHECK_INTERVAL_SECS` | 分区检查间隔（秒）                              | `3600` |
-| `PARTITION_PREMAKE_MONTHS`      | 预创建未来分区月数                              | `3`    |
-| `PARTITION_RETENTION_MONTHS`    | 日志分区保留月数（可在管理面板中动态调整）      | `12`   |
+| 变量                            | 说明                                            | 默认值     |
+| ------------------------------- | ----------------------------------------------- | ---------- |
+| `DATABASE_URL`                  | PostgreSQL 连接串                               | 必填       |
+| `JWT_SECRET`                    | JWT 签名密钥                                    | 必填       |
+| `ENCRYPTION_KEY`                | API Key 加密密钥（64 位十六进制）               | 必填       |
+| `SERVER_PORT`                   | 监听端口                                        | `3000`     |
+| `LOG_LEVEL`                     | 日志级别（trace / debug / info / warn / error） | `info`     |
+| `PARTITION_CHECK_INTERVAL_SECS` | 分区检查间隔（秒）                              | `3600`     |
+| `PARTITION_PREMAKE_MONTHS`      | 预创建未来分区月数                              | `3`        |
+| `PARTITION_RETENTION_MONTHS`    | 日志分区保留月数（可在管理面板中动态调整）      | `12`       |
+| `PROXY_MAX_BODY_BYTES`          | 代理入站请求体上限（字节，多模态图片需调大）    | `67108864` |
 
 ## 项目状态
 

@@ -61,8 +61,8 @@ pub fn build(state: AppState) -> Router {
         ))
         .with_state(state.clone());
 
-    // API key 保护的路由（代理转发）
-    let proxy = proxy_routes::routes()
+    // API key 保护的路由（代理转发）— 显式放宽 body 上限以承载多模态 base64 图片
+    let proxy = proxy_routes::routes(state.config.proxy_max_body_bytes)
         .layer(middleware::from_fn_with_state(
             state.clone(),
             user_api_key_auth::middleware,
