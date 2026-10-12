@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.8.2] - 2026-10-12
+
+### Fixed
+
+- 放宽代理转发请求体上限，修复多模态图片请求 413
+
+### Miscellaneous
+
+- Bump version to 1.8.2
+
 ## [1.8.1] - 2026-10-09
 
 ### Fixed
