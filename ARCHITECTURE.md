@@ -374,16 +374,17 @@ shared/
 
 从环境变量加载运行时配置，所有必填变量在启动时验证：
 
-| 变量                          | 类型   | 说明                    | 默认值   |
-| ----------------------------- | ------ | ----------------------- | -------- |
-| DATABASE_URL                  | String | PostgreSQL 连接串       | **必填** |
-| JWT_SECRET                    | String | JWT 签名密钥            | **必填** |
-| ENCRYPTION_KEY                | String | 64 位十六进制 (32 字节) | **必填** |
-| SERVER_PORT                   | u16    | 监听端口                | 3000     |
-| LOG_LEVEL                     | String | 日志级别                | info     |
-| PARTITION_CHECK_INTERVAL_SECS | u64    | 分区检查间隔（秒）      | 3600     |
-| PARTITION_PREMAKE_MONTHS      | u32    | 提前创建未来分区数      | 3        |
-| PARTITION_RETENTION_MONTHS    | u32    | 分区保留月数            | 12       |
+| 变量                          | 类型   | 说明                       | 默认值   |
+| ----------------------------- | ------ | -------------------------- | -------- |
+| DATABASE_URL                  | String | PostgreSQL 连接串          | **必填** |
+| JWT_SECRET                    | String | JWT 签名密钥               | **必填** |
+| ENCRYPTION_KEY                | String | 64 位十六进制 (32 字节)    | **必填** |
+| SERVER_PORT                   | u16    | 监听端口                   | 3000     |
+| LOG_LEVEL                     | String | 日志级别                   | info     |
+| PARTITION_CHECK_INTERVAL_SECS | u64    | 分区检查间隔（秒）         | 3600     |
+| PARTITION_PREMAKE_MONTHS      | u32    | 提前创建未来分区数         | 3        |
+| PARTITION_RETENTION_MONTHS    | u32    | 分区保留月数               | 12       |
+| PROXY_MAX_BODY_BYTES          | usize  | 代理入站请求体上限（字节） | 67108864 |
 
 ## 前端架构详解 (src-dashboard/)
 

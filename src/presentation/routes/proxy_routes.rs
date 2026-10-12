@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Path, State},
     http::HeaderMap,
     response::Response,
     routing::post,
@@ -14,8 +14,15 @@ use crate::shared::error::AppError;
 ///
 /// - `POST /ap/{short_code}/{*remainder}` → proxy_messages
 ///   remainder 捕获所有后续路径段（如 v1/messages），透明透传到上游
-pub fn routes() -> Router<AppState> {
-    Router::new().route("/ap/{short_code}/{*remainder}", post(proxy_messages))
+///
+/// `max_body_bytes` 为入站请求体上限。代理管道需要拿到完整 body 才能改写模型名，
+/// 因此 body 走 `String` 提取器整体缓冲；多模态请求把图片/PDF 以 base64 内联进
+/// JSON，体积远超 axum 默认的 2 MiB，必须在路由上显式放宽，否则请求在提取阶段
+/// 就被 axum 以 413 `length limit exceeded` 拒绝，根本到不了管道。
+pub fn routes(max_body_bytes: usize) -> Router<AppState> {
+    Router::new()
+        .route("/ap/{short_code}/{*remainder}", post(proxy_messages))
+        .layer(DefaultBodyLimit::max(max_body_bytes))
 }
 
 /// POST /ap/{short_code}/{*remainder}
