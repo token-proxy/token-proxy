@@ -145,6 +145,14 @@ DDD 四层：领域层（`domain/`）→ 应用层（`application/`）→ 基础
 - **敏感信息脱敏**: `headers_to_json()` 自动将 Authorization/Cookie/Set-Cookie 替换为 `[REDACTED]`；日志严禁记录密钥明文、JWT
   token、密码
 - **用户 API key**: SHA-256 哈希存储，仅创建时返回一次完整值
+- **禁用用户必须真正断权**（`User::ensure_enabled` → 403）：三处入口都要校验所属用户状态 ——
+  登录 / token 刷新（`AuthService`）、每次 JWT 校验含 SSE（`validate_access_token`）、
+  API key 代理调用（`UserApiKeyService::validate_api_key`，此前只校验 key 自身状态，
+  导致"禁用用户后其 key 仍能调用代理"）。禁用同时 `revoke_all_for_user` 吊销其 refresh token
+- **删除用户是受限操作**（`check_delete_allowed` → 409）：不能删自己、不能删唯一启用中的用户、
+  有审计线索（`access_points.created_by` / `log_requests.user_id` / `audit_logs.operator_id`）时禁止物理删除并提示
+  改用禁用 —— 此前直接删会被 `access_points.created_by` 的 ON DELETE RESTRICT 拒绝，对外只表现为无信息的 500；
+  离职人员一律用**禁用**（`PUT /api/users/{id}` 带 `status`，审计动作 `Enable`/`Disable`）
 
 ### 数据库与分区
 
