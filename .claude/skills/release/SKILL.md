@@ -442,26 +442,33 @@ git commit -m "chore(release): add CHANGELOG for $VERSION"
 echo "=== Phase 6: 推送 main ==="
 git push origin main
 
-# Phase 7：创建 GitHub Release
-echo "=== Phase 7: 创建 GitHub Release ==="
-REPO_FULL_NAME=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-IS_RC=false
-echo "$VERSION" | grep -q "rc" && IS_RC=true
-PRERELEASE_FLAG=""
-$IS_RC && PRERELEASE_FLAG="--prerelease"
+# Phase 7：等待发布工作流完成（Release 由 CI 自动创建）
+echo "=== Phase 7: 等待发布工作流 ==="
+# 推送 tag 会触发 .github/workflows/release.yml：校验 → 构建并推送镜像 →
+# 生成发布说明（scripts/release-notes.sh，变更内容取自 git-cliff）→ 创建 GitHub Release
+RUN_ID=$(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run watch "$RUN_ID" --exit-status
 
-RELEASE_NOTES="详细内容请查看 [CHANGELOG.md](https://github.com/${REPO_FULL_NAME}/blob/main/CHANGELOG.md)"
-if [ -n "$DESCRIPTION" ]; then
-  RELEASE_NOTES="${DESCRIPTION}\n\n${RELEASE_NOTES}"
-fi
-
-gh release create "$VERSION" \
-  --title "$VERSION" \
-  --notes "$RELEASE_NOTES" \
-  $PRERELEASE_FLAG \
-  --target "release/${MAJOR_MINOR}"
+# 校验 Release：正文应包含「容器镜像 / 变更内容 / 发布产物」三块与离线镜像包附件
+gh release view "$VERSION" --json tagName,isPrerelease,assets \
+  --jq '{tag: .tagName, prerelease: .isPrerelease, assets: [.assets[].name]}'
 
 echo "=== 发布完成: $VERSION ==="
+```
+
+如果发布工作流失败或需要重跑（例如镜像构建临时失败），**不要重新打 tag**，用工作流的手动入口
+针对已存在的 tag 重跑——它是幂等的，Release 已存在时只更新正文与附件：
+
+```bash
+gh workflow run release.yml -f tag="$VERSION"
+gh run watch "$(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId')" --exit-status
+```
+
+需要在推送前预览发布说明时（只读 git 与本地文件、不访问网络）：
+
+```bash
+scripts/release-notes.sh --tag "$VERSION" --repo "$(gh repo view --json nameWithOwner --jq .nameWithOwner)" \
+  --image "ghcr.io/$(gh repo view --json nameWithOwner --jq .nameWithOwner)" --platforms linux/amd64
 ```
 
 ## 注意事项
@@ -471,9 +478,14 @@ echo "=== 发布完成: $VERSION ==="
 - tag 打在版本号变更提交上（release 分支唯一的提交）
 - CHANGELOG 在 tag 推送后才生成（在 main 分支上），按发布日期倒序排列，最新版本在最顶部
 - release 分支只包含版本号变更，不包含 CHANGELOG
-- 创建 GitHub Release 时，`REPO_FULL_NAME` 通过 `gh repo view --json nameWithOwner --jq .nameWithOwner` 动态获取
+- **GitHub Release 由 tag 触发的 `.github/workflows/release.yml` 自动创建**，正文由 `scripts/release-notes.sh`
+  生成（容器镜像信息 + 变更内容 + 发布产物校验和 + 完整变更链接），附件为离线镜像包与 `sha256sums.txt`；
+  本技能不再手工 `gh release create`（手工创建会覆盖 CI 写入的正文与附件）
+- 重跑某次发布用 `gh workflow run release.yml -f tag=<版本>`，不要重新打 tag（工作流幂等）
 - `cliff.toml` 中的 `[remote.github]` 段已注释掉 — git-cliff 能从 SSH remote 自动推断 owner/repo
+- 发布说明与 CHANGELOG 同源（都用 git-cliff + `cliff.toml`），因此脚本不接受另起的分组规则；
+  需要临时替换正文时用 `--changelog <文件>` 覆盖「变更内容」段
 - 发布流程执行完毕后，建议验证：
-  1. 确认 GitHub Release 已创建成功
+  1. 确认发布工作流成功（`gh run watch`），GitHub Release 已创建且正文/附件齐全
   2. 确认 main 分支的 CHANGELOG.md 已更新
   3. 确认 release 分支和 tag 已推送
