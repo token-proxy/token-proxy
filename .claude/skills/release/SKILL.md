@@ -136,9 +136,13 @@ elif git branch -r --list "origin/release/${MAJOR_MINOR}" | grep -q "origin/rele
 fi
 
 if [ -n "$EXISTING_BRANCH" ]; then
-  # 分支已存在 —— RC 场景，复用分支
-  # 提示用户：release/<major>.<minor> 分支已存在，将复用此分支
+  # 分支已存在 —— RC / 补丁版本场景，复用分支
   # 注意：这是一个 RC 发布，分支上已有之前的工作
+  # 补丁版本（如 1.9.0 → 1.9.1）必须先确认分支是否包含 main 上的目标提交：
+  #   git log --oneline "release/${MAJOR_MINOR}..main"   # 有输出说明分支落后
+  # 落后则重建为 main + 单个版本号提交（分支只承载版本号，历史可重写）：
+  #   git checkout -B "release/${MAJOR_MINOR}" main
+  #   git push --force-with-lease origin "release/${MAJOR_MINOR}"
   git checkout "release/${MAJOR_MINOR}"
   # 如果只存在于远程，还需创建本地跟踪分支
   if [ "$EXISTING_BRANCH" = "remote" ]; then
@@ -421,7 +425,10 @@ fi
 echo "=== Phase 3: Bump 版本号 + Tag ==="
 sed -i 's/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml
 sed -i 's/"version": ".*"/"version": "'"$VERSION"'"/' package.json
-git add Cargo.toml package.json
+# 同步 Cargo.lock 中本包的 version（cargo 会按 Cargo.toml 重写该字段；
+# 不同步会让锁文件与 Cargo.toml 不一致，切回 main 后残留一个莫名改动）
+cargo update -p token-proxy --offline 2>/dev/null || cargo metadata --format-version 1 >/dev/null
+git add Cargo.toml Cargo.lock package.json
 git commit -m "chore(release): bump version to $VERSION"
 git tag "$VERSION"
 
