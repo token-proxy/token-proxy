@@ -5,6 +5,21 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.9.3] - 2026-10-16
+
+### Added
+
+- 基础信息与词元用量合并为单条紧凑汇总条
+- 时间轴改为等宽槽位投影，页面不再滚动并支持缩放联动
+
+### Fixed
+
+- 响应体按 content-encoding 解码，修复词元统计全 0
+
+### Miscellaneous
+
+- Bump version to 1.9.3
+
 ## [1.9.2] - 2026-10-16
 
 ### Documentation
