@@ -167,6 +167,34 @@ cargo make build
 cargo make check
 ```
 
+### 发布
+
+推送 tag（版本号、无 `v` 前缀）即自动完成发布：
+
+```bash
+git tag -a 1.9.0 -m "1.9.0"
+git push origin 1.9.0
+```
+
+`.github/workflows/release.yml` 随后自动执行：复用日常校验作为发布前门禁 → 构建并推送镜像到
+`ghcr.io/token-proxy/token-proxy`（含 `1.9.0`、`1.9`、sha 与 `latest` 标签，附 SBOM 与构建来源）→
+导出离线镜像包并计算校验和 → 生成发布说明并创建 GitHub Release。
+
+Release 正文包含容器镜像信息（digest、平台、拉取命令）、按约定式提交分组的变更内容、产物大小与
+SHA-256，以及完整变更链接；附件为离线镜像包与 `sha256sums.txt`。发布说明由 `scripts/release-notes.sh`
+生成（变更内容取自 `cliff.toml`，与 CHANGELOG.md 同源），可在本机预览：
+
+```bash
+scripts/release-notes.sh --tag 1.9.0 --repo token-proxy/token-proxy \
+  --image ghcr.io/token-proxy/token-proxy --platforms linux/amd64
+```
+
+发布失败需重跑时不要重新打 tag，用工作流的手动入口（幂等，已存在则更新 Release 正文与附件）：
+
+```bash
+gh workflow run release.yml -f tag=1.9.0
+```
+
 ### 参考文档
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — 架构设计与技术细节
