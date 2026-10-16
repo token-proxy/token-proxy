@@ -5,6 +5,25 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.9.1] - 2026-10-16
+
+### Added
+
+- 禁用用户真正断权，并修复删除用户报错
+
+### Documentation
+
+- 记录账号状态断权与删除守卫
+
+### Fixed
+
+- 修正 git-cliff 安装步骤的版本入参
+- 修正发布说明的变更区间推导，避免重复计入已发布改动
+
+### Miscellaneous
+
+- Bump version to 1.9.1
+
 ## [1.9.0] - 2026-10-16
 
 ### Added
