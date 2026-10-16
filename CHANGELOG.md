@@ -5,6 +5,25 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.9.0] - 2026-10-16
+
+### Added
+
+- 请求日志详情改为运行轨迹视图，移除会话日志功能 **BREAKING**
+
+### Documentation
+
+- 同步运行轨迹、内容可用性与发布流程文档
+
+### Fixed
+
+- 修复 Anthropic 流式词元统计漏计输入与缓存侧
+
+### Miscellaneous
+
+- Bump version to 1.9.0
+- 推送 tag 自动发布并生成发布说明
+
 ## [1.8.2] - 2026-10-12
 
 ### Fixed
