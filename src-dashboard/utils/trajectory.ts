@@ -48,7 +48,6 @@ export type TrajectoryTabKey =
   | 'result'
   | 'headers'
   | 'options'
-  | 'timing'
   | 'raw';
 
 /** 检查器页签内容形态 */
@@ -909,7 +908,6 @@ function assistantCell(event: {
       ]),
       ...(hasProse ? [tabText('output', '原始输出', event.text)] : []),
       ...(event.thinking ? [tabText('thinking', '思考', event.thinking)] : []),
-      tabTiming(null),
       tabJson('raw', '原始内容', event.raw),
     ],
   };
@@ -943,7 +941,6 @@ function toolCell(call: PendingCall): CellDraft {
       ]),
       tabJson('payload', '参数', call.params),
       tabText('result', '结果', resultText || '未捕获结果'),
-      tabTiming(null),
       tabJson('raw', '原始内容', { call: call.raw, result: call.resultRaw ?? null }),
     ],
   };
@@ -1116,7 +1113,6 @@ function progressAssistantCell(data: LogDetailFull, text: string, thinking: stri
       ...(hasProse ? [tabText('output', '原始输出', text)] : []),
       ...(thinking ? [tabText('thinking', '思考', thinking)] : []),
       ...(headers ? [tabText('headers', '响应头', headers)] : []),
-      tabTiming(data.duration_ms ?? null, formatClock(data.timestamp)),
       tabJson('raw', '原始内容', parseRawJson(data.response_body)),
     ],
   };
@@ -1165,7 +1161,6 @@ function responseFallbackCell(data: LogDetailFull, rawBody: string, missing: boo
       tabOverview(overview),
       ...(rawBody ? [tabText('result', '结果', rawBody)] : []),
       ...(headers ? [tabText('headers', '响应头', headers)] : []),
-      tabTiming(data.duration_ms ?? null, formatClock(data.timestamp)),
       ...(missing
         ? [tabText('raw', '原始内容', MISSING_CONTENT_HINT)]
         : [tabJson('raw', '原始内容', parseRawJson(rawBody))]),
@@ -1284,20 +1279,6 @@ function tabJson(key: TrajectoryTabKey, label: string, value: unknown): Trajecto
 /** 文本页签 */
 function tabText(key: TrajectoryTabKey, label: string, value: string): TrajectoryTab {
   return { key, label, kind: 'text', value };
-}
-
-/** 计时页签（日志只有整体耗时，逐条耗时如实标注未记录） */
-function tabTiming(timeMs: number | null, startedAt?: string): TrajectoryTab {
-  return {
-    key: 'timing',
-    label: '计时',
-    kind: 'meta',
-    items: [
-      ...(startedAt ? [{ label: '开始时间', value: startedAt }] : []),
-      { label: '自身耗时', value: timeMs === null ? '未记录' : `${formatNumberText(timeMs)} 毫秒` },
-      { label: '计时来源', value: timeMs === null ? '日志未记录逐条耗时' : '请求整体耗时' },
-    ],
-  };
 }
 
 /** 词元（与后端 6 列对齐） */

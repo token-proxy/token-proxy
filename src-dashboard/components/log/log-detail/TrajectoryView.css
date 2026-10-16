@@ -265,6 +265,16 @@
   background: var(--semi-color-border);
 }
 
+/* 覆盖层与泳道轨道同坐标系：左侧同样让出「标签宽 + 间距」，故竖条与片段对齐 */
+.trajectory-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 36px;
+  right: 0;
+  pointer-events: none;
+}
+
 .trajectory-cursor {
   position: absolute;
   top: 0;
@@ -559,9 +569,21 @@
   background: var(--semi-color-bg-0);
 }
 
-/* 面板内的长文本/JSON：换行显示，避免撑出横向滚动条 */
-.trajectory-inspector pre,
-.trajectory-inspector code {
+/* 代码高亮块：保持 `white-space: pre`（Semi 的逐行行号依赖它），超宽时在块内横向滚动 */
+.trajectory-inspector .semi-codeHighlight {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.trajectory-inspector .semi-codeHighlight pre,
+.trajectory-inspector .semi-codeHighlight code {
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+/* 纯文本页签：换行显示（无行号，不受影响） */
+.trajectory-inspector pre {
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;

@@ -150,23 +150,26 @@ export default function TrajectoryTimelineView({
                       </Tooltip>
                     );
                   })}
-                {timeline.boundaries.map((boundary) => (
-                  <span
-                    key={`boundary-${boundary.turnIndex}`}
-                    className="trajectory-boundary"
-                    style={{ left: `${(boundary.slot / total) * 100}%` }}
-                    title={`第 ${boundary.turnIndex} 轮开始`}
-                  />
-                ))}
               </div>
             </div>
           ))}
-          {selected && (
-            <span
-              className="trajectory-cursor"
-              style={{ left: `${((selected.slot + 0.5) / total) * 100}%` }}
-            />
-          )}
+          {/* 覆盖层与泳道轨道同坐标系：竖条/边界与片段严格对齐（缩放时同样成立） */}
+          <div className="trajectory-overlay">
+            {timeline.boundaries.map((boundary) => (
+              <span
+                key={`boundary-${boundary.turnIndex}`}
+                className="trajectory-boundary"
+                style={{ left: `${(boundary.slot / total) * 100}%` }}
+                title={`第 ${boundary.turnIndex} 轮开始`}
+              />
+            ))}
+            {selected && (
+              <span
+                className="trajectory-cursor"
+                style={{ left: `${((selected.slot + 0.5) / total) * 100}%` }}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>
