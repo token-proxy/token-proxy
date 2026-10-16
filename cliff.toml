@@ -20,6 +20,9 @@ filter_unconventional = false
 split_commits = false
 commit_preprocessors = []
 commit_parsers = [
+  # 发布簿记（CHANGELOG 追加提交）不是面向用户的变更：release/* 分支与 main 分叉时
+  # 它们会落进版本区间，跳过以免混进变更内容
+  { message = "^chore\\(release\\): add CHANGELOG", skip = true },
   { message = "^feat", group = "Added" },
   { message = "^fix", group = "Fixed" },
   { message = "^perf", group = "Changed" },

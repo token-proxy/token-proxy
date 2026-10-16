@@ -431,10 +431,18 @@ git push origin "release/${MAJOR_MINOR}"
 git push origin "$VERSION"
 
 # Phase 5：切回 main 生成 CHANGELOG
+# 区间必须与 Release 正文同源：tag 打在 release/* 分支上、与 main 的提交链分叉，
+# 直接 `git-cliff -l` 会把上一个版本已发布过的改动（cherry-pick 到 main 的另一份 sha）
+# 重复计入，故由 release-notes.sh 推导区间（含 patch-id 去重）
 echo "=== Phase 5: 生成 CHANGELOG ==="
 git checkout main
 git pull origin main
-git-cliff -l -t "$VERSION" -p CHANGELOG.md
+RANGE=$(scripts/release-notes.sh --print-range --tag "$VERSION")
+if [ -n "$RANGE" ]; then
+  git-cliff "$RANGE" --tag "$VERSION" -p CHANGELOG.md
+else
+  git-cliff -l -t "$VERSION" -p CHANGELOG.md
+fi
 git add CHANGELOG.md
 git commit -m "chore(release): add CHANGELOG for $VERSION"
 

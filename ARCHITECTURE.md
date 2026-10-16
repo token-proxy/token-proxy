@@ -1087,8 +1087,14 @@ CI 发布（`.github/workflows/release.yml`，**推送 tag 即触发，无需人
 约定与边界：
 
 - **不再手工 `gh release create`**：手工创建会覆盖 CI 写入的正文与附件
-- 发布说明的「变更内容」取自 `cliff.toml`，与 CHANGELOG.md 同一分组规则；首个版本（无更早版本 tag）时不传区间，
-  由 git-cliff 把全部历史归入该 tag
+- 发布说明的「变更内容」取自 `cliff.toml`，与 CHANGELOG.md 同一分组规则。**变更区间由 `scripts/release-notes.sh` 推导**
+  （`--print-range` 供 CHANGELOG 复用，保证两者同源），因为本仓库的发布模型是「tag 打在 `release/*` 分支的版本号提交上、
+  main 只收 cherry-pick」，tag 与 main 的提交链**分叉**，有两个坑：
+  1. 新 minor 的首个版本上 `git describe` 找不到祖先版本 tag → 退回「版本号排序」取上一个版本 tag
+  2. 上一个版本已发布过的改动在 main 上是另一份 sha（cherry-pick）→ 用 `git log --cherry-pick --right-only <prev>...<tag>`
+     按 patch-id 去重，取「纯祖先区间里被判为重复的最新提交」作为区间下界；更早那些只存在于 main 的发布簿记提交
+     （`chore(release): add CHANGELOG …`）由 `cliff.toml` 的 `commit_parsers` 跳过
+     首个版本（无更早版本 tag）时不传区间，由 git-cliff 把全部历史归入该 tag
 - **CI 不写回仓库**：CHANGELOG.md 仍由发布方在 main 上提交；若要让 CI 代维护，需另加「提交回 main」作业并先确认分支保护策略
 - 同时发布 arm64 的步骤写在 `release.yml` 文件末尾（需加 QEMU，编译耗时上升一个数量级）
 
