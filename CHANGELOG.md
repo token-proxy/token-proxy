@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.9.5] - 2026-10-16
+
+### Fixed
+
+- 移除计时页签、修复代码块行号堆叠与时间轴竖条错位
+
+### Miscellaneous
+
+- Bump version to 1.9.5
+
 ## [1.9.3] - 2026-10-16
 
 ### Added
