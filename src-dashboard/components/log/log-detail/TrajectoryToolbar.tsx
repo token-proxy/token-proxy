@@ -6,9 +6,6 @@ const { Text } = Typography;
 
 /** TrajectoryToolbar 组件 Props */
 interface TrajectoryToolbarProps {
-  /** 时间轴是否按内容体量加权（false = 等宽序列投影） */
-  scaleBySize: boolean;
-  onScaleBySizeChange: (value: boolean) => void;
   /** 轮次总数（0 时「轮次」开关不可用） */
   turnCount: number;
   /** 全部轮次是否已收起 */
@@ -29,16 +26,14 @@ interface TrajectoryToolbarProps {
 /**
  * TrajectoryToolbar - 轨迹工具栏
  *
- * 三个开关与 DSH 轨迹工具栏同构，开关旁带数量，无内容可折叠时置灰：
- * - **规模**：时间轴片段宽度按内容体量加权（日志未记录逐条耗时，故不提供时长口径）
+ * 开关与 DSH 轨迹工具栏同构，开关旁带数量，无内容可折叠时置灰：
  * - **轮次**：收起 / 展开所有轮次（收起后每个轮次只留一张表头，便于扫整体走向）
  * - **调用**：收起 / 展开所有工具调用行（只隐藏工具行，助手消息与思考保留）
+ * 时间轴宽度固定为等宽槽位（日志无逐条耗时数据），故不提供宽度口径开关。
  *
  * 右侧为账本搜索框，命中数量实时回显。
  */
 export default function TrajectoryToolbar({
-  scaleBySize,
-  onScaleBySizeChange,
   turnCount,
   allTurnsCollapsed,
   onToggleAllTurns,
@@ -51,18 +46,6 @@ export default function TrajectoryToolbar({
 }: TrajectoryToolbarProps): ReactNode {
   return (
     <div className="trajectory-toolbar">
-      <Tooltip content="时间轴片段宽度按记录内容体量加权（日志未记录逐条耗时，不使用时长口径）">
-        <button
-          type="button"
-          className="trajectory-chip"
-          data-checked={scaleBySize ? 'true' : 'false'}
-          onClick={() => onScaleBySizeChange(!scaleBySize)}
-        >
-          <span className="trajectory-chip__box" />
-          规模
-        </button>
-      </Tooltip>
-
       <Tooltip
         content={
           turnCount > 0

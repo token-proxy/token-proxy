@@ -9,6 +9,7 @@ import TokenUsageCard from '@components/log/log-detail/TokenUsageCard';
 import TrajectoryView from '@components/log/log-detail/TrajectoryView';
 import TrajectoryUnavailable from '@components/log/log-detail/TrajectoryUnavailable';
 import { hasTrajectoryContent } from '../utils/trajectory.ts';
+import './LogDetailPage.css';
 
 /**
  * LogDetailPage - 日志详情页面
@@ -73,9 +74,9 @@ export default function LogDetailPage(): ReactNode {
   // ── 正常渲染 ──
 
   return (
-    <div>
-      {/* 面包屑 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+    <div className="log-detail">
+      {/* 面包屑（压缩高度） */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
         <Breadcrumb>
           <Breadcrumb.Item>
             <span
@@ -89,11 +90,11 @@ export default function LogDetailPage(): ReactNode {
         </Breadcrumb>
       </div>
 
-      {/* 1. 基础信息 */}
-      <BasicInfoCard data={data} style={{ marginBottom: 16 }} />
-
-      {/* 2. 词元用量 */}
-      <TokenUsageCard data={data} style={{ marginBottom: 16 }} />
+      {/* 1+2. 基础信息与词元用量并排，压缩头部高度 */}
+      <div className="log-detail__cards">
+        <BasicInfoCard data={data} />
+        <TokenUsageCard data={data} />
+      </div>
 
       {/* 3. 主视图：原文可用则画运行轨迹，原文已被清理则画说明卡
           （key 保证切换日志时重建选中与折叠状态） */}

@@ -107,8 +107,6 @@ export interface TrajectoryCell {
   contentMissing?: boolean;
   /** 时间轴泳道（null = 不进时间轴） */
   lane: TrajectoryLane | null;
-  /** 规模权重（时间轴宽度与默认折叠判断使用） */
-  weight: number;
   /** 检查器页签 */
   tabs: TrajectoryTab[];
 }
@@ -131,36 +129,37 @@ export interface TrajectoryTurn {
 }
 
 /** 时间轴投影片段 */
+/**
+ * 时间轴片段
+ *
+ * 对齐 DSH 的 sequence 投影：**每条记录恰好占一个等宽槽位**（`slot`），
+ * 因此片段之间在结构上不可能重叠 —— 泳道只决定纵向行，槽位决定横向位置。
+ * 日志未记录逐条耗时，故不按真实时间布轴，也不做内容体量加权
+ * （体量差异可达三个数量级，会出现一条极宽一条极窄）。
+ */
 export interface TrajectoryTimelineSpan {
   cellIndex: number;
   lane: TrajectoryLane;
-  /** 片段中心相对位置（0..1，按记录槽位确定） */
-  center: number;
-  /** 内容体量权重（「规模」模式的宽度依据） */
-  weight: number;
+  /** 槽位序号（0-based，等于该片段在时间轴上的横向位置） */
+  slot: number;
   kind: TrajectoryCellKind;
   label: string;
   turnIndex: number | null;
 }
 
-/** 轮次边界（相对位置 0..1） */
+/** 轮次边界（该轮次首条记录所在的槽位） */
 export interface TrajectoryTimelineBoundary {
   turnIndex: number;
-  position: number;
+  slot: number;
 }
 
 /** 时间轴模型 */
 export interface TrajectoryTimeline {
   spans: TrajectoryTimelineSpan[];
   boundaries: TrajectoryTimelineBoundary[];
-  /** 记录总数（等宽模式的宽度依据） */
+  /** 记录总数（= 槽位数，等宽） */
   total: number;
-  /** 最大内容体量（「规模」模式的宽度依据） */
-  maxWeight: number;
 }
-
-/** 时间轴片段的宽度口径 */
-export type TrajectoryTimelineScale = 'sequence' | 'size';
 
 /** 概览统计 */
 export interface TrajectoryStats {
@@ -214,10 +213,6 @@ const PREVIEW_LENGTH = 160;
 
 /** 工具入参内联预览长度 */
 const ARGS_INLINE_LENGTH = 70;
-
-/** 时间轴片段的最小/最大宽度（相对值） */
-const SPAN_MIN_WIDTH = 0.018;
-const SPAN_MAX_WIDTH = 0.16;
 
 /** 原文未落库时，检查器「原始内容」页签的说明文案 */
 const MISSING_CONTENT_HINT =
@@ -852,7 +847,6 @@ function systemCell(label: string, text: string, raw: unknown): CellDraft {
     status: 'completed',
     isError: false,
     lane: 'input',
-    weight: text.length,
     tabs: [
       tabOverview([
         { label: '层级', value: '系统提示' },
@@ -875,7 +869,6 @@ function userCell(text: string, raw: unknown): CellDraft {
     status: 'completed',
     isError: false,
     lane: 'input',
-    weight: text.length,
     tabs: [
       tabOverview([
         { label: '层级', value: '用户消息' },
@@ -905,7 +898,6 @@ function assistantCell(event: {
     status: 'completed',
     isError: false,
     lane: 'model',
-    weight: event.text.length + event.thinking.length + event.calls.length * 8,
     tabs: [
       tabOverview([
         { label: '层级', value: '助手消息' },
@@ -940,7 +932,6 @@ function toolCell(call: PendingCall): CellDraft {
     status: call.isError ? 'failed' : status,
     isError: call.isError,
     lane: 'tool',
-    weight: argsInline.length + resultText.length,
     tabs: [
       tabOverview([
         { label: '工具', value: call.toolName || '未知工具' },
@@ -975,7 +966,6 @@ function orphanToolResultCell(event: {
     status: event.isError ? 'failed' : 'completed',
     isError: event.isError,
     lane: 'tool',
-    weight: event.text.length,
     tabs: [
       tabOverview([
         { label: '层级', value: '工具结果' },
@@ -1043,7 +1033,6 @@ function requestCell(
     isError: false,
     contentMissing: !hasBody,
     lane: 'model',
-    weight: 64,
     tabs: [
       tabOverview(overview),
       ...(Object.keys(opts).length > 0 ? [tabJson('options', '选项', opts)] : []),
@@ -1100,7 +1089,6 @@ function progressAssistantCell(data: LogDetailFull, text: string, thinking: stri
     { label: '状态码', value: String(data.status_code ?? '-') },
     { label: '状态', value: failed ? '失败' : '已完成' },
     { label: '模型', value: data.model_mapped || data.model_original || '-' },
-    { label: '耗时', value: `${formatNumberText(data.duration_ms ?? 0)} 毫秒` },
     { label: '内容可用性', value: '响应体原文已保存' },
     ...usageItems(data),
   ];
@@ -1113,7 +1101,8 @@ function progressAssistantCell(data: LogDetailFull, text: string, thinking: stri
     preview: hasProse ? remainder(text) : undefined,
     model: data.model_mapped || data.model_original || undefined,
     time: formatClock(data.timestamp),
-    timeMs: data.duration_ms ?? null,
+    // 助手行不挂耗时：日志只记整条请求耗时，挂在消息上属于误导（请求/响应信封行保留真实值）
+    timeMs: null,
     input: usage.input,
     cacheRead: usage.cacheRead,
     cacheWrite: usage.cacheWrite,
@@ -1122,7 +1111,6 @@ function progressAssistantCell(data: LogDetailFull, text: string, thinking: stri
     status: failed ? 'failed' : 'completed',
     isError: failed,
     lane: 'model',
-    weight: 256 + text.length + thinking.length,
     tabs: [
       tabOverview(overview),
       ...(hasProse ? [tabText('output', '原始输出', text)] : []),
@@ -1173,7 +1161,6 @@ function responseFallbackCell(data: LogDetailFull, rawBody: string, missing: boo
     isError: failed,
     contentMissing: missing,
     lane: 'model',
-    weight: rawBody.length || 32,
     tabs: [
       tabOverview(overview),
       ...(rawBody ? [tabText('result', '结果', rawBody)] : []),
@@ -1209,7 +1196,6 @@ function buildPendingToolCells(data: LogDetailFull, protocol: ApiProtocolName): 
         status: 'pending' as const,
         isError: false,
         lane: 'tool' as const,
-        weight: argsInline.length,
         tabs: [
           tabOverview([
             { label: '工具', value: block.tool_name ?? '未知工具' },
@@ -1234,9 +1220,6 @@ function buildPendingToolCells(data: LogDetailFull, protocol: ApiProtocolName): 
  * 轮次边界给出每个轮次首条记录的位置，供时间轴画分隔线。
  */
 function projectTimeline(turns: TrajectoryTurn[], cells: TrajectoryCell[]): TrajectoryTimeline {
-  const total = cells.length || 1;
-  const maxWeight = Math.max(1, ...cells.map((cell) => cell.weight));
-
   const turnOfCell = new Map<number, number>();
   for (const turn of turns) {
     for (const group of turn.groups) {
@@ -1247,57 +1230,43 @@ function projectTimeline(turns: TrajectoryTurn[], cells: TrajectoryCell[]): Traj
   }
 
   const spans: TrajectoryTimelineSpan[] = [];
-  cells.forEach((cell, position) => {
-    if (!cell.lane) return;
+  const boundaries: TrajectoryTimelineBoundary[] = [];
+  const seenTurns = new Set<number>();
+
+  // 只有带泳道的记录进时间轴；槽位按可见顺序连续编号 → 等宽且互不重叠
+  for (const cell of cells) {
+    if (!cell.lane) continue;
+    const slot = spans.length;
+    const turnIndex = turnOfCell.get(cell.index) ?? null;
     spans.push({
       cellIndex: cell.index,
       lane: cell.lane,
-      center: clamp01((position + 0.5) / total),
-      weight: cell.weight,
+      slot,
       kind: cell.kind,
       label: `${cell.kindLabel} #${cell.index}`,
-      turnIndex: turnOfCell.get(cell.index) ?? null,
+      turnIndex,
     });
-  });
+    if (turnIndex !== null && !seenTurns.has(turnIndex)) {
+      seenTurns.add(turnIndex);
+      boundaries.push({ turnIndex, slot });
+    }
+  }
 
-  const boundaries: TrajectoryTimelineBoundary[] = [];
-  const seenTurns = new Set<number>();
-  cells.forEach((cell, position) => {
-    const turnIndex = turnOfCell.get(cell.index);
-    if (turnIndex === undefined || seenTurns.has(turnIndex)) return;
-    seenTurns.add(turnIndex);
-    boundaries.push({ turnIndex, position: clamp01((position + 0.5) / total) });
-  });
-
-  return { spans, boundaries, total, maxWeight };
+  return { spans, boundaries, total: spans.length };
 }
 
 /**
- * 计算时间轴片段的宽度（相对值）
+ * 槽位 → 相对位置（0..1）
  *
- * - `sequence`：按记录槽位等宽投影（默认，日志未记录逐条耗时）
- * - `size`：按内容体量相对最大体量加权，体现每条记录的规模差异
+ * 每条记录一个等宽槽位：`[slot/total, (slot+1)/total)`。
+ * 槽位互斥，故不同泳道的片段也不会在横向上重叠。
  */
-export function trajectorySpanWidth(
+export function trajectorySpanBox(
   span: TrajectoryTimelineSpan,
   timeline: TrajectoryTimeline,
-  scale: TrajectoryTimelineScale,
-): number {
-  if (scale === 'size') {
-    const ratio = Math.min(1, span.weight / timeline.maxWeight);
-    return SPAN_MIN_WIDTH + (SPAN_MAX_WIDTH - SPAN_MIN_WIDTH) * ratio;
-  }
-  return Math.max(1 / timeline.total, SPAN_MIN_WIDTH);
-}
-
-/** 计算时间轴片段的左边界（相对值） */
-export function trajectorySpanStart(
-  span: TrajectoryTimelineSpan,
-  timeline: TrajectoryTimeline,
-  scale: TrajectoryTimelineScale,
-): number {
-  const width = trajectorySpanWidth(span, timeline, scale);
-  return clamp01(span.center - width / 2);
+): { left: number; width: number } {
+  const total = Math.max(1, timeline.total);
+  return { left: span.slot / total, width: 1 / total };
 }
 
 // ─── 页签与格式化辅助 ───
@@ -1450,9 +1419,6 @@ function formatNumberText(value: number): string {
 }
 
 /** 收敛到 0..1 */
-function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}
 
 /**
  * 把协议内容块（字符串 / 数组 / 对象）提炼为纯文本

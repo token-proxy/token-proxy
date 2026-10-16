@@ -1,13 +1,9 @@
-import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import { IconAlertTriangle } from '@douyinfe/semi-icons';
 import type { LogDetailFull } from '../../../types/log.ts';
 import { PROTOCOL_LABELS, buildTrajectory } from '../../../utils/trajectory.ts';
-import type {
-  TrajectoryCell,
-  TrajectoryModel,
-  TrajectoryTimelineScale,
-} from '../../../utils/trajectory.ts';
+import type { TrajectoryCell, TrajectoryModel } from '../../../utils/trajectory.ts';
 import TrajectoryToolbar from './TrajectoryToolbar.tsx';
 import TrajectoryTimelineView from './TrajectoryTimeline.tsx';
 import TrajectoryLedger from './TrajectoryLedger.tsx';
@@ -27,8 +23,8 @@ interface TrajectoryViewProps {
 /**
  * TrajectoryView - 运行轨迹视图
  *
- * 参照 DSH 轨迹视图的构成：工具栏（规模 / 轮次 / 调用开关 + 搜索）+ 三泳道时间轴概览
- * + 按轮次分组的事件账本 + 右侧记录检查器。
+ * 参照 DSH 轨迹视图的构成：工具栏（轮次 / 调用开关 + 搜索）+ 三泳道时间轴概览
+ * + 按轮次分组的事件账本 + 右侧可拖拽调宽的记录检查器（关闭时账本占满宽度）。
  *
  * 账本内容取决于请求实际携带的内容：Anthropic 与 OpenAI Chat Completions 的请求体
  * 自带历史消息，轨迹覆盖整段对话；OpenAI Responses 只有本轮输入项时轨迹只有本轮。
@@ -42,7 +38,10 @@ export default function TrajectoryView({ data, style }: TrajectoryViewProps): Re
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(() => defaultSelection(model));
   const [search, setSearch] = useState('');
-  const [scale, setScale] = useState<TrajectoryTimelineScale>('sequence');
+  /** 账本当前首条可见记录（时间轴据此横向跟随） */
+  const [focusIndex, setFocusIndex] = useState<number | null>(null);
+  /** 检查器宽度（可拖拽调整） */
+  const [inspectorWidth, setInspectorWidth] = useState(400);
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(() => new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(() => new Set());
   const [collapsedCalls, setCollapsedCalls] = useState<ReadonlySet<string>>(() => new Set());
@@ -64,6 +63,20 @@ export default function TrajectoryView({ data, style }: TrajectoryViewProps): Re
 
   // ─── 选中与滚动联动 ───
 
+  /** 账本滚动：把「当前首条可见记录」交给时间轴，实现上下与横向联动 */
+  const handleLedgerScroll = useCallback(() => {
+    const container = ledgerRef.current;
+    if (!container) return;
+    const rows = container.querySelectorAll<HTMLElement>('[data-cell-index]');
+    const top = container.scrollTop;
+    for (const row of rows) {
+      if (row.offsetTop + row.offsetHeight > top + 8) {
+        setFocusIndex(Number(row.dataset.cellIndex));
+        return;
+      }
+    }
+  }, []);
+
   const scrollToCell = useCallback((index: number) => {
     const container = ledgerRef.current;
     const target = container?.querySelector(`[data-cell-index="${index}"]`);
@@ -83,6 +96,14 @@ export default function TrajectoryView({ data, style }: TrajectoryViewProps): Re
     },
     [scrollToCell],
   );
+
+  // 账本滚动监听：驱动时间轴横向跟随（passive，不阻塞滚动）
+  useEffect(() => {
+    const container = ledgerRef.current;
+    if (!container) return;
+    container.addEventListener('scroll', handleLedgerScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleLedgerScroll);
+  }, [handleLedgerScroll]);
 
   // ─── 折叠 ───
 
@@ -163,8 +184,6 @@ export default function TrajectoryView({ data, style }: TrajectoryViewProps): Re
 
       {/* ─── 工具栏 ─── */}
       <TrajectoryToolbar
-        scaleBySize={scale === 'size'}
-        onScaleBySizeChange={(value) => setScale(value ? 'size' : 'sequence')}
         turnCount={model.stats.turns}
         allTurnsCollapsed={allTurnsCollapsed}
         onToggleAllTurns={handleToggleAllTurns}
@@ -179,14 +198,22 @@ export default function TrajectoryView({ data, style }: TrajectoryViewProps): Re
       {/* ─── 时间轴概览 ─── */}
       <TrajectoryTimelineView
         timeline={model.timeline}
-        scale={scale}
         selectedIndex={selectedIndex}
         onSelect={handleTimelineSelect}
         matches={matches}
+        focusIndex={focusIndex}
       />
 
-      {/* ─── 账本 + 检查器 ─── */}
-      <div className="trajectory-view__body">
+      {/* ─── 账本 + 检查器（关闭时账本占满，打开时可拖拽调宽）─── */}
+      <div
+        className="trajectory-view__body"
+        data-inspector={selected && location ? 'open' : 'closed'}
+        style={
+          selected && location
+            ? { gridTemplateColumns: `minmax(0, 1fr) ${inspectorWidth}px` }
+            : undefined
+        }
+      >
         <TrajectoryLedger
           model={model}
           selectedIndex={selectedIndex}
@@ -201,16 +228,37 @@ export default function TrajectoryView({ data, style }: TrajectoryViewProps): Re
           containerRef={ledgerRef}
         />
 
-        {selected && location ? (
-          <TrajectoryInspector
-            cell={selected}
-            location={location}
-            onClose={() => setSelectedIndex(null)}
-          />
-        ) : (
-          <aside className="trajectory-inspector trajectory-inspector--empty">
-            <Text type="tertiary">选择左侧记录查看详情</Text>
-          </aside>
+        {selected && location && (
+          <>
+            <div className="trajectory-view__pane">
+              <div
+                className="trajectory-view__resizer"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="拖拽调整检查器宽度"
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  const startX = event.clientX;
+                  const startWidth = inspectorWidth;
+                  const onMove = (move: PointerEvent) => {
+                    const next = startWidth - (move.clientX - startX);
+                    setInspectorWidth(Math.min(760, Math.max(320, next)));
+                  };
+                  const onUp = () => {
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', onUp);
+                  };
+                  window.addEventListener('pointermove', onMove);
+                  window.addEventListener('pointerup', onUp);
+                }}
+              />
+              <TrajectoryInspector
+                cell={selected}
+                location={location}
+                onClose={() => setSelectedIndex(null)}
+              />
+            </div>
+          </>
         )}
       </div>
     </div>

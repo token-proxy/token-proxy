@@ -3,11 +3,11 @@
 .trajectory-view {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 330px);
-  min-height: 520px;
+  flex: 1 1 auto;
+  min-height: 0;
   border: 1px solid var(--semi-color-border);
-  border-radius: 10px;
-  background: var(--semi-color-bg-1);
+  border-radius: 8px;
+  background: var(--semi-color-bg-2);
   overflow: hidden;
 }
 
@@ -125,15 +125,71 @@
   transform: rotate(45deg);
 }
 
-/* ─── 三泳道时间轴 ─── */
+/* ─── 三泳道时间轴（等宽槽位；可滚轮缩放、横向滚动）─── */
 
 .trajectory-timeline {
   display: flex;
   flex-direction: column;
   gap: 4px;
   flex: none;
-  padding: 8px 12px;
+  padding: 6px 12px 8px;
   border-bottom: 1px solid var(--semi-color-border);
+}
+
+.trajectory-timeline__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trajectory-timeline__hint {
+  font-size: 11px;
+  color: var(--semi-color-text-3);
+}
+
+.trajectory-timeline__zoom {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.trajectory-timeline__zoom-btn {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.trajectory-timeline__zoom-btn:disabled {
+  color: var(--semi-color-disabled-text);
+  cursor: not-allowed;
+}
+
+.trajectory-timeline__zoom-value {
+  min-width: 34px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--semi-color-text-2);
+}
+
+/* 横向滚动容器：缩放后内容变宽，这里负责滚动 */
+.trajectory-timeline__scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.trajectory-timeline__track {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .trajectory-lane {
@@ -157,50 +213,51 @@
   background: var(--semi-color-fill-0);
 }
 
-.trajectory-lane__span {
+/* 一条记录 = 一个等宽槽位；不同泳道的槽位互斥，故不会重叠 */
+.trajectory-span {
   position: absolute;
   top: 3px;
   height: 8px;
-  min-width: 3px;
   padding: 0;
+  min-width: 2px;
   border: 0;
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--semi-color-text-3);
   cursor: pointer;
   transition: opacity 0.15s ease;
 }
 
-.trajectory-lane__span[data-kind='system'] {
+.trajectory-span[data-kind='system'] {
   background: #93a0b0;
 }
 
-.trajectory-lane__span[data-kind='user'] {
+.trajectory-span[data-kind='user'] {
   background: var(--semi-color-info);
 }
 
-.trajectory-lane__span[data-kind='assistant'] {
+.trajectory-span[data-kind='assistant'] {
   background: var(--semi-color-success);
 }
 
-.trajectory-lane__span[data-kind='tool'] {
+.trajectory-span[data-kind='tool'] {
   background: var(--semi-color-warning);
 }
 
-.trajectory-lane__span[data-kind='request'],
-.trajectory-lane__span[data-kind='response'] {
+.trajectory-span[data-kind='request'],
+.trajectory-span[data-kind='response'] {
   background: var(--semi-color-primary);
 }
 
-.trajectory-lane__span[data-dimmed='true'] {
-  opacity: 0.22;
+.trajectory-span[data-match='false'] {
+  opacity: 0.45;
 }
 
-.trajectory-lane__span[data-selected='true'] {
+.trajectory-span[data-selected='true'] {
   outline: 1.5px solid var(--semi-color-primary);
   outline-offset: 1px;
 }
 
-.trajectory-lane__boundary {
+.trajectory-boundary {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -208,13 +265,14 @@
   background: var(--semi-color-border);
 }
 
-.trajectory-lane__cursor {
+.trajectory-cursor {
   position: absolute;
-  top: -3px;
-  bottom: -3px;
+  top: 0;
+  bottom: 0;
   width: 2px;
   border-radius: 1px;
   background: var(--semi-color-primary);
+  pointer-events: none;
 }
 
 /* ─── 账本 + 检查器两栏 ─── */
@@ -224,6 +282,34 @@
   grid-template-columns: minmax(0, 1fr) 400px;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/* 检查器关闭：账本占满，不留空白区 */
+.trajectory-view__body[data-inspector='closed'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* 检查器面板（含左缘拖拽手柄） */
+.trajectory-view__pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+.trajectory-view__resizer {
+  position: absolute;
+  z-index: 2;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.trajectory-view__resizer:hover {
+  background: var(--semi-color-primary-light-default);
 }
 
 .trajectory-ledger {

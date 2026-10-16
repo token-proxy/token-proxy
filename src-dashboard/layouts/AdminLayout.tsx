@@ -58,7 +58,7 @@ export default function AdminLayout(): ReactNode {
     return matchingItem ? [matchingItem.itemKey] : [];
   }, [location.pathname]);
 
-  // 详情页自动折叠，非详情页使用用户偏好
+  // 详情页（logs/:id）自动折叠侧栏，且内容区不滚动（滚动交给页面内部容器）
   const isDetailPage = DETAIL_PAGE_PATTERN.test(location.pathname.replace(/\/$/, ''));
   const isCollapsed = isDetailPage ? true : userCollapsed;
 
@@ -133,7 +133,13 @@ export default function AdminLayout(): ReactNode {
             </div>
           </Dropdown>
         </Header>
-        <Content style={{ padding: 24 }}>
+        <Content
+          style={
+            isDetailPage
+              ? { padding: '12px 16px 16px', overflow: 'hidden', minHeight: 0 }
+              : { padding: 24 }
+          }
+        >
           <Outlet />
         </Content>
       </Layout>
