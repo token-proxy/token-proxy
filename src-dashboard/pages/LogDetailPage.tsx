@@ -4,8 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Breadcrumb, Button, Card, Empty, Skeleton } from '@douyinfe/semi-ui';
 import type { LogDetailFull } from '../types/log.ts';
 import api from '../api.ts';
-import BasicInfoCard from '@components/log/log-detail/BasicInfoCard';
-import TokenUsageCard from '@components/log/log-detail/TokenUsageCard';
+import LogSummaryStrip from '@components/log/log-detail/LogSummaryStrip';
 import TrajectoryView from '@components/log/log-detail/TrajectoryView';
 import TrajectoryUnavailable from '@components/log/log-detail/TrajectoryUnavailable';
 import { hasTrajectoryContent } from '../utils/trajectory.ts';
@@ -90,11 +89,8 @@ export default function LogDetailPage(): ReactNode {
         </Breadcrumb>
       </div>
 
-      {/* 1+2. 基础信息与词元用量并排，压缩头部高度 */}
-      <div className="log-detail__cards">
-        <BasicInfoCard data={data} />
-        <TokenUsageCard data={data} />
-      </div>
+      {/* 1+2. 基础信息与词元用量合并为一张紧凑条，纵向空间留给运行轨迹 */}
+      <LogSummaryStrip data={data} />
 
       {/* 3. 主视图：原文可用则画运行轨迹，原文已被清理则画说明卡
           （key 保证切换日志时重建选中与折叠状态） */}

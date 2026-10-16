@@ -1,0 +1,70 @@
+/* 详情页汇总条：两行紧凑布局，纵向空间让给运行轨迹 */
+
+.log-summary {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  background: var(--semi-color-bg-2);
+}
+
+/* 第一行：基础信息 —— 键值对紧凑排布，超出才换行 */
+.log-summary__basics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 14px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.log-summary__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.log-summary__label {
+  color: var(--semi-color-text-3);
+  white-space: nowrap;
+}
+
+.log-summary__value {
+  color: var(--semi-color-text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+/* 第二行：词元指标紧凑排布；标签定宽 + 数字紧随 → 各列对齐且无多余空白 */
+.log-summary__tokens {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 18px;
+  padding-top: 3px;
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.log-summary__metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.log-summary__tokens .log-summary__label {
+  min-width: 72px;
+}
+
+.log-summary__number {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
