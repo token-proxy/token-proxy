@@ -5,6 +5,20 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.9.2] - 2026-10-16
+
+### Documentation
+
+- 补丁版本需重建 release 分支、升版需同步 Cargo.lock
+
+### Fixed
+
+- 用户管理改为显式「禁用/启用」按钮
+
+### Miscellaneous
+
+- Bump version to 1.9.2
+
 ## [1.9.1] - 2026-10-16
 
 ### Added
