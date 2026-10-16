@@ -7,11 +7,11 @@ import {
   SideSheet,
   Space,
   Table,
+  Tag,
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
 import api from '../api.ts';
-import StatusToggle from '@components/common/StatusToggle';
 import { formatDate } from '../utils/format.ts';
 
 const { Title } = Typography;
@@ -138,17 +138,9 @@ export default function UserManagement(): ReactNode {
       key: 'status',
       width: 100,
       render: (_: string, record: UserResponse) => (
-        <StatusToggle
-          enabled={record.status === 'enabled'}
-          loading={operatingIds.includes(record.id)}
-          confirmTitle={`确认${record.status === 'enabled' ? '禁用' : '启用'}此用户?`}
-          confirmContent={
-            record.status === 'enabled'
-              ? '禁用后其面板登录、API key 与 token 立即失效（离职人员请用禁用，不要删除）'
-              : undefined
-          }
-          onToggle={() => handleToggleStatus(record)}
-        />
+        <Tag color={record.status === 'enabled' ? 'green' : 'grey'}>
+          {record.status === 'enabled' ? '启用' : '禁用'}
+        </Tag>
       ),
     },
     {
@@ -161,12 +153,31 @@ export default function UserManagement(): ReactNode {
     {
       title: '操作',
       key: 'actions',
-      width: 160,
+      width: 220,
       render: (_: unknown, record: UserResponse) => (
         <Space>
           <Button size="small" onClick={() => openEditDrawer(record)}>
             编辑
           </Button>
+          <Popconfirm
+            title={`确认${record.status === 'enabled' ? '禁用' : '启用'}此用户?`}
+            content={
+              record.status === 'enabled'
+                ? '禁用后其面板登录、API key 与 token 立即失效；离职人员请用禁用，不要删除'
+                : '启用后该用户可重新登录并调用代理'
+            }
+            onConfirm={() => handleToggleStatus(record)}
+            position="bottomRight"
+          >
+            <Button
+              size="small"
+              type={record.status === 'enabled' ? 'warning' : 'primary'}
+              disabled={record.username === currentUsername || operatingIds.includes(record.id)}
+              loading={operatingIds.includes(record.id)}
+            >
+              {record.status === 'enabled' ? '禁用' : '启用'}
+            </Button>
+          </Popconfirm>
           <Popconfirm
             title="确认删除此用户?"
             content="仅能删除无历史数据的用户；创建过接入点或有请求日志/审计记录的用户会删除失败，请改用禁用"
