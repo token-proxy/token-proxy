@@ -165,9 +165,10 @@ jobs:
 
       # 与本机生成 CHANGELOG 用的 git-cliff 版本对齐，避免分组行为漂移
       - name: 安装 git-cliff
-        uses: taiki-e/install-action@git-cliff
+        uses: taiki-e/install-action@v2
         with:
-          version: 2.13.1
+          # 版本固定在 tool 取值里：该 action 没有 version 入参（写 version 会被忽略并告警）
+          tool: git-cliff@2.13.1
 
       - name: 生成发布说明
         env:
