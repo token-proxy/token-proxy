@@ -16,6 +16,7 @@ use crate::domain::log::AuditLogRepository;
 use crate::domain::shared::Status;
 use crate::domain::user::User;
 use crate::domain::user::UserRepository;
+use crate::domain::user::{RefreshTokenRepository, UserDependents};
 use crate::infrastructure::auth::password::{hash_password, verify_password};
 use crate::shared::error::AppError;
 
@@ -24,16 +25,19 @@ use crate::shared::error::AppError;
 /// 编排系统用户 CRUD、Profile 更新和密码修改操作。
 pub struct UserService {
     user_repo: Arc<dyn UserRepository>,
+    refresh_token_repo: Arc<dyn RefreshTokenRepository>,
     audit_log_repo: Arc<dyn AuditLogRepository>,
 }
 
 impl UserService {
     pub fn new(
         user_repo: Arc<dyn UserRepository>,
+        refresh_token_repo: Arc<dyn RefreshTokenRepository>,
         audit_log_repo: Arc<dyn AuditLogRepository>,
     ) -> Self {
         UserService {
             user_repo,
+            refresh_token_repo,
             audit_log_repo,
         }
     }
@@ -140,6 +144,14 @@ impl UserService {
 
         let saved = self.user_repo.save(&user).await?;
 
+        // 禁用时吊销其全部 refresh token：已登录会话在 access token 过期后无法续期，
+        // 与 JWT 校验处的状态检查形成双保险（access token 有 TTL，刷新是续命入口）
+        if status_changed && saved.status == Status::Disabled {
+            if let Err(e) = self.refresh_token_repo.revoke_all_for_user(saved.id).await {
+                tracing::error!(error = %e, user_id = %saved.id, "禁用用户时吊销 refresh token 失败");
+            }
+        }
+
         // 按状态变化选择审计操作类型
         let action = if status_changed {
             match saved.status {
@@ -186,12 +198,16 @@ impl UserService {
 
     /// 删除用户
     pub async fn delete(&self, id: Uuid, operator_id: Option<Uuid>) -> Result<(), AppError> {
-        // 先查询用户名，用于审计日志
-        let username = self
+        let user = self
             .user_repo
             .find_by_id(id)
             .await?
-            .map(|u| u.username.clone());
+            .ok_or_else(|| AppError::NotFound(format!("用户 {} 未找到", id)))?;
+        let username = Some(user.username.clone());
+
+        let enabled_count = self.user_repo.count_enabled().await?;
+        let dependents = self.user_repo.count_dependents(id).await?;
+        check_delete_allowed(&user, operator_id, enabled_count, dependents)?;
 
         self.user_repo.delete(id).await?;
 
@@ -296,5 +312,94 @@ impl UserService {
         if let Err(e) = self.audit_log_repo.save(&log).await {
             tracing::error!(error = %e, action = %action, entity_type = %entity_type, "审计日志写入失败");
         }
+    }
+}
+
+/// 删除用户的守卫判定（纯函数，便于单测）
+///
+/// 顺序固定为「先拦自己、再拦最后一名启用用户、最后拦有审计线索的用户」，
+/// 每一条都返回可操作的说明：前两条提示改由其它账号操作，第三条引导改用禁用。
+pub fn check_delete_allowed(
+    target: &User,
+    operator_id: Option<Uuid>,
+    enabled_count: i64,
+    dependents: UserDependents,
+) -> Result<(), AppError> {
+    if operator_id == Some(target.id) {
+        return Err(AppError::Conflict(
+            "不能删除当前登录用户，请改用其它管理员账号".to_string(),
+        ));
+    }
+
+    if target.status.is_enabled() && enabled_count <= 1 {
+        return Err(AppError::Conflict(
+            "该用户是唯一启用中的用户，删除后将无人可登录".to_string(),
+        ));
+    }
+
+    // 有审计线索（创建的接入点 / 请求日志 / 审计记录）时禁止物理删除：
+    // 此前直接删除会被 access_points.created_by 的 ON DELETE RESTRICT 拒绝，
+    // 对外只表现为无信息的 500
+    if let Some(message) = dependents.violation_message() {
+        return Err(AppError::Conflict(message));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn user(status: Status) -> User {
+        let mut u = User::new(
+            "victim".to_string(),
+            "离职同事".to_string(),
+            "hash".to_string(),
+        );
+        u.status = status;
+        u
+    }
+
+    #[test]
+    fn test_delete_self_rejected() {
+        let u = user(Status::Enabled);
+        let err = check_delete_allowed(&u, Some(u.id), 5, UserDependents::default()).unwrap_err();
+        assert!(err.to_string().contains("当前登录用户"));
+    }
+
+    #[test]
+    fn test_last_enabled_user_rejected() {
+        let u = user(Status::Enabled);
+        let err = check_delete_allowed(&u, None, 1, UserDependents::default()).unwrap_err();
+        assert!(err.to_string().contains("唯一启用中的用户"));
+    }
+
+    #[test]
+    fn test_disabled_user_can_be_deleted_when_no_dependents() {
+        let u = user(Status::Disabled);
+        // 已经是禁用状态、且无关联数据：允许删除（不占用"唯一启用用户"的判断）
+        assert!(check_delete_allowed(&u, None, 1, UserDependents::default()).is_ok());
+    }
+
+    #[test]
+    fn test_dependents_block_delete_with_actionable_message() {
+        let u = user(Status::Disabled);
+        let dependents = UserDependents {
+            access_points: 1,
+            logs: 31733,
+            audits: 95,
+        };
+        let err = check_delete_allowed(&u, None, 6, dependents).unwrap_err();
+        assert!(matches!(err, AppError::Conflict(_)), "应为 409 Conflict");
+        let msg = err.to_string();
+        assert!(msg.contains("接入点 1 个") && msg.contains("请求日志 31733 条"));
+        assert!(msg.contains("改为禁用"));
+    }
+
+    #[test]
+    fn test_delete_allowed_for_enabled_user_when_others_remain() {
+        let u = user(Status::Enabled);
+        assert!(check_delete_allowed(&u, None, 3, UserDependents::default()).is_ok());
     }
 }

@@ -142,6 +142,11 @@ export default function UserManagement(): ReactNode {
           enabled={record.status === 'enabled'}
           loading={operatingIds.includes(record.id)}
           confirmTitle={`确认${record.status === 'enabled' ? '禁用' : '启用'}此用户?`}
+          confirmContent={
+            record.status === 'enabled'
+              ? '禁用后其面板登录、API key 与 token 立即失效（离职人员请用禁用，不要删除）'
+              : undefined
+          }
           onToggle={() => handleToggleStatus(record)}
         />
       ),
@@ -164,6 +169,7 @@ export default function UserManagement(): ReactNode {
           </Button>
           <Popconfirm
             title="确认删除此用户?"
+            content="仅能删除无历史数据的用户；创建过接入点或有请求日志/审计记录的用户会删除失败，请改用禁用"
             onConfirm={() => handleDelete(record.id)}
             position="bottomRight"
           >

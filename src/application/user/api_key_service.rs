@@ -11,6 +11,7 @@ use crate::domain::log::AuditLog;
 use crate::domain::log::AuditLogRepository;
 use crate::domain::user::UserApiKey;
 use crate::domain::user::UserApiKeyRepository;
+use crate::domain::user::UserRepository;
 use crate::shared::error::AppError;
 
 /// API key 前缀标识
@@ -24,16 +25,19 @@ const TOKEN_RANDOM_LEN: usize = 40;
 /// 完整 key 只在创建时返回一次，后续列表查询仅返回脱敏信息。
 pub struct UserApiKeyService {
     api_key_repo: Arc<dyn UserApiKeyRepository>,
+    user_repo: Arc<dyn UserRepository>,
     audit_log_repo: Arc<dyn AuditLogRepository>,
 }
 
 impl UserApiKeyService {
     pub fn new(
         api_key_repo: Arc<dyn UserApiKeyRepository>,
+        user_repo: Arc<dyn UserRepository>,
         audit_log_repo: Arc<dyn AuditLogRepository>,
     ) -> Self {
         UserApiKeyService {
             api_key_repo,
+            user_repo,
             audit_log_repo,
         }
     }
@@ -224,6 +228,15 @@ impl UserApiKeyService {
         if !api_key.status.is_enabled() {
             return Err(AppError::Unauthorized("API key 已被禁用".to_string()));
         }
+
+        // 所属用户被禁用时，其名下所有 API key 立即失效。
+        // 只校验 key 自身状态、不校验用户状态，是"禁用用户后仍能继续调用代理"的根因。
+        let owner = self
+            .user_repo
+            .find_by_id(api_key.user_id)
+            .await?
+            .ok_or_else(|| AppError::Unauthorized("API key 所属用户不存在".to_string()))?;
+        owner.ensure_enabled()?;
 
         // 更新最后使用时间（忽略失败，不阻塞请求）
         self.api_key_repo.update_last_used(api_key.id).await.ok();

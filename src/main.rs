@@ -290,7 +290,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         audit_log_repo.clone(),
     ));
 
-    let user_service = Arc::new(UserService::new(user_repo.clone(), audit_log_repo.clone()));
+    let user_service = Arc::new(UserService::new(
+        user_repo.clone(),
+        refresh_token_repo.clone(),
+        audit_log_repo.clone(),
+    ));
 
     let access_point_service = Arc::new(AccessPointService::new(
         access_point_repo.clone(),
@@ -331,6 +335,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let user_api_key_service = Arc::new(UserApiKeyService::new(
         user_api_key_repo.clone(),
+        user_repo.clone(),
         audit_log_repo.clone(),
     ));
 

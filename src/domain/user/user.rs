@@ -84,9 +84,53 @@ impl Model {
         self.touch();
     }
 
+    /// 校验用户处于启用状态
+    ///
+    /// 禁用用户不得再通过任何入口访问：面板登录、token 刷新、JWT 接口（含 SSE）
+    /// 与 API key 代理调用都在各自入口调用本方法，避免"禁用只是状态位、权限没断"。
+    pub fn ensure_enabled(&self) -> Result<(), AppError> {
+        if self.status.is_enabled() {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden("用户已被禁用".to_string()))
+        }
+    }
+
     /// 更新 updated_at 为当前时间
     fn touch(&mut self) {
         let offset = FixedOffset::east_opt(0).expect("UTC offset");
         self.updated_at = chrono::Utc::now().with_timezone(&offset);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn user_with(status: Status) -> Model {
+        let mut user = Model::new("u".to_string(), "U".to_string(), "hash".to_string());
+        user.status = status;
+        user
+    }
+
+    #[test]
+    fn test_ensure_enabled_allows_enabled_user() {
+        assert!(user_with(Status::Enabled).ensure_enabled().is_ok());
+    }
+
+    #[test]
+    fn test_ensure_enabled_rejects_disabled_user() {
+        let err = user_with(Status::Disabled).ensure_enabled().unwrap_err();
+        assert!(matches!(err, AppError::Forbidden(_)), "应为 403 Forbidden");
+        assert!(err.to_string().contains("禁用"));
+    }
+
+    #[test]
+    fn test_disable_then_ensure_enabled_rejected() {
+        let mut user = user_with(Status::Enabled);
+        user.disable();
+        assert!(user.ensure_enabled().is_err());
+        user.enable();
+        assert!(user.ensure_enabled().is_ok());
     }
 }

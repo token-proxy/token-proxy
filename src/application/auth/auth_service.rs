@@ -299,6 +299,15 @@ impl AuthService {
             .validate_token(token)
             .map_err(|_| AppError::Unauthorized("无效的 access token".to_string()))?;
 
+        // 禁用用户不得再以 access token 访问任何接口（含 SSE）：
+        // token 本身无状态，故每次校验都查一次用户状态（主键查询），保证禁用立即生效
+        let user = self
+            .user_repo
+            .find_by_id(jwt_claims.user_id)
+            .await?
+            .ok_or_else(|| AppError::Unauthorized("用户不存在".to_string()))?;
+        user.ensure_enabled()?;
+
         Ok(Claims {
             sub: jwt_claims.sub,
             user_id: jwt_claims.user_id,

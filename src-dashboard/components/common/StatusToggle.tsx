@@ -6,6 +6,8 @@ interface StatusToggleProps {
   enabled: boolean;
   loading?: boolean;
   confirmTitle?: string;
+  /** 确认气泡内的补充说明（如禁用后权限立即失效） */
+  confirmContent?: string;
   onToggle: () => void;
 }
 
@@ -18,6 +20,7 @@ export default function StatusToggle({
   enabled,
   loading = false,
   confirmTitle,
+  confirmContent,
   onToggle,
 }: StatusToggleProps): ReactNode {
   const tag = (
@@ -34,6 +37,7 @@ export default function StatusToggle({
   return (
     <Popconfirm
       title={confirmTitle ?? `确认${enabled ? '禁用' : '启用'}?`}
+      content={confirmContent}
       onConfirm={onToggle}
       position="bottomRight"
     >
