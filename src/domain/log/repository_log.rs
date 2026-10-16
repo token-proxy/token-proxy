@@ -30,41 +30,11 @@ pub struct LogQuery {
     pub is_interrupted: Option<bool>,
 }
 
-/// 会话摘要数据（统计请求数、各类型词元总量）
-#[derive(Debug, Clone)]
-pub struct SessionSummaryData {
-    pub session_id: String,
-    pub user_id: Option<Uuid>,
-    pub access_point_id: Option<Uuid>,
-    pub start_time: DateTime<Utc>,
-    pub request_count: i64,
-    pub total_input_tokens: i64,
-    pub total_output_tokens: i64,
-    pub total_cache_creation_input_tokens: i64,
-    pub total_cache_read_input_tokens: i64,
-    pub total_thinking_tokens: i64,
-    pub total_tokens: i64,
-}
-
-/// 会话查询过滤参数
-#[derive(Debug, Clone, Default)]
-pub struct SessionQuery {
-    pub session_id: Option<String>,
-    pub user_id: Option<Uuid>,
-    pub access_point_id: Option<Uuid>,
-    pub start_time: Option<DateTime<Utc>>,
-    pub end_time: Option<DateTime<Utc>>,
-    pub status_code: Option<i16>,
-}
-
 /// 日志仓储接口
 #[async_trait]
 pub trait LogRepository: Send + Sync {
     /// 根据 ID 查找请求记录
     async fn find_by_id(&self, id: Uuid) -> Result<Option<LogRequest>, AppError>;
-
-    /// 根据会话 ID 查找请求记录
-    async fn find_by_session_id(&self, session_id: &str) -> Result<Vec<LogRequest>, AppError>;
 
     /// 分页查询请求记录（支持过滤），LogRequest 自含词元字段，无需联表
     async fn find_all_paginated(
@@ -88,19 +58,14 @@ pub trait LogRepository: Send + Sync {
 
     // ─── 联表查询 ───
 
-    /// 分页查询会话摘要列表，使用聚合查询统计各会话的词元用量
-    async fn find_sessions_paginated(
-        &self,
-        page: u64,
-        page_size: u64,
-        filter: &SessionQuery,
-    ) -> Result<PaginatedResult<SessionSummaryData>, AppError>;
-
     /// 查询请求完整详情（联表查询 log_requests + log_contents）
+    ///
+    /// 返回 `None` 表示请求记录不存在；`Some((entry, None))` 表示请求记录存在但
+    /// 原始内容缺失（`log_contents` 无对应行，如分区被清理）。
     async fn find_log_detail_full(
         &self,
         id: Uuid,
-    ) -> Result<Option<(LogRequest, LogContent)>, AppError>;
+    ) -> Result<Option<(LogRequest, Option<LogContent>)>, AppError>;
 
     // ─── Dashboard 聚合查询 ───
 

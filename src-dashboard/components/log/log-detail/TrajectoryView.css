@@ -1,0 +1,639 @@
+/* 运行轨迹视图样式 —— 工具栏 + 三泳道时间轴 + 轮次账本 + 记录检查器（对齐 DSH 轨迹观感） */
+
+.trajectory-view {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 330px);
+  min-height: 520px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 10px;
+  background: var(--semi-color-bg-1);
+  overflow: hidden;
+}
+
+/* ─── 视图标题栏 ─── */
+
+.trajectory-view__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.trajectory-view__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
+
+.trajectory-view__spacer {
+  flex: 1 1 auto;
+}
+
+/* ─── 内容可用性提示 ─── */
+
+.trajectory-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--semi-color-border);
+  background: var(--semi-color-warning-light-default);
+  color: var(--semi-color-warning);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ─── 工具栏 ─── */
+
+.trajectory-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--semi-color-border);
+  background: var(--semi-color-fill-0);
+}
+
+.trajectory-toolbar__spacer {
+  flex: 1 1 auto;
+}
+
+.trajectory-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  color: var(--semi-color-text-1);
+  cursor: pointer;
+}
+
+.trajectory-chip:hover {
+  color: var(--semi-color-primary);
+}
+
+.trajectory-chip:disabled {
+  color: var(--semi-color-disabled-text);
+  cursor: not-allowed;
+}
+
+.trajectory-chip:disabled:hover {
+  color: var(--semi-color-disabled-text);
+}
+
+.trajectory-chip__count {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-2);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.trajectory-chip__box {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 3px;
+  background: var(--semi-color-bg-1);
+}
+
+.trajectory-chip[data-checked='true'] .trajectory-chip__box {
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary);
+}
+
+.trajectory-chip[data-checked='true'] .trajectory-chip__box::after {
+  content: '';
+  position: absolute;
+  left: 3.5px;
+  top: 0.5px;
+  width: 3px;
+  height: 6px;
+  border: solid var(--semi-color-white);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+/* ─── 三泳道时间轴 ─── */
+
+.trajectory-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.trajectory-lane {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trajectory-lane__label {
+  flex: none;
+  width: 28px;
+  font-size: 11px;
+  color: var(--semi-color-text-2);
+}
+
+.trajectory-lane__track {
+  position: relative;
+  flex: 1 1 auto;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--semi-color-fill-0);
+}
+
+.trajectory-lane__span {
+  position: absolute;
+  top: 3px;
+  height: 8px;
+  min-width: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--semi-color-text-3);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.trajectory-lane__span[data-kind='system'] {
+  background: #93a0b0;
+}
+
+.trajectory-lane__span[data-kind='user'] {
+  background: var(--semi-color-info);
+}
+
+.trajectory-lane__span[data-kind='assistant'] {
+  background: var(--semi-color-success);
+}
+
+.trajectory-lane__span[data-kind='tool'] {
+  background: var(--semi-color-warning);
+}
+
+.trajectory-lane__span[data-kind='request'],
+.trajectory-lane__span[data-kind='response'] {
+  background: var(--semi-color-primary);
+}
+
+.trajectory-lane__span[data-dimmed='true'] {
+  opacity: 0.22;
+}
+
+.trajectory-lane__span[data-selected='true'] {
+  outline: 1.5px solid var(--semi-color-primary);
+  outline-offset: 1px;
+}
+
+.trajectory-lane__boundary {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--semi-color-border);
+}
+
+.trajectory-lane__cursor {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--semi-color-primary);
+}
+
+/* ─── 账本 + 检查器两栏 ─── */
+
+.trajectory-view__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.trajectory-ledger {
+  min-height: 0;
+  overflow: auto;
+}
+
+.trajectory-ledger__empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 160px;
+}
+
+/* ─── 轮次表头（sticky）─── */
+
+.trajectory-turn__header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--semi-color-border);
+  background: var(--semi-color-fill-0);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trajectory-turn__header:hover .trajectory-turn__title {
+  color: var(--semi-color-primary);
+}
+
+.trajectory-turn__chevron,
+.trajectory-group__chevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--semi-color-text-3);
+}
+
+.trajectory-turn__title {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
+
+.trajectory-turn__description {
+  min-width: 0;
+  max-width: 52%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--semi-color-text-2);
+}
+
+.trajectory-turn__spacer,
+.trajectory-group__spacer {
+  flex: 1 1 auto;
+}
+
+/* ─── 分组表头 ─── */
+
+.trajectory-group__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+}
+
+.trajectory-group__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 12px 3px 24px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trajectory-group__calls {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px dashed var(--semi-color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--semi-color-text-3);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.trajectory-group__calls:hover {
+  color: var(--semi-color-primary);
+  border-color: var(--semi-color-primary);
+}
+
+.trajectory-group__calls[data-collapsed='true'] {
+  border-style: solid;
+  color: var(--semi-color-text-2);
+  background: var(--semi-color-fill-0);
+}
+
+.trajectory-group__title {
+  font-size: 11px;
+  color: var(--semi-color-text-2);
+}
+
+.trajectory-group__description {
+  font-size: 11px;
+  color: var(--semi-color-text-3);
+}
+
+.trajectory-group__header:hover .trajectory-group__title {
+  color: var(--semi-color-primary);
+}
+
+/* ─── 记录行 ─── */
+
+.trajectory-row {
+  display: grid;
+  grid-template-columns: 62px 16px 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 24px;
+  border-bottom: 1px solid var(--semi-color-border);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.trajectory-row:hover {
+  background: var(--semi-color-fill-0);
+}
+
+.trajectory-row[data-selected='true'] {
+  background: var(--semi-color-primary-light-default);
+}
+
+.trajectory-row__time {
+  overflow: hidden;
+  font-family: var(--ds-font-family-code, 'SF Mono', 'Monaco', Menlo, monospace);
+  font-size: 11px;
+  color: var(--semi-color-text-3);
+  white-space: nowrap;
+}
+
+.trajectory-row__icon {
+  display: inline-flex;
+  color: var(--semi-color-text-2);
+}
+
+.trajectory-row__icon[data-kind='user'] {
+  color: var(--semi-color-info);
+}
+
+.trajectory-row__icon[data-kind='assistant'] {
+  color: var(--semi-color-success);
+}
+
+.trajectory-row__icon[data-kind='tool'] {
+  color: var(--semi-color-warning);
+}
+
+.trajectory-row__icon[data-kind='request'],
+.trajectory-row__icon[data-kind='response'] {
+  color: var(--semi-color-primary);
+}
+
+.trajectory-row__kind {
+  font-size: 11px;
+  color: var(--semi-color-text-3);
+}
+
+.trajectory-row__main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.trajectory-row__text {
+  flex: none;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--semi-color-text-0);
+}
+
+.trajectory-row__text[data-mono='true'] {
+  font-family: var(--ds-font-family-code, 'SF Mono', 'Monaco', Menlo, monospace);
+  font-size: 11.5px;
+}
+
+.trajectory-row__preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--semi-color-text-3);
+}
+
+.trajectory-row__note {
+  flex: none;
+  font-size: 11px;
+  color: var(--semi-color-text-3);
+  white-space: nowrap;
+}
+
+.trajectory-row__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--ds-font-family-code, 'SF Mono', 'Monaco', Menlo, monospace);
+  font-size: 11px;
+  color: var(--semi-color-text-2);
+  white-space: nowrap;
+}
+
+.trajectory-row__model,
+.trajectory-row__tokens {
+  color: var(--semi-color-text-2);
+}
+
+/* ─── 记录检查器 ─── */
+
+.trajectory-inspector {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--semi-color-border);
+  background: var(--semi-color-bg-0);
+}
+
+.trajectory-inspector--empty {
+  display: grid;
+  place-items: center;
+}
+
+.trajectory-inspector__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.trajectory-inspector__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
+
+.trajectory-inspector__spacer {
+  flex: 1 1 auto;
+}
+
+.trajectory-inspector__close {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--semi-color-text-2);
+  cursor: pointer;
+}
+
+.trajectory-inspector__close:hover {
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-0);
+}
+
+.trajectory-inspector__sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+/* Semi Tabs 撑满检查器并让内容区独立滚动 */
+
+.trajectory-inspector__tabs.semi-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.trajectory-inspector__tabs .semi-tabs-bar {
+  flex: none;
+  flex-wrap: nowrap;
+  padding: 0 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+/* Semi 的 line 型页签用 float 排布，窄容器下必然换行；改为 flex 单行 + 横向滚动
+   （Semi 样式运行时注入，选择器需比其 `.semi-tabs-bar-line` 更具体） */
+.trajectory-inspector__tabs.semi-tabs .semi-tabs-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.trajectory-inspector__tabs.semi-tabs .semi-tabs-tab {
+  float: none;
+  flex: none;
+  white-space: nowrap;
+}
+
+.trajectory-inspector__tabs .semi-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.trajectory-inspector__tabs .semi-tabs-tab {
+  flex: none;
+  white-space: nowrap;
+}
+
+.trajectory-inspector__tabs.semi-tabs .semi-tabs-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.trajectory-inspector__tabs.semi-tabs .semi-tabs-pane {
+  padding: 10px 4px 12px;
+}
+
+/* ─── 检查器内容块 ─── */
+
+.trajectory-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+}
+
+.trajectory-meta__row {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.trajectory-meta__label {
+  flex: none;
+  width: 84px;
+  color: var(--semi-color-text-2);
+}
+
+.trajectory-meta__value {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--semi-color-text-0);
+  word-break: break-word;
+}
+
+.trajectory-meta__value[data-mono='true'] {
+  font-family: var(--ds-font-family-code, 'SF Mono', 'Monaco', Menlo, monospace);
+  font-size: 11.5px;
+}
+
+.trajectory-pre {
+  margin: 0;
+  max-height: 100%;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--semi-color-fill-0);
+  font-family: var(--ds-font-family-code, 'SF Mono', 'Monaco', Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--semi-color-text-0);
+}
+
+/* ─── 窄屏：检查器改为下置 ─── */
+
+@media (max-width: 1200px) {
+  .trajectory-view__body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 42%);
+  }
+
+  .trajectory-inspector {
+    border-top: 1px solid var(--semi-color-border);
+    border-left: 0;
+  }
+}

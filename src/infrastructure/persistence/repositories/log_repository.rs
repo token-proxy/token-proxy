@@ -11,16 +11,15 @@ use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
-    QueryFilter, QueryOrder, Statement,
+    QueryFilter, Statement,
 };
 use uuid::Uuid;
 
 use crate::domain::log::content::{ActiveModel as ContentActiveModel, Entity as ContentEntity};
-use crate::domain::log::request::{ActiveModel, Column, Entity};
+use crate::domain::log::request::{ActiveModel, Entity};
 use crate::domain::log::{
     DashboardWindow, HeatmapCell, KpiAggregate, LogQuery, LogRepository, ModelTokenUsage,
-    QualityMetrics, SessionQuery, SessionSummaryData, SparklineBucket, TopAccessPointRow,
-    TopModelRow, UsageTrendBucket,
+    QualityMetrics, SparklineBucket, TopAccessPointRow, TopModelRow, UsageTrendBucket,
 };
 use crate::domain::log::{LogContent, LogRequest};
 use crate::shared::error::AppError;
@@ -45,16 +44,6 @@ impl LogRepository for SeaOrmLogRepository {
             Some(m) => Ok(Some(m)),
             None => Ok(None),
         }
-    }
-
-    async fn find_by_session_id(&self, session_id: &str) -> Result<Vec<LogRequest>, AppError> {
-        let db = &*self.db;
-        let models = Entity::find()
-            .filter(Column::SessionId.eq(session_id))
-            .order_by_asc(Column::Timestamp)
-            .all(db)
-            .await?;
-        Ok(models)
     }
 
     async fn find_all_paginated(
@@ -300,154 +289,10 @@ impl LogRepository for SeaOrmLogRepository {
         Ok(())
     }
 
-    // ─── 会话查询 ───
-
-    async fn find_sessions_paginated(
-        &self,
-        page: u64,
-        page_size: u64,
-        filter: &SessionQuery,
-    ) -> Result<PaginatedResult<SessionSummaryData>, AppError> {
-        let db = &*self.db;
-        let page = page.max(1);
-        let page_size = page_size.min(100);
-        let offset = (page - 1) * page_size;
-        let mut param_idx = 1u32;
-        let mut params: Vec<sea_orm::Value> = Vec::new();
-
-        let mut where_clauses = Vec::new();
-
-        if let Some(ref session_id) = filter.session_id {
-            let p = format!("${}", param_idx);
-            param_idx += 1;
-            where_clauses.push(format!("lr.session_id = {}", p));
-            params.push(session_id.clone().into());
-        }
-        if let Some(user_id) = &filter.user_id {
-            let p = format!("${}", param_idx);
-            param_idx += 1;
-            where_clauses.push(format!("lr.user_id = {}", p));
-            params.push((*user_id).into());
-        }
-        if let Some(access_point_id) = &filter.access_point_id {
-            let p = format!("${}", param_idx);
-            param_idx += 1;
-            where_clauses.push(format!("lr.access_point_id = {}", p));
-            params.push((*access_point_id).into());
-        }
-        if let Some(start_time) = &filter.start_time {
-            let p = format!("${}", param_idx);
-            param_idx += 1;
-            where_clauses.push(format!("lr.timestamp >= {}::timestamptz", p));
-            params.push(start_time.to_rfc3339().into());
-        }
-        if let Some(end_time) = &filter.end_time {
-            let p = format!("${}", param_idx);
-            param_idx += 1;
-            where_clauses.push(format!("lr.timestamp <= {}::timestamptz", p));
-            params.push(end_time.to_rfc3339().into());
-        }
-        if let Some(status_code) = &filter.status_code {
-            let p = format!("${}", param_idx);
-            param_idx += 1;
-            where_clauses.push(format!("lr.status_code = {}", p));
-            params.push((*status_code).into());
-        }
-
-        let where_sql = if where_clauses.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", where_clauses.join(" AND "))
-        };
-
-        // 总数查询
-        let count_sql = format!(
-            "SELECT COUNT(*)::BIGINT FROM (SELECT 1 FROM log_requests lr {} GROUP BY lr.session_id) sub",
-            where_sql
-        );
-        let count_stmt =
-            Statement::from_sql_and_values(DbBackend::Postgres, &count_sql, params.clone());
-        let count_result = db
-            .query_one_raw(count_stmt)
-            .await?
-            .ok_or_else(|| AppError::Internal("会话计数查询结果为空".to_string()))?;
-        let total: i64 = count_result.try_get_by_index(0)?;
-        let total = total as u64;
-
-        if total == 0 {
-            return Ok(PaginatedResult {
-                items: Vec::new(),
-                total: 0,
-                page,
-                page_size,
-            });
-        }
-
-        // 数据查询（单表聚合）
-        let limit_p = format!("${}", param_idx);
-        param_idx += 1;
-        let offset_p = format!("${}", param_idx);
-        params.push((page_size as i64).into());
-        params.push((offset as i64).into());
-
-        let data_sql = format!(
-            r#"
-            SELECT
-                lr.session_id,
-                MIN(lr.user_id::text)::uuid as user_id,
-                MIN(lr.access_point_id::text)::uuid as access_point_id,
-                MIN(lr.timestamp) as start_time,
-                CAST(COUNT(*) AS BIGINT) as request_count,
-                COALESCE(SUM(lr.input_tokens), 0)::BIGINT as total_input_tokens,
-                COALESCE(SUM(lr.output_tokens), 0)::BIGINT as total_output_tokens,
-                COALESCE(SUM(lr.cache_creation_input_tokens), 0)::BIGINT as total_cache_creation_input_tokens,
-                COALESCE(SUM(lr.cache_read_input_tokens), 0)::BIGINT as total_cache_read_tokens,
-                COALESCE(SUM(lr.thinking_tokens), 0)::BIGINT as total_thinking_tokens,
-                COALESCE(SUM(lr.total_tokens), 0)::BIGINT as total_tokens
-            FROM log_requests lr
-            {}
-            GROUP BY lr.session_id
-            ORDER BY start_time DESC
-            LIMIT {} OFFSET {}
-            "#,
-            where_sql, limit_p, offset_p
-        );
-
-        let data_stmt = Statement::from_sql_and_values(DbBackend::Postgres, &data_sql, params);
-        let results = db.query_all_raw(data_stmt).await?;
-
-        let items: Vec<SessionSummaryData> = results
-            .iter()
-            .map(|row| {
-                let start_time_col: DateTime<FixedOffset> = row.try_get_by_index(3)?;
-                Ok(SessionSummaryData {
-                    session_id: row.try_get_by_index::<String>(0)?,
-                    user_id: row.try_get_by_index::<Option<Uuid>>(1)?,
-                    access_point_id: row.try_get_by_index::<Option<Uuid>>(2)?,
-                    start_time: start_time_col.to_utc(),
-                    request_count: row.try_get_by_index::<i64>(4)?,
-                    total_input_tokens: row.try_get_by_index::<i64>(5)?,
-                    total_output_tokens: row.try_get_by_index::<i64>(6)?,
-                    total_cache_creation_input_tokens: row.try_get_by_index::<i64>(7)?,
-                    total_cache_read_input_tokens: row.try_get_by_index::<i64>(8)?,
-                    total_thinking_tokens: row.try_get_by_index::<i64>(9)?,
-                    total_tokens: row.try_get_by_index::<i64>(10)?,
-                })
-            })
-            .collect::<Result<Vec<_>, AppError>>()?;
-
-        Ok(PaginatedResult {
-            items,
-            total,
-            page,
-            page_size,
-        })
-    }
-
     async fn find_log_detail_full(
         &self,
         id: Uuid,
-    ) -> Result<Option<(LogRequest, LogContent)>, AppError> {
+    ) -> Result<Option<(LogRequest, Option<LogContent>)>, AppError> {
         let db = &*self.db;
 
         let sql = r#"
@@ -467,7 +312,8 @@ impl LogRepository for SeaOrmLogRepository {
                 lr.thinking_tokens, lr.total_tokens,
                 lr.raw_usage, lr.server_tool_usage, lr.cache_creation,
                 lr.agent_type, lr.created_at, lr.api_protocol,
-                lc.request_headers, lc.request_body, lc.response_body, lc.response_headers
+                lc.request_headers, lc.request_body, lc.response_body, lc.response_headers,
+                lc.log_id
             FROM log_requests lr
             LEFT JOIN log_contents lc ON lc.log_id = lr.id
             WHERE lr.id = $1::uuid
@@ -518,13 +364,17 @@ impl LogRepository for SeaOrmLogRepository {
                     created_at: created_at_col,
                 };
 
-                let content = LogContent {
-                    log_id: entry.id,
-                    timestamp: entry.timestamp,
-                    request_headers: row.try_get_by_index::<Option<serde_json::Value>>(33)?,
-                    request_body: row.try_get_by_index::<Option<serde_json::Value>>(34)?,
-                    response_body: row.try_get_by_index::<Option<String>>(35)?,
-                    response_headers: row.try_get_by_index::<Option<serde_json::Value>>(36)?,
+                // 37 = lc.log_id：LEFT JOIN 未命中时为 NULL，据此判定原文是否落库
+                let content = match row.try_get_by_index::<Option<Uuid>>(37)? {
+                    Some(_) => Some(LogContent {
+                        log_id: entry.id,
+                        timestamp: entry.timestamp,
+                        request_headers: row.try_get_by_index::<Option<serde_json::Value>>(33)?,
+                        request_body: row.try_get_by_index::<Option<serde_json::Value>>(34)?,
+                        response_body: row.try_get_by_index::<Option<String>>(35)?,
+                        response_headers: row.try_get_by_index::<Option<serde_json::Value>>(36)?,
+                    }),
+                    None => None,
                 };
 
                 Ok(Some((entry, content)))

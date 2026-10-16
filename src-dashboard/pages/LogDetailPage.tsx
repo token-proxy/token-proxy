@@ -6,15 +6,17 @@ import type { LogDetailFull } from '../types/log.ts';
 import api from '../api.ts';
 import BasicInfoCard from '@components/log/log-detail/BasicInfoCard';
 import TokenUsageCard from '@components/log/log-detail/TokenUsageCard';
-import HeadersCard from '@components/log/log-detail/HeadersCard.tsx';
-import RequestContentCard from '@components/log/log-detail/RequestContentCard';
-import ResponseContentCard from '@components/log/log-detail/ResponseContentCard';
+import TrajectoryView from '@components/log/log-detail/TrajectoryView';
+import TrajectoryUnavailable from '@components/log/log-detail/TrajectoryUnavailable';
+import { hasTrajectoryContent } from '../utils/trajectory.ts';
 
 /**
  * LogDetailPage - 日志详情页面
  *
- * 展示单条日志的完整详情：基础信息、词元用量、请求头、请求内容解析、
- * 响应头、响应内容解析。支持加载中、错误、空数据三种状态展示。
+ * 展示单条日志：基础信息 → 词元用量 → 主视图。主视图按原文可用性二选一：
+ * - 原文尚在 → 运行轨迹（工具栏 + 三泳道时间轴 + 轮次账本 + 记录检查器）
+ * - 原文已被清理（请求体与响应体都没有）→ 运行轨迹不可用说明卡，不再画空轨迹
+ * 支持加载中、错误、空数据三种状态展示。
  */
 export default function LogDetailPage(): ReactNode {
   const { id } = useParams<{ id: string }>();
@@ -93,35 +95,16 @@ export default function LogDetailPage(): ReactNode {
       {/* 2. 词元用量 */}
       <TokenUsageCard data={data} style={{ marginBottom: 16 }} />
 
-      {/* 3. 请求头 */}
-      <HeadersCard
-        title="请求头"
-        headers={data.request_headers as Record<string, unknown>}
-        style={{ marginBottom: 16 }}
-      />
-
-      {/* 4. 请求内容 */}
-      <RequestContentCard
-        requestBody={data.request_body}
-        api_type={data.api_type}
-        api_protocol={data.api_protocol}
-        style={{ marginBottom: 16 }}
-      />
-
-      {/* 5. 响应头 */}
-      <HeadersCard
-        title="响应头"
-        headers={data.response_headers as Record<string, unknown>}
-        style={{ marginBottom: 16 }}
-      />
-
-      {/* 6. 响应内容 */}
-      <ResponseContentCard
-        responseBody={data.response_body}
-        responseHeaders={data.response_headers as Record<string, unknown> | null}
-        api_type={data.api_type}
-        api_protocol={data.api_protocol}
-      />
+      {/* 3. 主视图：原文可用则画运行轨迹，原文已被清理则画说明卡
+          （key 保证切换日志时重建选中与折叠状态） */}
+      {hasTrajectoryContent(data) ? (
+        <TrajectoryView key={data.id} data={data} />
+      ) : (
+        <TrajectoryUnavailable
+          data={data}
+          reason={data.content_available === false ? 'cleaned' : 'empty'}
+        />
+      )}
     </div>
   );
 }

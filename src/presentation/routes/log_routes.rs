@@ -10,8 +10,7 @@ use uuid::Uuid;
 
 use crate::application::log::dto::{
     AuditLogFilterParams, AuditLogResponse, LogDetailFullResponse, LogDetailResponse,
-    LogFilterParams, LogSummaryResponse, SessionContentItemResponse, SessionSummaryResponse,
-    TokenUsageResponse,
+    LogFilterParams, LogSummaryResponse, TokenUsageResponse,
 };
 use crate::application::AppState;
 use crate::presentation::middleware::jwt_auth::CurrentUser;
@@ -23,9 +22,6 @@ use crate::shared::types::PaginatedResult;
 /// - `GET /api/audit-logs`                      → query_audit_logs
 /// - `GET /api/logs`                             → query_logs
 /// - `GET /api/logs/me`                          → query_my_logs
-/// - `GET /api/logs/sessions`                    → get_sessions
-/// - `GET /api/logs/sessions/{id}/contents`      → get_session_contents
-/// - `GET /api/logs/sessions/{id}/token-usage`   → get_session_token_usage
 /// - `GET /api/logs/{id}`                        → get_log_detail_full
 /// - `GET /api/logs/{id}/raw`                    → get_log_detail
 /// - `GET /api/logs/{id}/token-usage`            → get_log_token_usage
@@ -34,15 +30,6 @@ pub fn routes() -> Router<AppState> {
         .route("/api/audit-logs", get(query_audit_logs))
         .route("/api/logs", get(query_logs))
         .route("/api/logs/me", get(query_my_logs))
-        .route("/api/logs/sessions", get(get_sessions))
-        .route(
-            "/api/logs/sessions/{id}/contents",
-            get(get_session_contents),
-        )
-        .route(
-            "/api/logs/sessions/{id}/token-usage",
-            get(get_session_token_usage),
-        )
         .route("/api/logs/{id}", get(get_log_detail_full))
         .route("/api/logs/{id}/raw", get(get_log_detail))
         .route("/api/logs/{id}/token-usage", get(get_log_token_usage))
@@ -111,28 +98,6 @@ async fn get_log_detail(
     Ok(Json(detail))
 }
 
-/// GET /api/logs/sessions
-///
-/// 分页查询会话列表
-async fn get_sessions(
-    State(state): State<AppState>,
-    Query(filters): Query<LogFilterParams>,
-) -> Result<Json<PaginatedResult<SessionSummaryResponse>>, AppError> {
-    let sessions = state.log_service.get_sessions(filters).await?;
-    Ok(Json(sessions))
-}
-
-/// GET /api/logs/sessions/{id}/contents
-///
-/// 获取会话的所有原始内容事件
-async fn get_session_contents(
-    State(state): State<AppState>,
-    Path(session_id): Path<String>,
-) -> Result<Json<Vec<SessionContentItemResponse>>, AppError> {
-    let contents = state.log_service.get_session_contents(&session_id).await?;
-    Ok(Json(contents))
-}
-
 /// GET /api/logs/{id}/token-usage
 ///
 /// 获取指定日志的词元用量
@@ -146,20 +111,6 @@ async fn get_log_token_usage(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("日志 {} 的词元用量未找到", id)))?;
     Ok(Json(usage))
-}
-
-/// GET /api/logs/sessions/{id}/token-usage
-///
-/// 获取会话内所有日志的词元用量汇总
-async fn get_session_token_usage(
-    State(state): State<AppState>,
-    Path(session_id): Path<String>,
-) -> Result<Json<Vec<TokenUsageResponse>>, AppError> {
-    let usages = state
-        .log_service
-        .get_session_token_usage_response(&session_id)
-        .await?;
-    Ok(Json(usages))
 }
 
 /// GET /api/logs/events

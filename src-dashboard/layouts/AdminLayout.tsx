@@ -5,7 +5,6 @@ import {
   IconHomeStroked,
   IconServerStroked,
   IconRoute,
-  IconCommentStroked,
   IconListView,
   IconUserGroup,
   IconSettingStroked,
@@ -26,21 +25,20 @@ const navItems: NavItem[] = [
   { itemKey: '/getting-started', text: '开始使用', icon: <IconHomeStroked /> },
   { itemKey: '/providers', text: '服务商管理', icon: <IconServerStroked /> },
   { itemKey: '/access-points', text: '接入点管理', icon: <IconRoute /> },
-  { itemKey: '/sessions', text: '会话日志', icon: <IconCommentStroked /> },
   { itemKey: '/logs', text: '请求日志', icon: <IconListView /> },
   { itemKey: '/users', text: '用户管理', icon: <IconUserGroup /> },
   { itemKey: '/audit-logs', text: '审计日志', icon: <IconHistory /> },
   { itemKey: '/settings', text: '系统设置', icon: <IconSettingStroked /> },
 ];
 
-// 匹配详情页路径：logs/:id 或 sessions/:sessionId
-const DETAIL_PAGE_PATTERN = /^\/(logs|sessions)\/[^/]+$/;
+// 匹配详情页路径：logs/:id
+const DETAIL_PAGE_PATTERN = /^\/logs\/[^/]+$/;
 
 /**
  * AdminLayout - 管理后台布局组件
  *
  * 包含侧边栏导航（Semi Nav）和顶部 Header（主题切换 + 用户菜单）。
- * 详情页（logs/:id, sessions/:sessionId）自动收起侧边栏以便展示更多内容。
+ * 详情页（logs/:id）自动收起侧边栏以便展示更多内容。
  */
 export default function AdminLayout(): ReactNode {
   const navigate = useNavigate();

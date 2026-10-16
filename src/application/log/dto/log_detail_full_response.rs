@@ -26,6 +26,11 @@ pub struct LogDetailFullResponse {
     pub api_type: Option<String>,
     /// 本次请求实际使用的协议（anthropic / openai / openai_response）
     pub api_protocol: Option<String>,
+    /// 原始内容是否落库（false = `log_contents` 无对应行，请求/响应原文已不可用）
+    ///
+    /// 内容按月分区存放，分区被清理或数据库重建后历史行会缺失原文，
+    /// 而 `log_requests` 长期保留——前端据此区分「未保存原文」与「解析失败」。
+    pub content_available: bool,
     pub request_headers: serde_json::Value,
     pub response_headers: serde_json::Value,
     pub request_body: serde_json::Value,

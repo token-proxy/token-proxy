@@ -1,7 +1,7 @@
 //! 日志应用服务 — application/log/
 //!
 //! 编排代理日志的二阶段写入（请求记录 → 原始内容），
-//! 以及日志查询、会话摘要、日志详情、审计日志查询等功能。
+//! 以及日志查询、日志详情、审计日志查询等功能。
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -11,8 +11,7 @@ use uuid::Uuid;
 
 use super::dto::{
     AuditLogFilterParams, AuditLogResponse, LogDetailFullResponse, LogDetailResponse,
-    LogFilterParams, LogSummaryResponse, NewLogEvent, ProxyLogInput, SessionContentItemResponse,
-    SessionSummaryResponse, TokenUsageResponse,
+    LogFilterParams, LogSummaryResponse, NewLogEvent, ProxyLogInput, TokenUsageResponse,
 };
 use crate::domain::access_point::repository::AccessPointRepository;
 use crate::domain::log::audit_action::AuditAction;
@@ -21,7 +20,7 @@ use crate::domain::log::repository_audit_log::{
     AuditLogQuery, AuditLogRepository as AuditLogRepoTrait,
 };
 use crate::domain::log::LogRequest;
-use crate::domain::log::{LogContent, LogQuery, LogRepository, SessionQuery};
+use crate::domain::log::{LogContent, LogQuery, LogRepository};
 use crate::domain::shared::model_name::normalize_model_name;
 use crate::domain::shared::ApiProtocol;
 use crate::domain::user::UserRepository;
@@ -350,6 +349,10 @@ impl LogService {
                     None => None,
                 };
 
+                // 原始内容缺失时（log_contents 无对应行）仍返回基础信息与词元，
+                // 由 content_available=false 让前端区分「未保存原文」与「解析失败」
+                let content_available = content.is_some();
+
                 let detail = LogDetailFullResponse {
                     id: entry.id,
                     timestamp: entry.timestamp_utc(),
@@ -370,10 +373,23 @@ impl LogService {
                     client_version: entry.client_version,
                     api_type: Some(entry.api_type.clone()),
                     api_protocol: Some(entry.api_protocol.clone()),
-                    request_headers: content.request_headers.unwrap_or(serde_json::Value::Null),
-                    response_headers: content.response_headers.unwrap_or(serde_json::Value::Null),
-                    request_body: content.request_body.unwrap_or(serde_json::Value::Null),
-                    response_body: content.response_body.unwrap_or_default(),
+                    content_available,
+                    request_headers: content
+                        .as_ref()
+                        .and_then(|c| c.request_headers.clone())
+                        .unwrap_or(serde_json::Value::Null),
+                    response_headers: content
+                        .as_ref()
+                        .and_then(|c| c.response_headers.clone())
+                        .unwrap_or(serde_json::Value::Null),
+                    request_body: content
+                        .as_ref()
+                        .and_then(|c| c.request_body.clone())
+                        .unwrap_or(serde_json::Value::Null),
+                    response_body: content
+                        .as_ref()
+                        .and_then(|c| c.response_body.clone())
+                        .unwrap_or_default(),
                     token_input_tokens: Some(entry.input_tokens),
                     token_output_tokens: Some(entry.output_tokens),
                     token_cache_creation_input_tokens: Some(entry.cache_creation_input_tokens),
@@ -388,91 +404,6 @@ impl LogService {
         }
     }
 
-    /// 获取某个会话的所有原始日志内容（含词元用量）
-    ///
-    /// LogRequest 自含词元字段，无需单独查询 token_usage 表。
-    pub async fn get_session_contents(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<SessionContentItemResponse>, AppError> {
-        let logs = self.log_repo.find_by_session_id(session_id).await?;
-        let mut items = Vec::with_capacity(logs.len());
-
-        for entry in logs {
-            let content = self
-                .log_repo
-                .find_content_by_log_id(entry.id)
-                .await
-                .ok()
-                .flatten();
-
-            if let Some(c) = content {
-                items.push(SessionContentItemResponse {
-                    log_id: entry.id,
-                    timestamp: entry.timestamp_utc(),
-                    conversation_source: entry.conversation_source.clone(),
-                    agent_id: entry.agent_id.clone(),
-                    api_type: entry.api_type.clone(),
-                    api_protocol: entry.api_protocol.clone(),
-                    request_headers: c.request_headers.unwrap_or(serde_json::Value::Null),
-                    request_body: c.request_body.unwrap_or(serde_json::Value::Null),
-                    response_body: c.response_body.unwrap_or_default(),
-                    token_usage: Some(Self::to_token_usage_response(&entry)),
-                });
-            }
-        }
-
-        Ok(items)
-    }
-
-    /// 获取会话摘要列表（含词元用量汇总）
-    pub async fn get_sessions(
-        &self,
-        filters: LogFilterParams,
-    ) -> Result<PaginatedResult<SessionSummaryResponse>, AppError> {
-        let page = filters.page.unwrap_or(1);
-        let page_size = filters.page_size.unwrap_or(20);
-
-        let session_query = SessionQuery {
-            session_id: filters.session_id,
-            user_id: filters.user_id,
-            access_point_id: filters.access_point_id,
-            start_time: filters.start_time,
-            end_time: filters.end_time,
-            status_code: filters.status_code,
-        };
-
-        let result = self
-            .log_repo
-            .find_sessions_paginated(page, page_size, &session_query)
-            .await?;
-
-        let items: Vec<SessionSummaryResponse> = result
-            .items
-            .iter()
-            .map(|s| SessionSummaryResponse {
-                session_id: s.session_id.clone(),
-                user_id: s.user_id,
-                access_point_id: s.access_point_id,
-                start_time: s.start_time,
-                request_count: s.request_count as u64,
-                total_input_tokens: s.total_input_tokens,
-                total_output_tokens: s.total_output_tokens,
-                total_cache_creation_input_tokens: s.total_cache_creation_input_tokens,
-                total_cache_read_input_tokens: s.total_cache_read_input_tokens,
-                total_thinking_tokens: s.total_thinking_tokens,
-                total_tokens: s.total_tokens,
-            })
-            .collect();
-
-        Ok(PaginatedResult {
-            items,
-            total: result.total,
-            page: result.page,
-            page_size: result.page_size,
-        })
-    }
-
     /// 查询单条日志的词元用量
     pub async fn get_log_token_usage(
         &self,
@@ -484,15 +415,6 @@ impl LogService {
             .await?
             .as_ref()
             .map(Self::to_token_usage_response))
-    }
-
-    /// 查询某个会话的词元用量（以响应 DTO 格式返回）
-    pub async fn get_session_token_usage_response(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<TokenUsageResponse>, AppError> {
-        let entries = self.log_repo.find_by_session_id(session_id).await?;
-        Ok(entries.iter().map(Self::to_token_usage_response).collect())
     }
 
     // ─── 审计日志查询 ──────────────────────────────────────────────────

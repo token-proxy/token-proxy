@@ -5,7 +5,6 @@ import GettingStartedPage from './pages/GettingStartedPage.tsx';
 import ProviderManagement from './pages/ProviderManagement.tsx';
 import AccessPointManagement from './pages/AccessPointManagement.tsx';
 import UserManagement from './pages/UserManagement.tsx';
-import SessionLogPage from './pages/SessionLogPage.tsx';
 import RequestLogPage from './pages/RequestLogPage.tsx';
 import LogDetailPage from './pages/LogDetailPage.tsx';
 import SettingsPage from './pages/SettingsPage.tsx';
@@ -28,8 +27,6 @@ function App() {
           <Route path="dashboard" element={<Navigate to="/getting-started" replace />} />
           <Route path="providers/*" element={<ProviderManagement />} />
           <Route path="access-points" element={<AccessPointManagement />} />
-          <Route path="sessions" element={<SessionLogPage />} />
-          <Route path="sessions/:sessionId" element={<SessionLogPage />} />
           <Route path="logs" element={<RequestLogPage />} />
           <Route path="logs/:id" element={<LogDetailPage />} />
           <Route path="users" element={<UserManagement />} />

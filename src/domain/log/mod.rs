@@ -18,6 +18,5 @@ pub use dashboard_query::{
 pub use repository_audit_log::AuditLogQuery;
 pub use repository_audit_log::AuditLogRepository;
 pub use repository_audit_log::AuditLogWithUsername;
-pub use repository_log::LogRepository;
-pub use repository_log::{LogQuery, SessionQuery, SessionSummaryData};
+pub use repository_log::{LogQuery, LogRepository};
 pub use request::Model as LogRequest;

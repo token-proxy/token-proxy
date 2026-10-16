@@ -2,7 +2,7 @@
  * OpenAI 协议响应/请求体解析工具。
  *
  * 与 parseLogs.ts 中的 Anthropic 解析器并列，
- * 由 ResponseContentCard / RequestContentCard 按 api_type / api_protocol 调用。
+ * 由 responseBlocks.ts / trajectory.ts 按 api_type / api_protocol 调用。
  */
 
 import type { ContentBlockInfo } from './parseLogs.ts';
