@@ -30,6 +30,7 @@ use crate::domain::access_point::AccessPointEx;
 use crate::domain::shared::{ApiProtocol, InboundRequest, UpstreamRequest};
 
 use super::tracked_spawner::TrackedSpawner;
+use crate::infrastructure::parsers::body_decoder;
 
 /// 响应侧切片（attach_response 后填充）
 struct ResponseSlice {
@@ -67,7 +68,8 @@ pub struct ProxyCallRecord {
     response: Option<ResponseSlice>,
 
     // ── 累积态 ─────────────────────────────────────────────────────
-    body: String,
+    /// 上游响应体的**原始字节**（可能被 content-encoding 压缩，落库前统一解码）
+    body: Vec<u8>,
 
     // ── 终态 ───────────────────────────────────────────────────────
     start: Instant,
@@ -109,7 +111,7 @@ impl ProxyCallRecord {
             request_headers: inbound.headers.clone(),
             request_body: inbound.body.clone(),
             response: None,
-            body: String::new(),
+            body: Vec::new(),
             start: Instant::now(),
             finished: false,
         }
@@ -123,14 +125,15 @@ impl ProxyCallRecord {
         });
     }
 
-    /// 阶段 3a：SSE 流式逐段追加响应体（过滤 PostgreSQL 不接受的 null 字节）
+    /// 阶段 3a：SSE 流式逐段追加响应体（原样累积原始字节）
     pub fn append_body(&mut self, bytes: &Bytes) {
-        self.body.push_str(&sanitize_body_bytes(bytes));
+        self.body.extend_from_slice(bytes);
     }
 
     /// 阶段 3b：非流式一次性写入响应体
     pub fn set_body(&mut self, bytes: &Bytes) {
-        self.body = sanitize_body_bytes(bytes);
+        self.body.clear();
+        self.body.extend_from_slice(bytes);
     }
 
     /// 阶段 4：正常完成调用，spawn 异步落库
@@ -165,6 +168,15 @@ impl ProxyCallRecord {
             None => (0, HeaderMap::new()),
         };
 
+        // 落库前按 content-encoding 解码（上游可能返回 zstd/gzip 压缩的 SSE）：
+        // 压缩字节当文本存会让词元解析与详情页渲染全部失效
+        let content_encoding = resp_headers
+            .get(axum::http::header::CONTENT_ENCODING)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.to_string());
+        let raw_body = std::mem::take(&mut self.body);
+        let decoded_body = body_decoder::decode_body(&raw_body, content_encoding.as_deref());
+
         let input = ProxyLogInput {
             timestamp: self.timestamp,
             session_id: self.session_id.clone(),
@@ -181,7 +193,7 @@ impl ProxyCallRecord {
             request_headers: std::mem::take(&mut self.request_headers),
             request_body: std::mem::take(&mut self.request_body),
             resp_headers,
-            response_body: std::mem::take(&mut self.body),
+            response_body: sanitize_body_bytes(&decoded_body),
             duration_ms,
             is_interrupted,
             error_message,

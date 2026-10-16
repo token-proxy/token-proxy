@@ -23,6 +23,12 @@ aes-gcm = "0.11"
 # 使 argon2::password_hash::rand_core::OsRng 的 re-export 可用（否则在新依赖图下 E0432）
 argon2 = { version = "0.5", features = ["std"] }
 jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
+# 响应体解码：上游可能压缩 SSE/JSON（DeepSeek 边缘返回 zstd），
+# 落库与词元解析前需按 content-encoding 解码。flate2 默认 miniz_oxide（纯 Rust）
+zstd = "0.13"
+flate2 = "1.1"
+brotli = "8"
+
 reqwest = { version = "0.13", features = ["json", "stream", "gzip", "brotli", "deflate"] }
 rand = "0.10"
 base64 = "0.23"

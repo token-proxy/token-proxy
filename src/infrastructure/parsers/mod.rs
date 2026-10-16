@@ -2,6 +2,7 @@
 //!
 //! 包括 Claude Code 上下文解析和词元用量解析。
 
+pub mod body_decoder;
 pub mod claude_code_context;
 pub mod parsed_token_usage;
 

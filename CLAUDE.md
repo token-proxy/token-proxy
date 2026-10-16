@@ -145,6 +145,11 @@ DDD 四层：领域层（`domain/`）→ 应用层（`application/`）→ 基础
 - **敏感信息脱敏**: `headers_to_json()` 自动将 Authorization/Cookie/Set-Cookie 替换为 `[REDACTED]`；日志严禁记录密钥明文、JWT
   token、密码
 - **用户 API key**: SHA-256 哈希存储，仅创建时返回一次完整值
+- **响应体必须先解码再落库/解析**（`infrastructure/parsers/body_decoder.rs`）：上游可能对 SSE/JSON 做传输层压缩
+  （实测 DeepSeek 边缘返回 `content-encoding: zstd` + `content-type: text/event-stream`），压缩字节当文本存会让
+  **词元解析与详情页渲染全部失效**（表现为所有词元为 0、轨迹 0 消息 0 工具）。`ProxyCallRecord` 因此累积**原始字节**，
+  在 flush 时按 `content-encoding` 解码（zstd/gzip/deflate/br/多重编码），解码失败回退原字节；
+  转发给客户端的仍是上游原始字节（字节保真透传不变）
 - **禁用用户必须真正断权**（`User::ensure_enabled` → 403）：三处入口都要校验所属用户状态 ——
   登录 / token 刷新（`AuthService`）、每次 JWT 校验含 SSE（`validate_access_token`）、
   API key 代理调用（`UserApiKeyService::validate_api_key`，此前只校验 key 自身状态，

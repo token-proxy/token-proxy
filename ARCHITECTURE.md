@@ -333,21 +333,26 @@ presentation/
 
 **路由认证策略**：
 
-| 路径                      | 认证要求                                                                          |
-| ------------------------- | --------------------------------------------------------------------------------- |
-| `/api/auth/*`             | 公开 (登录/刷新)                                                                  |
-| `/ap/*`                   | Bearer 用户 API key 认证 (SHA-256, Authorization 头) + **校验所属用户为启用状态** |
-| `/api/health`             | 公开                                                                              |
-| `/api/providers/*`        | JWT 认证                                                                          |
-| `/api/accounts/*`         | JWT 认证                                                                          |
-| `/api/users/*`            | JWT 认证                                                                          |
-| `/api/users/me/*`         | JWT 认证 (当前用户个人设置)                                                       |
-| `/api/access-points/*`    | JWT 认证                                                                          |
-| `/api/logs/*`             | JWT 认证 (其中 `/api/logs/events` SSE 端点通过 URL query 参数传递 JWT)            |
-| `/api/audit-logs`         | JWT 认证                                                                          |
-| `/api/getting-started/*`  | JWT 认证                                                                          |
-| `/api/settings`           | GET 公开 / PUT JWT 认证                                                           |
-| `/api/settings/log-stats` | JWT 认证                                                                          |
+| 路径          | 认证要求                                                                          |
+| ------------- | --------------------------------------------------------------------------------- |
+| `/api/auth/*` | 公开 (登录/刷新)                                                                  |
+| `/ap/*`       | Bearer 用户 API key 认证 (SHA-256, Authorization 头) + **校验所属用户为启用状态** |
+
+**响应体解码**：上游可能压缩响应（实测 DeepSeek 边缘对 SSE 返回 `content-encoding: zstd`）。
+`ProxyCallRecord` 累积原始字节，flush 时经 `infrastructure/parsers/body_decoder.rs::decode_body` 按
+`content-encoding` 解码后再做**词元解析与落库**（zstd/gzip/deflate/br，含逗号分隔的多重编码，逆序解码；
+未知编码或解码失败回退原字节）。客户端收到的仍是上游原始字节，字节保真透传不受影响。
+| `/api/health` | 公开 |
+| `/api/providers/*` | JWT 认证 |
+| `/api/accounts/*` | JWT 认证 |
+| `/api/users/*` | JWT 认证 |
+| `/api/users/me/*` | JWT 认证 (当前用户个人设置) |
+| `/api/access-points/*` | JWT 认证 |
+| `/api/logs/*` | JWT 认证 (其中 `/api/logs/events` SSE 端点通过 URL query 参数传递 JWT) |
+| `/api/audit-logs` | JWT 认证 |
+| `/api/getting-started/*` | JWT 认证 |
+| `/api/settings` | GET 公开 / PUT JWT 认证 |
+| `/api/settings/log-stats` | JWT 认证 |
 
 ### 账号状态与断权
 
