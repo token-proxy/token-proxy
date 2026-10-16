@@ -208,11 +208,7 @@ export default function TrajectoryView({ data, style }: TrajectoryViewProps): Re
       <div
         className="trajectory-view__body"
         data-inspector={selected && location ? 'open' : 'closed'}
-        style={
-          selected && location
-            ? { gridTemplateColumns: `minmax(0, 1fr) ${inspectorWidth}px` }
-            : undefined
-        }
+        style={{ '--inspector-width': `${inspectorWidth}px` } as React.CSSProperties}
       >
         <TrajectoryLedger
           model={model}

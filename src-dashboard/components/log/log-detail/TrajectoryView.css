@@ -279,9 +279,11 @@
 
 .trajectory-view__body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 400px;
+  /* 面板宽度由拖拽写入的 CSS 变量决定；窄屏媒体查询可整段覆盖（内联 grid 会盖掉媒体查询） */
+  grid-template-columns: minmax(0, 1fr) var(--inspector-width, 400px);
   flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* 检查器关闭：账本占满，不留空白区 */
@@ -549,9 +551,20 @@
 .trajectory-inspector {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
+  /* 面板自身不横向滚动：长内容在内部容器里换行或各自滚动 */
+  overflow: hidden;
   border-left: 1px solid var(--semi-color-border);
   background: var(--semi-color-bg-0);
+}
+
+/* 面板内的长文本/JSON：换行显示，避免撑出横向滚动条 */
+.trajectory-inspector pre,
+.trajectory-inspector code {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .trajectory-inspector--empty {
@@ -713,7 +726,10 @@
 /* ─── 窄屏：检查器改为下置 ─── */
 
 @media (max-width: 1200px) {
-  .trajectory-view__body {
+  /* 窄屏：检查器移到下方，整行占满；此处必须覆盖变量，否则面板会被压窄并溢出 */
+  .trajectory-view__body,
+  .trajectory-view__body[data-inspector='open'],
+  .trajectory-view__body[data-inspector='closed'] {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) minmax(0, 42%);
   }
